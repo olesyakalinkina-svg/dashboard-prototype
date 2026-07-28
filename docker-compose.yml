@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hockey-bi-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bi_user
+      POSTGRES_PASSWORD: bi_password
+      POSTGRES_DB: hockey_bi
+    ports:
+      - "5432:5432"
+    volumes:
+      - hockey_bi_data:/var/lib/postgresql/data
+      - ./database:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bi_user -d hockey_bi"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  hockey_bi_data:

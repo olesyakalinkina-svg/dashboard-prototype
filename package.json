@@ -1,0 +1,37 @@
+{
+  "name": "dashboard-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "dev:clean": "powershell -ExecutionPolicy Bypass -Command \"$p = Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique; if ($p) { $p | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue } }; if (Test-Path .next) { Remove-Item -Recurse -Force .next }; next dev\"",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:generate": "node database/generate-seed.mjs",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:reset": "powershell -ExecutionPolicy Bypass -File database/reset.ps1",
+    "db:reset:local": "powershell -ExecutionPolicy Bypass -File database/reset-local.ps1"
+  },
+  "dependencies": {
+    "@tanstack/react-table": "^8.21.3",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.511.0",
+    "next": "^15.3.3",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "recharts": "^2.15.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.8",
+    "@types/node": "^22.15.29",
+    "@types/react": "^19.1.6",
+    "@types/react-dom": "^19.1.5",
+    "eslint": "^9.28.0",
+    "eslint-config-next": "^15.3.3",
+    "tailwindcss": "^4.1.8",
+    "typescript": "^5.8.3"
+  }
+}
