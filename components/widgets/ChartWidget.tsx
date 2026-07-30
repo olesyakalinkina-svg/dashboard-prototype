@@ -11,6 +11,7 @@ type ChartWidgetProps = {
   className?: string;
   height?: number;
   compact?: boolean;
+  fillHeight?: boolean;
 };
 
 export function ChartWidget({
@@ -19,6 +20,7 @@ export function ChartWidget({
   className,
   height = 280,
   compact = false,
+  fillHeight = false,
   refreshKey,
 }: ChartWidgetProps & { refreshKey?: string }) {
   const [loading, setLoading] = useState(true);
@@ -30,7 +32,13 @@ export function ChartWidget({
   }, [title, refreshKey]);
 
   return (
-    <Card className={clsx("min-w-0", className)}>
+    <Card
+      className={clsx(
+        "min-w-0",
+        fillHeight && "flex h-full flex-col",
+        className,
+      )}
+    >
       <CardHeader className={compact ? "px-3 py-2" : undefined}>
         <CardTitle>
           <span className={compact ? "text-xs" : undefined}>{title}</span>
@@ -39,14 +47,27 @@ export function ChartWidget({
           <MoreHorizontal className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
         </button>
       </CardHeader>
-      <CardContent className={compact ? "px-3 pb-3" : undefined}>
+      <CardContent
+        className={clsx(
+          fillHeight && "flex flex-1 flex-col",
+          compact ? "px-3 pb-3" : undefined,
+        )}
+      >
         {loading ? (
           <div
-            className="animate-pulse rounded-md bg-[var(--background)]"
-            style={{ height }}
+            className={clsx(
+              "animate-pulse rounded-md bg-[var(--background)]",
+              fillHeight && "flex-1",
+            )}
+            style={fillHeight ? { minHeight: height } : { height }}
           />
         ) : (
-          <div style={{ height }}>{children}</div>
+          <div
+            className={fillHeight ? "min-h-0 flex-1" : undefined}
+            style={fillHeight ? { minHeight: height } : { height }}
+          >
+            {children}
+          </div>
         )}
       </CardContent>
     </Card>

@@ -229,19 +229,40 @@ export function SectorPieChart({ data }: { data: SectorPoint[] }) {
   );
 }
 
+export function getMerchChartsRowHeight(
+  topProducts: TopProductPoint[],
+  channels: MerchSalesChannelPoint[],
+): number {
+  const topProductsHeight = Math.max(300, topProducts.length * 36 + 48);
+  const channelsHeight = Math.max(300, channels.length * 48 + 72);
+  return Math.max(topProductsHeight, channelsHeight);
+}
+
 export function MerchSalesChannelsChart({
   data,
+  className,
+  height,
+  fillHeight = false,
 }: {
   data: MerchSalesChannelPoint[];
+  className?: string;
+  height?: number;
+  fillHeight?: boolean;
 }) {
   const total = useMemo(
     () => data.reduce((sum, item) => sum + item.value, 0),
     [data],
   );
+  const chartHeight = height ?? Math.max(300, data.length * 48 + 72);
 
   if (data.length === 0) {
     return (
-      <ChartWidget title="Выручка по каналам продаж" height={240}>
+      <ChartWidget
+        title="Выручка по каналам продаж"
+        height={chartHeight}
+        className={className}
+        fillHeight={fillHeight}
+      >
         <div className="flex h-full items-center justify-center text-sm text-[var(--muted)]">
           Нет данных по выбранным каналам
         </div>
@@ -250,7 +271,12 @@ export function MerchSalesChannelsChart({
   }
 
   return (
-    <ChartWidget title="Выручка по каналам продаж" height={300}>
+    <ChartWidget
+      title="Выручка по каналам продаж"
+      height={chartHeight}
+      className={className}
+      fillHeight={fillHeight}
+    >
       <div className="flex h-full flex-col gap-5 lg:flex-row">
         <div className="h-[220px] min-w-0 flex-1 lg:h-full">
           <ResponsiveContainer width="100%" height="100%">
@@ -350,9 +376,26 @@ export function ChannelMixChart({
   );
 }
 
-export function TopProductsChart({ data }: { data: TopProductPoint[] }) {
+export function TopProductsChart({
+  data,
+  className,
+  height,
+  fillHeight = false,
+}: {
+  data: TopProductPoint[];
+  className?: string;
+  height?: number;
+  fillHeight?: boolean;
+}) {
+  const chartHeight = height ?? Math.max(300, data.length * 36 + 48);
+
   return (
-    <ChartWidget title="Топ товаров по выручке">
+    <ChartWidget
+      title="Топ товаров по выручке"
+      height={chartHeight}
+      className={className}
+      fillHeight={fillHeight}
+    >
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} layout="vertical">
           <CartesianGrid strokeDasharray="3 3" stroke="#E5E5E7" />

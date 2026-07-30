@@ -418,7 +418,7 @@ function MerchSalesTable<T>({
   const summary = summaryRow?.(filteredRows.map((row) => row.original));
 
   return (
-    <Card className="min-w-0">
+    <Card className="flex h-full min-w-0 flex-col">
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         <div className="relative">
@@ -431,7 +431,7 @@ function MerchSalesTable<T>({
           />
         </div>
       </CardHeader>
-      <CardContent className="overflow-x-auto">
+      <CardContent className="flex flex-1 flex-col overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             {table.getHeaderGroups().map((hg) => (
@@ -473,7 +473,7 @@ function MerchSalesTable<T>({
             {summary}
           </tbody>
         </table>
-        <div className="mt-3 flex items-center justify-between text-xs text-[var(--muted)]">
+        <div className="mt-auto flex items-center justify-between pt-3 text-xs text-[var(--muted)]">
           <span>
             {filteredRows.length} {countLabel}
           </span>
@@ -638,7 +638,7 @@ export function MerchMatchSalesTable({
       countLabel="мероприятий"
       defaultSort={[{ id: "revenue", desc: true }]}
       summaryRow={summaryRow}
-      pageSize={15}
+      pageSize={10}
     />
   );
 }
@@ -725,6 +725,7 @@ export function MerchSkuSalesTable({ data }: { data: MerchSkuSalesRow[] }) {
       searchPlaceholder="Поиск по товару..."
       countLabel="товаров"
       defaultSort={[{ id: "units", desc: true }]}
+      pageSize={10}
     />
   );
 }

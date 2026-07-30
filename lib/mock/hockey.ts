@@ -211,11 +211,22 @@ const ORDER_SOURCES: OrderSource[] = [
 ];
 
 const MATCH_MERCH_POINT_WEIGHTS: { point: MerchSalesPoint; weight: number }[] = [
-  { point: "arena_north", weight: 28 },
-  { point: "arena_south", weight: 28 },
-  { point: "flagship", weight: 24 },
-  { point: "mall_raduga", weight: 10 },
-  { point: "mall_continent", weight: 10 },
+  { point: "flagship", weight: 50 },
+  { point: "arena_north", weight: 16 },
+  { point: "arena_south", weight: 16 },
+  { point: "mall_raduga", weight: 2 },
+  { point: "mall_continent", weight: 2 },
+];
+
+const OFF_MATCH_MERCH_CHANNELS: {
+  point: MerchSalesPoint;
+  minCount: number;
+  maxCount: number;
+}[] = [
+  { point: "flagship", minCount: 130, maxCount: 170 },
+  { point: "online_store", minCount: 300, maxCount: 380 },
+  { point: "mall_raduga", minCount: 22, maxCount: 35 },
+  { point: "mall_continent", minCount: 22, maxCount: 35 },
 ];
 
 function pickWeightedMerchSalesPoint(
@@ -234,9 +245,40 @@ function pickWeightedMerchSalesPoint(
   return options[options.length - 1].point;
 }
 
-function pickMerchSalesPoint(atMatch: boolean): MerchSalesPoint {
-  if (!atMatch) return "online_store";
+function pickMerchSalesPoint(): MerchSalesPoint {
   return pickWeightedMerchSalesPoint(MATCH_MERCH_POINT_WEIGHTS);
+}
+
+function generateOffMatchMerchSales(
+  startId: number,
+): { txs: Transaction[]; nextId: number } {
+  const txs: Transaction[] = [];
+  let id = startId;
+
+  for (const channel of OFF_MATCH_MERCH_CHANNELS) {
+    const txCount = randomInt(channel.minCount, channel.maxCount);
+
+    for (let i = 0; i < txCount; i += 1) {
+      const item = pickMerchItem();
+      const qty = pickMerchQuantity();
+      const amount = item.price * qty;
+      const costAmount = Math.round(amount * (0.35 + rand() * 0.2));
+      txs.push({
+        id: `tx-${id++}`,
+        date: randomDateInSeasonRange(PREV_SEASON_START, MOCK_TODAY),
+        stream: "merch",
+        description: item.desc,
+        matchId: null,
+        channel: channel.point === "online_store" ? "online" : "kiosk",
+        amount,
+        quantity: qty,
+        merchSalesPoint: channel.point,
+        costAmount,
+      });
+    }
+  }
+
+  return { txs, nextId: id };
 }
 
 function pickMerchQuantity(): number {
@@ -635,7 +677,7 @@ function generateTransactions(): Transaction[] {
     for (let m = 0; m < merchCount; m++) {
       const item = pickMerchItem();
       const qty = pickMerchQuantity();
-      const merchSalesPoint = pickMerchSalesPoint(true);
+      const merchSalesPoint = pickMerchSalesPoint();
       const amount = item.price * qty;
       const costAmount = Math.round(amount * (0.35 + rand() * 0.2));
       transactions.push({
@@ -671,24 +713,9 @@ function generateTransactions(): Transaction[] {
 
   }
 
-  for (let o = 0; o < 85; o++) {
-    const item = pickMerchItem();
-    const qty = pickMerchQuantity();
-    const amount = item.price * qty;
-    const costAmount = Math.round(amount * (0.35 + rand() * 0.2));
-    transactions.push({
-      id: `tx-${id++}`,
-      date: randomDateInSeasonRange(PREV_SEASON_START, MOCK_TODAY),
-      stream: "merch",
-      description: item.desc,
-      matchId: null,
-      channel: "online",
-      amount,
-      quantity: qty,
-      merchSalesPoint: "online_store",
-      costAmount,
-    });
-  }
+  const offMatchMerchSales = generateOffMatchMerchSales(id);
+  transactions.push(...offMatchMerchSales.txs);
+  id = offMatchMerchSales.nextId;
 
   return transactions.sort((a, b) => b.date.getTime() - a.date.getTime());
 }

@@ -7,6 +7,7 @@ import { FilterBar } from "@/components/layout/FilterBar";
 import { TabKpiCards } from "@/components/widgets/KpiCard";
 import {
   ChannelMixChart,
+  getMerchChartsRowHeight,
   MerchSalesChannelsChart,
   SubscriptionPlansChart,
   TopProductsChart,
@@ -39,6 +40,11 @@ function DashboardContent() {
     merchSalesChannelRevenue,
     merchSkuSales,
   } = useFilters();
+
+  const merchChartsHeight = getMerchChartsRowHeight(
+    topProducts,
+    merchSalesChannelRevenue,
+  );
 
   return (
     <div className="min-h-screen bg-[var(--background)]">
@@ -92,14 +98,22 @@ function DashboardContent() {
 
         {activeTab === "merch" && (
           <>
-            <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[1.6fr_1fr]">
+            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
               <MerchMatchSalesTable data={merchMatchSales} />
-              <div className="flex min-w-0 flex-col gap-4">
-                <MerchSkuSalesTable data={merchSkuSales} />
-                <TopProductsChart data={topProducts} />
-              </div>
+              <MerchSkuSalesTable data={merchSkuSales} />
             </div>
-            <MerchSalesChannelsChart data={merchSalesChannelRevenue} />
+            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
+              <MerchSalesChannelsChart
+                data={merchSalesChannelRevenue}
+                height={merchChartsHeight}
+                fillHeight
+              />
+              <TopProductsChart
+                data={topProducts}
+                height={merchChartsHeight}
+                fillHeight
+              />
+            </div>
           </>
         )}
       </main>
