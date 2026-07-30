@@ -191,6 +191,13 @@ export function MatchSalesTable({
         ),
       },
       {
+        accessorKey: "date",
+        header: "Дата",
+        cell: ({ getValue }) => formatDate(getValue<Date>()),
+        sortingFn: (rowA, rowB) =>
+          rowA.original.date.getTime() - rowB.original.date.getTime(),
+      },
+      {
         accessorKey: "revenue",
         header: "Выручка",
         cell: ({ getValue }) => (
@@ -248,7 +255,7 @@ export function MatchSalesTable({
   );
 
   const [sorting, setSorting] = useState<SortingState>([
-    { id: "revenue", desc: true },
+    { id: "date", desc: true },
   ]);
   const [globalFilter, setGlobalFilter] = useState("");
 
@@ -495,17 +502,17 @@ function MerchSalesTable<T>({
   );
 }
 
-export function MerchMatchSalesTable({ data }: { data: MerchMatchSalesRow[] }) {
+export function MerchMatchSalesTable({
+  data,
+}: {
+  data: MerchMatchSalesRow[];
+}) {
   const maxValues = useMemo(
     () => ({
       revenue: Math.max(...data.map((row) => row.revenue), 0),
       avgCheck: Math.max(...data.map((row) => row.avgCheck), 0),
       receipts: Math.max(...data.map((row) => row.receipts), 0),
       units: Math.max(...data.map((row) => row.units), 0),
-      purchaseConversionPct: Math.max(
-        ...data.map((row) => row.purchaseConversionPct),
-        0,
-      ),
     }),
     [data],
   );
@@ -583,7 +590,7 @@ export function MerchMatchSalesTable({ data }: { data: MerchMatchSalesRow[] }) {
         cell: ({ getValue }) => (
           <InlineBarCell
             value={getValue<number>()}
-            max={maxValues.purchaseConversionPct}
+            max={100}
             formatted={formatPercent(getValue<number>())}
             barClassName="bg-[var(--accent)]"
           />
@@ -593,42 +600,38 @@ export function MerchMatchSalesTable({ data }: { data: MerchMatchSalesRow[] }) {
     [maxValues],
   );
 
-  const summaryRow = useCallback(
-    (rows: MerchMatchSalesRow[]) => {
-      if (rows.length === 0) return null;
+  const summaryRow = useCallback((rows: MerchMatchSalesRow[]) => {
+    if (rows.length === 0) return null;
 
-      const totalRevenue = rows.reduce((sum, row) => sum + row.revenue, 0);
-      const totalReceipts = rows.reduce((sum, row) => sum + row.receipts, 0);
-      const totalUnits = rows.reduce((sum, row) => sum + row.units, 0);
-      const avgCheck = totalReceipts > 0 ? totalRevenue / totalReceipts : 0;
-      const upt = totalReceipts > 0 ? totalUnits / totalReceipts : 0;
-      const purchaseConversionPct =
-        totalReceipts > 0
-          ? rows.reduce(
-              (sum, row) => sum + row.purchaseConversionPct * row.receipts,
-              0,
-            ) / totalReceipts
-          : 0;
+    const totalRevenue = rows.reduce((sum, row) => sum + row.revenue, 0);
+    const totalReceipts = rows.reduce((sum, row) => sum + row.receipts, 0);
+    const totalUnits = rows.reduce((sum, row) => sum + row.units, 0);
+    const totalAttendance = rows.reduce((sum, row) => sum + row.attendance, 0);
+    const matchReceipts = rows
+      .filter((row) => row.attendance > 0)
+      .reduce((sum, row) => sum + row.receipts, 0);
+    const avgCheck = totalReceipts > 0 ? totalRevenue / totalReceipts : 0;
+    const upt = totalReceipts > 0 ? totalUnits / totalReceipts : 0;
+    const purchaseConversionPct =
+      totalAttendance > 0 ? (matchReceipts / totalAttendance) * 100 : 0;
 
-      return (
-        <tr className="border-t-2 border-[var(--border)] bg-[var(--background)] font-medium">
-          <td className="px-3 py-2.5">Итого</td>
-          <td className="px-3 py-2.5" />
-          <td className="px-3 py-2.5">{formatCurrency(totalRevenue)}</td>
-          <td className="px-3 py-2.5">{formatCurrency(avgCheck)}</td>
-          <td className="px-3 py-2.5">{formatNumber(totalReceipts)}</td>
-          <td className="px-3 py-2.5">{formatNumber(totalUnits)} шт</td>
-          <td className="px-3 py-2.5">{formatUpt(upt)}</td>
-          <td className="px-3 py-2.5">{formatPercent(purchaseConversionPct)}</td>
-        </tr>
-      );
-    },
-    [],
-  );
+    return (
+      <tr className="border-t-2 border-[var(--border)] bg-[var(--background)] font-medium">
+        <td className="px-3 py-2.5">Итого</td>
+        <td className="px-3 py-2.5" />
+        <td className="px-3 py-2.5">{formatCurrency(totalRevenue)}</td>
+        <td className="px-3 py-2.5">{formatCurrency(avgCheck)}</td>
+        <td className="px-3 py-2.5">{formatNumber(totalReceipts)}</td>
+        <td className="px-3 py-2.5">{formatNumber(totalUnits)} шт</td>
+        <td className="px-3 py-2.5">{formatUpt(upt)}</td>
+        <td className="px-3 py-2.5">{formatPercent(purchaseConversionPct)}</td>
+      </tr>
+    );
+  }, []);
 
   return (
     <MerchSalesTable
-      title="Продажи по матчам"
+      title="Продажи по матчам на основной арене"
       data={data}
       columns={columns}
       searchPlaceholder="Поиск по мероприятию..."
@@ -644,11 +647,11 @@ export function MerchSkuSalesTable({ data }: { data: MerchSkuSalesRow[] }) {
   const maxValues = useMemo(
     () => ({
       units: Math.max(...data.map((row) => row.units), 0),
+      revenue: Math.max(...data.map((row) => row.revenue), 0),
       receiptsWithProduct: Math.max(
         ...data.map((row) => row.receiptsWithProduct),
         0,
       ),
-      marginPct: Math.max(...data.map((row) => row.marginPct), 0),
     }),
     [data],
   );
@@ -675,6 +678,18 @@ export function MerchSkuSalesTable({ data }: { data: MerchSkuSalesRow[] }) {
         ),
       },
       {
+        accessorKey: "revenue",
+        header: "Выручка",
+        cell: ({ getValue }) => (
+          <InlineBarCell
+            value={getValue<number>()}
+            max={maxValues.revenue}
+            formatted={formatCurrency(getValue<number>())}
+            barClassName="bg-[var(--primary)]"
+          />
+        ),
+      },
+      {
         accessorKey: "receiptsWithProduct",
         header: "Чеков с товаром",
         cell: ({ getValue }) => (
@@ -692,7 +707,7 @@ export function MerchSkuSalesTable({ data }: { data: MerchSkuSalesRow[] }) {
         cell: ({ getValue }) => (
           <InlineBarCell
             value={getValue<number>()}
-            max={maxValues.marginPct}
+            max={100}
             formatted={formatPercent(getValue<number>())}
             barClassName="bg-emerald-400"
           />

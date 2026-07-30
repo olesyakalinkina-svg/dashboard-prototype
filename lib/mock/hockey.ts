@@ -1,6 +1,7 @@
 import { addDays, differenceInCalendarDays, startOfDay, subDays } from "date-fns";
 import type {
   ArenaId,
+  League,
   Match,
   MerchSalesPoint,
   OrderSource,
@@ -14,22 +15,36 @@ import type {
 } from "@/types/dashboard";
 import { ALL_PRICE_ZONES } from "@/lib/ticket-filter-options";
 
-const ARENA_CAPACITY = 10500;
+const MAIN_ARENA_CAPACITY = 10500;
+const SECONDARY_ARENA_CAPACITY = 3200;
+const MHL_ARENA_CAPACITY = 5500;
 const HOME_ARENA: ArenaId = "main";
-const MATCH_COUNT = 15;
+const KHL_MATCH_COUNT = 15;
+const VHL_MATCH_COUNT = 8;
+const MHL_MATCH_COUNT = 8;
 
+export const PREV_SEASON_START = new Date(2024, 8, 1);
+export const PREV_SEASON_END = new Date(2025, 4, 31);
 export const SEASON_START = new Date(2025, 8, 1);
 export const SEASON_END = new Date(2026, 4, 31);
 export const MOCK_TODAY = new Date(2026, 4, 15);
 export const SUBSCRIPTIONS_PERIOD_START = new Date(2025, 7, 25);
 export const SUBSCRIPTIONS_PERIOD_END = new Date(2025, 8, 14);
 
-const SEASON_SPAN_DAYS = differenceInCalendarDays(SEASON_END, SEASON_START);
+function getMatchDate(
+  index: number,
+  matchCount: number,
+  seasonStart: Date,
+  seasonEnd: Date,
+): Date {
+  const seasonSpanDays = differenceInCalendarDays(seasonEnd, seasonStart);
+  if (matchCount <= 1) return startOfDay(seasonStart);
+  const offset = Math.round((index / (matchCount - 1)) * seasonSpanDays);
+  return startOfDay(addDays(seasonStart, offset));
+}
 
-function getMatchDate(index: number): Date {
-  if (MATCH_COUNT <= 1) return startOfDay(SEASON_START);
-  const offset = Math.round((index / (MATCH_COUNT - 1)) * SEASON_SPAN_DAYS);
-  return startOfDay(addDays(SEASON_START, offset));
+function getCurrentSeasonMatchDate(index: number): Date {
+  return getMatchDate(index, KHL_MATCH_COUNT, SEASON_START, SEASON_END);
 }
 
 function isEventCompleted(matchDate: Date): boolean {
@@ -59,6 +74,119 @@ const OPPONENTS = [
   "Шанхай",
 ];
 
+const PREV_SEASON_OPPONENTS = [
+  ...OPPONENTS.slice(7),
+  ...OPPONENTS.slice(0, 7),
+];
+
+const VHL_OPPONENTS = [
+  "Торос",
+  "Нефтяник",
+  "Рубин",
+  "Ижсталь",
+  "Химик",
+  "Звезда",
+  "СКА-ВМФ",
+  "Дизель",
+];
+
+const MHL_OPPONENTS = [
+  "Красная Армия",
+  "Алмаз",
+  "Чайка",
+  "СКА-1946",
+  "МХК Спартак",
+  "Капитан",
+  "Локо",
+  "Молот",
+];
+
+type LeagueSchedule = {
+  league: League;
+  arena: ArenaId;
+  capacity: number;
+  opponents: string[];
+  getTournamentStage: (index: number, total: number) => Match["tournamentStage"];
+};
+
+function getKhlTournamentStage(index: number): Match["tournamentStage"] {
+  if (index >= 9 && index <= 12) return "playoff";
+  return "regular";
+}
+
+const CURRENT_SEASON_SCHEDULES: LeagueSchedule[] = [
+  {
+    league: "KHL",
+    arena: HOME_ARENA,
+    capacity: MAIN_ARENA_CAPACITY,
+    opponents: OPPONENTS,
+    getTournamentStage: (index) => getKhlTournamentStage(index),
+  },
+  {
+    league: "VHL",
+    arena: "secondary",
+    capacity: SECONDARY_ARENA_CAPACITY,
+    opponents: VHL_OPPONENTS,
+    getTournamentStage: () => "regular",
+  },
+  {
+    league: "MHL",
+    arena: HOME_ARENA,
+    capacity: MHL_ARENA_CAPACITY,
+    opponents: MHL_OPPONENTS,
+    getTournamentStage: () => "regular",
+  },
+];
+
+const PREV_SEASON_SCHEDULES: LeagueSchedule[] = [
+  {
+    league: "KHL",
+    arena: HOME_ARENA,
+    capacity: MAIN_ARENA_CAPACITY,
+    opponents: PREV_SEASON_OPPONENTS,
+    getTournamentStage: (index) => getKhlTournamentStage(index),
+  },
+  {
+    league: "VHL",
+    arena: "secondary",
+    capacity: SECONDARY_ARENA_CAPACITY,
+    opponents: VHL_OPPONENTS,
+    getTournamentStage: () => "regular",
+  },
+  {
+    league: "MHL",
+    arena: HOME_ARENA,
+    capacity: MHL_ARENA_CAPACITY,
+    opponents: MHL_OPPONENTS,
+    getTournamentStage: () => "regular",
+  },
+];
+
+type SeasonDefinition = {
+  season: string;
+  start: Date;
+  end: Date;
+  idOffset: number;
+  schedules: LeagueSchedule[];
+};
+
+const SEASON_DEFINITIONS: SeasonDefinition[] = [
+  {
+    season: "2025/26",
+    start: SEASON_START,
+    end: SEASON_END,
+    idOffset: 1,
+    schedules: CURRENT_SEASON_SCHEDULES,
+  },
+  {
+    season: "2024/25",
+    start: PREV_SEASON_START,
+    end: PREV_SEASON_END,
+    idOffset: 1 + KHL_MATCH_COUNT + VHL_MATCH_COUNT + MHL_MATCH_COUNT,
+    schedules: PREV_SEASON_SCHEDULES,
+  },
+];
+
 const ZONE_PRICES: Record<PriceZone, number> = {
   A: 2500,
   B1: 2200,
@@ -82,32 +210,75 @@ const ORDER_SOURCES: OrderSource[] = [
   "yandex_afisha",
 ];
 
-const MATCH_MERCH_POINTS: MerchSalesPoint[] = [
-  "flagship",
-  "arena_north",
-  "arena_south",
-  "mall_raduga",
-  "mall_continent",
+const MATCH_MERCH_POINT_WEIGHTS: { point: MerchSalesPoint; weight: number }[] = [
+  { point: "arena_north", weight: 28 },
+  { point: "arena_south", weight: 28 },
+  { point: "flagship", weight: 24 },
+  { point: "mall_raduga", weight: 10 },
+  { point: "mall_continent", weight: 10 },
 ];
+
+function pickWeightedMerchSalesPoint(
+  options: { point: MerchSalesPoint; weight: number }[],
+): MerchSalesPoint {
+  const total = options.reduce((sum, item) => sum + item.weight, 0);
+  let roll = rand() * total;
+
+  for (const item of options) {
+    roll -= item.weight;
+    if (roll <= 0) {
+      return item.point;
+    }
+  }
+
+  return options[options.length - 1].point;
+}
 
 function pickMerchSalesPoint(atMatch: boolean): MerchSalesPoint {
   if (!atMatch) return "online_store";
-  return randomPick(MATCH_MERCH_POINTS);
+  return pickWeightedMerchSalesPoint(MATCH_MERCH_POINT_WEIGHTS);
 }
 
 function pickMerchQuantity(): number {
   return rand() < 0.34 ? 1 : 2;
 }
 
-const MERCH_ITEMS = [
-  { desc: "Футболка домашняя", price: 3500 },
-  { desc: "Футболка гостевая", price: 3500 },
-  { desc: "Шарф клубный", price: 1500 },
-  { desc: "Кепка с логотипом", price: 2200 },
-  { desc: "Хоккейная клюшка mini", price: 2800 },
-  { desc: "Детская форма", price: 4000 },
-  { desc: "Термокружка", price: 1200 },
+const MERCH_ITEMS: { desc: string; price: number; weight: number }[] = [
+  { desc: "Футболка домашняя", price: 3500, weight: 14 },
+  { desc: "Футболка гостевая", price: 3500, weight: 12 },
+  { desc: "Шарф клубный", price: 1500, weight: 18 },
+  { desc: "Кепка с логотипом", price: 2200, weight: 11 },
+  { desc: "Хоккейная клюшка mini", price: 2800, weight: 5 },
+  { desc: "Детская форма", price: 4000, weight: 9 },
+  { desc: "Термокружка", price: 1200, weight: 13 },
+  { desc: "Свитшот с капюшоном", price: 5500, weight: 10 },
+  { desc: "Джерси игровое", price: 8500, weight: 6 },
+  { desc: "Шапка зимняя", price: 1800, weight: 12 },
+  { desc: "Брелок клубный", price: 450, weight: 8 },
+  { desc: "Значок клубный", price: 350, weight: 7 },
+  { desc: "Носки хоккейные", price: 900, weight: 10 },
+  { desc: "Рюкзак клубный", price: 4200, weight: 7 },
+  { desc: "Плед с эмблемой", price: 3200, weight: 6 },
+  { desc: "Кружка керамическая", price: 800, weight: 9 },
+  { desc: "Автошторка", price: 1100, weight: 5 },
+  { desc: "Варежки детские", price: 1400, weight: 8 },
+  { desc: "Футболка поло", price: 3800, weight: 8 },
+  { desc: "Шорты тренировочные", price: 2600, weight: 6 },
 ];
+
+function pickMerchItem(): (typeof MERCH_ITEMS)[number] {
+  const total = MERCH_ITEMS.reduce((sum, item) => sum + item.weight, 0);
+  let roll = rand() * total;
+
+  for (const item of MERCH_ITEMS) {
+    roll -= item.weight;
+    if (roll <= 0) {
+      return item;
+    }
+  }
+
+  return MERCH_ITEMS[MERCH_ITEMS.length - 1];
+}
 
 function seededRandom(seed: number): () => number {
   let s = seed;
@@ -127,81 +298,47 @@ function randomPick<T>(arr: T[]): T {
   return arr[Math.floor(rand() * arr.length)];
 }
 
-function buildMatchMeta(index: number): Pick<
-  Match,
-  "season" | "league" | "tournamentStage" | "arena"
-> {
-  if (index >= 10 && index < 13) {
-    return {
-      season: "2025/26",
-      league: "KHL",
-      tournamentStage: "playoff",
-      arena: HOME_ARENA,
-    };
+function buildSeasonMatches({
+  season,
+  start,
+  end,
+  idOffset,
+  schedules,
+}: SeasonDefinition): Match[] {
+  const seasonMatches: Match[] = [];
+  let nextId = idOffset;
+
+  for (const schedule of schedules) {
+    const matchCount = schedule.opponents.length;
+
+    for (let i = 0; i < schedule.opponents.length; i += 1) {
+      const opponent = schedule.opponents[i];
+      const date = getMatchDate(i, matchCount, start, end);
+      const eventCompleted = isEventCompleted(date);
+      const fillFactor = 0.55 + rand() * 0.4;
+      const attendance = eventCompleted
+        ? Math.round(schedule.capacity * fillFactor)
+        : 0;
+
+      seasonMatches.push({
+        id: `match-${nextId++}`,
+        date,
+        opponent,
+        attendance,
+        capacity: schedule.capacity,
+        eventCompleted,
+        season,
+        league: schedule.league,
+        tournamentStage: schedule.getTournamentStage(i, matchCount),
+        arena: schedule.arena,
+      });
+    }
   }
 
-  if (index === 9) {
-    return {
-      season: "2025/26",
-      league: "KHL",
-      tournamentStage: "playoff",
-      arena: HOME_ARENA,
-    };
-  }
-
-  if (index === 8) {
-    return {
-      season: "2025/26",
-      league: "VHL",
-      tournamentStage: "regular",
-      arena: "secondary",
-    };
-  }
-
-  if (index === 6) {
-    return {
-      season: "2025/26",
-      league: "MHL",
-      tournamentStage: "regular",
-      arena: HOME_ARENA,
-    };
-  }
-
-  if (index === 7) {
-    return {
-      season: "2025/26",
-      league: "MHL",
-      tournamentStage: "regular",
-      arena: HOME_ARENA,
-    };
-  }
-
-  return {
-    season: "2025/26",
-    league: "KHL",
-    tournamentStage: "regular",
-    arena: HOME_ARENA,
-  };
+  return seasonMatches;
 }
 
-export const matches: Match[] = OPPONENTS.map((opponent, i) => {
-  const date = getMatchDate(i);
-  const eventCompleted = isEventCompleted(date);
-  const fillFactor = 0.55 + rand() * 0.4;
-  const attendance = eventCompleted
-    ? Math.round(ARENA_CAPACITY * fillFactor)
-    : 0;
-
-  return {
-    id: `match-${i + 1}`,
-    date,
-    opponent,
-    attendance,
-    capacity: ARENA_CAPACITY,
-    eventCompleted,
-    ...buildMatchMeta(i),
-  };
-});
+export const matches: Match[] = SEASON_DEFINITIONS.flatMap(buildSeasonMatches);
 
 function pickOrderSource(): OrderSource {
   const roll = rand();
@@ -210,9 +347,59 @@ function pickOrderSource(): OrderSource {
   return "yandex_afisha";
 }
 
+function applyLoyaltyDiscount(grossAmount: number): {
+  amount: number;
+  loyaltyDiscount: number;
+} {
+  if (grossAmount <= 0) {
+    return { amount: 0, loyaltyDiscount: 0 };
+  }
+  if (rand() > 0.32) {
+    return { amount: grossAmount, loyaltyDiscount: 0 };
+  }
+  const discountPct = [5, 10, 15][randomInt(0, 2)];
+  const loyaltyDiscount = Math.round(grossAmount * (discountPct / 100));
+  return {
+    amount: grossAmount - loyaltyDiscount,
+    loyaltyDiscount,
+  };
+}
+
+function resolveTicketPayment(
+  grossAmount: number,
+  revenueLeft: number,
+): { amount: number; loyaltyDiscount: number } {
+  if (grossAmount <= 0 || revenueLeft <= 0) {
+    return { amount: 0, loyaltyDiscount: 0 };
+  }
+
+  const discounted = applyLoyaltyDiscount(grossAmount);
+  if (discounted.amount <= revenueLeft) {
+    return discounted;
+  }
+
+  return {
+    amount: Math.min(grossAmount, revenueLeft),
+    loyaltyDiscount: 0,
+  };
+}
+
 const TICKET_SALES_WINDOW_DAYS = 21;
 const TICKET_PLAN_FILL_RATE = 0.82;
 const TICKET_PLAN_AVG_PRICE = 1750;
+
+const HIGH_DEMAND_OPPONENTS = new Set(["Ак Барс", "Локомотив", "Трактор"]);
+const LOW_DEMAND_OPPONENTS = new Set(["Сочи", "Torpedo"]);
+
+function getOpponentSalesFactor(opponent: string): number {
+  if (HIGH_DEMAND_OPPONENTS.has(opponent)) {
+    return 1.1 + rand() * 0.08;
+  }
+  if (LOW_DEMAND_OPPONENTS.has(opponent)) {
+    return 0.5 + rand() * 0.06;
+  }
+  return 0.78 + rand() * 0.14;
+}
 
 function closestPriceZone(targetPrice: number): PriceZone {
   return ALL_PRICE_ZONES.reduce((best, zone) =>
@@ -276,7 +463,9 @@ function buildDayTicketSales(
       const unitPrice = ZONE_PRICES[priceZone];
       const qty = ticketsLeft;
       const gross = unitPrice * qty;
-      const amount = Math.min(gross, revenueLeft);
+      const { amount, loyaltyDiscount } = resolveTicketPayment(gross, revenueLeft);
+      if (amount <= 0) break;
+
       const orderSource = pickOrderSource();
       txs.push({
         id: `tx-${id++}`,
@@ -287,6 +476,7 @@ function buildDayTicketSales(
         channel: orderSource === "box_office" ? "arena" : "online",
         amount,
         quantity: qty,
+        loyaltyDiscount: loyaltyDiscount > 0 ? loyaltyDiscount : undefined,
         sector: priceZone,
         ticketType: "arena",
         priceZone,
@@ -299,7 +489,9 @@ function buildDayTicketSales(
     const unitPrice = ZONE_PRICES[priceZone];
     const qty = Math.min(randomInt(1, 4), ticketsLeft);
     const gross = unitPrice * qty;
-    const amount = Math.min(gross, revenueLeft);
+    const { amount, loyaltyDiscount } = resolveTicketPayment(gross, revenueLeft);
+    if (amount <= 0) break;
+
     const orderSource = pickOrderSource();
     txs.push({
       id: `tx-${id++}`,
@@ -310,6 +502,7 @@ function buildDayTicketSales(
       channel: orderSource === "box_office" ? "arena" : "online",
       amount,
       quantity: qty,
+      loyaltyDiscount: loyaltyDiscount > 0 ? loyaltyDiscount : undefined,
       sector: priceZone,
       ticketType: "arena",
       priceZone,
@@ -322,17 +515,36 @@ function buildDayTicketSales(
   return txs;
 }
 
+function getLeagueTicketProfile(league: League): { avgPrice: number } {
+  switch (league) {
+    case "VHL":
+      return { avgPrice: 1100 };
+    case "MHL":
+      return { avgPrice: 700 };
+    default:
+      return { avgPrice: TICKET_PLAN_AVG_PRICE };
+  }
+}
+
 function generateMatchTicketSales(
   match: Match,
   startId: number,
 ): { txs: Transaction[]; nextId: number } {
+  const leagueProfile = getLeagueTicketProfile(match.league);
   const matchVariance = 0.9 + rand() * 0.12;
   const revenueVariance = 0.92 + rand() * 0.1;
-  const targetTickets = Math.round(
-    match.capacity * TICKET_PLAN_FILL_RATE * matchVariance,
+  const opponentFactor = getOpponentSalesFactor(match.opponent);
+  const targetTickets = Math.min(
+    match.capacity,
+    Math.round(
+      match.capacity *
+        TICKET_PLAN_FILL_RATE *
+        matchVariance *
+        opponentFactor,
+    ),
   );
   const targetRevenue = Math.round(
-    targetTickets * TICKET_PLAN_AVG_PRICE * revenueVariance,
+    targetTickets * leagueProfile.avgPrice * revenueVariance,
   );
 
   const dailyWeights = Array.from(
@@ -414,9 +626,14 @@ function generateTransactions(): Transaction[] {
       });
     }
 
-    const merchCount = randomInt(40, 70);
+    const merchCount =
+      match.league === "KHL"
+        ? randomInt(55, 95)
+        : match.league === "VHL"
+          ? randomInt(18, 32)
+          : randomInt(12, 22);
     for (let m = 0; m < merchCount; m++) {
-      const item = randomPick(MERCH_ITEMS);
+      const item = pickMerchItem();
       const qty = pickMerchQuantity();
       const merchSalesPoint = pickMerchSalesPoint(true);
       const amount = item.price * qty;
@@ -454,14 +671,14 @@ function generateTransactions(): Transaction[] {
 
   }
 
-  for (let o = 0; o < 25; o++) {
-    const item = randomPick(MERCH_ITEMS);
+  for (let o = 0; o < 85; o++) {
+    const item = pickMerchItem();
     const qty = pickMerchQuantity();
     const amount = item.price * qty;
     const costAmount = Math.round(amount * (0.35 + rand() * 0.2));
     transactions.push({
       id: `tx-${id++}`,
-      date: randomDateInSeasonRange(SEASON_START, MOCK_TODAY),
+      date: randomDateInSeasonRange(PREV_SEASON_START, MOCK_TODAY),
       stream: "merch",
       description: item.desc,
       matchId: null,
@@ -482,8 +699,8 @@ export const promotions: Promotion[] = [
   {
     id: "promo-1",
     name: "Семейный матч −20%",
-    startDate: subDays(getMatchDate(0), 18),
-    endDate: addDays(getMatchDate(1), 1),
+    startDate: subDays(getCurrentSeasonMatchDate(0), 18),
+    endDate: addDays(getCurrentSeasonMatchDate(1), 1),
     matchIds: ["match-1", "match-2"],
     reach: 45000,
     conversions: 820,
@@ -493,8 +710,8 @@ export const promotions: Promotion[] = [
   {
     id: "promo-2",
     name: "Первый гол — скидка на мерч",
-    startDate: subDays(getMatchDate(2), 14),
-    endDate: addDays(getMatchDate(4), 2),
+    startDate: subDays(getCurrentSeasonMatchDate(2), 14),
+    endDate: addDays(getCurrentSeasonMatchDate(4), 2),
     matchIds: ["match-3", "match-4", "match-5"],
     reach: 62000,
     conversions: 1340,
@@ -504,8 +721,8 @@ export const promotions: Promotion[] = [
   {
     id: "promo-3",
     name: "День болельщика",
-    startDate: subDays(getMatchDate(5), 10),
-    endDate: addDays(getMatchDate(6), 1),
+    startDate: subDays(getCurrentSeasonMatchDate(5), 10),
+    endDate: addDays(getCurrentSeasonMatchDate(6), 1),
     matchIds: ["match-6", "match-7"],
     reach: 38000,
     conversions: 2100,
@@ -515,8 +732,8 @@ export const promotions: Promotion[] = [
   {
     id: "promo-4",
     name: "Спонсор X2 баллы",
-    startDate: subDays(getMatchDate(7), 12),
-    endDate: addDays(getMatchDate(9), 1),
+    startDate: subDays(getCurrentSeasonMatchDate(7), 12),
+    endDate: addDays(getCurrentSeasonMatchDate(9), 1),
     matchIds: ["match-8", "match-9", "match-10"],
     reach: 71000,
     conversions: 980,
@@ -526,8 +743,8 @@ export const promotions: Promotion[] = [
   {
     id: "promo-6",
     name: "VIP-ложа: гость бесплатно",
-    startDate: subDays(getMatchDate(10), 7),
-    endDate: addDays(getMatchDate(11), 1),
+    startDate: subDays(getCurrentSeasonMatchDate(10), 7),
+    endDate: addDays(getCurrentSeasonMatchDate(11), 1),
     matchIds: ["match-11", "match-12"],
     reach: 12000,
     conversions: 145,
@@ -537,8 +754,8 @@ export const promotions: Promotion[] = [
   {
     id: "promo-7",
     name: "Новогодний хоккейный вечер",
-    startDate: subDays(getMatchDate(12), 10),
-    endDate: addDays(getMatchDate(13), 1),
+    startDate: subDays(getCurrentSeasonMatchDate(12), 10),
+    endDate: addDays(getCurrentSeasonMatchDate(13), 1),
     matchIds: ["match-13", "match-14"],
     reach: 55000,
     conversions: 1680,
@@ -548,7 +765,7 @@ export const promotions: Promotion[] = [
   {
     id: "promo-8",
     name: "Студенческий билет −30%",
-    startDate: subDays(getMatchDate(13), 14),
+    startDate: subDays(getCurrentSeasonMatchDate(13), 14),
     endDate: MOCK_TODAY,
     matchIds: ["match-14", "match-15"],
     reach: 33000,

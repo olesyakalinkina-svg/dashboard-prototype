@@ -13,7 +13,9 @@ import {
   computeChannelMix,
   computeMatchSalesTable,
   computeMerchMatchSalesTable,
+  computeMerchSalesChannelRevenue,
   computeMerchSkuSalesTable,
+  computeMerchTotals,
   computeMatchRevenueForTab,
   computeMerchKpis,
   computeSectorSales,
@@ -21,6 +23,7 @@ import {
   computeSubscriptionsKpis,
   computeSubscriptionsPlanFactTrend,
   computeTicketsKpis,
+  computeTicketsMatchCumulativeSeries,
   computeTicketsPlanFactTrend,
   computeTicketsTrend,
   computeTopProducts,
@@ -69,6 +72,7 @@ type FilterContextValue = {
   weeklyTrend: ReturnType<typeof computeWeeklyTrend>;
   ticketsTrend: ReturnType<typeof computeTicketsTrend>;
   ticketsPlanFactTrend: ReturnType<typeof computeTicketsPlanFactTrend>;
+  ticketsMatchCumulativeSeries: ReturnType<typeof computeTicketsMatchCumulativeSeries>;
   subscriptionsPlanFactTrend: ReturnType<typeof computeSubscriptionsPlanFactTrend>;
   matchRevenue: ReturnType<typeof computeMatchRevenueForTab>;
   sectorSales: ReturnType<typeof computeSectorSales>;
@@ -78,7 +82,9 @@ type FilterContextValue = {
   ticketTransactions: ReturnType<typeof getTabTransactions>;
   matchSales: ReturnType<typeof computeMatchSalesTable>;
   merchMatchSales: ReturnType<typeof computeMerchMatchSalesTable>;
+  merchSalesChannelRevenue: ReturnType<typeof computeMerchSalesChannelRevenue>;
   merchSkuSales: ReturnType<typeof computeMerchSkuSalesTable>;
+  merchTotals: ReturnType<typeof computeMerchTotals>;
   merchTransactions: ReturnType<typeof getTabTransactions>;
   availableMatches: typeof matches;
   ticketMatchOptions: ReturnType<typeof buildMatchFilterOptions>;
@@ -192,6 +198,10 @@ export function FilterProvider({ children }: { children: ReactNode }) {
       ),
       ticketsTrend: computeTicketsTrend(filters, ticketFilters),
       ticketsPlanFactTrend: computeTicketsPlanFactTrend(filters, ticketFilters),
+      ticketsMatchCumulativeSeries: computeTicketsMatchCumulativeSeries(
+        filters,
+        ticketFilters,
+      ),
       subscriptionsPlanFactTrend: computeSubscriptionsPlanFactTrend(
         filters,
         subscriptionFilters,
@@ -218,7 +228,9 @@ export function FilterProvider({ children }: { children: ReactNode }) {
       ticketTransactions: getTabTransactions(filters, "tickets", ticketFilters),
       matchSales: computeMatchSalesTable(filters, ticketFilters),
       merchMatchSales: computeMerchMatchSalesTable(filters, merchFilters),
+      merchSalesChannelRevenue: computeMerchSalesChannelRevenue(merchFilters),
       merchSkuSales: computeMerchSkuSalesTable(filters, merchFilters),
+      merchTotals: computeMerchTotals(filters, merchFilters),
       merchTransactions: getTabTransactions(filters, "merch", merchFilters),
       availableMatches,
       ticketMatchOptions,

@@ -2,14 +2,6 @@
 
 import clsx from "clsx";
 
-function getBarTextClass(barClassName: string, widthPct: number): string {
-  const isLightBar = /gray|slate|zinc|neutral|stone/i.test(barClassName);
-  if (isLightBar || widthPct < 18) {
-    return "text-[var(--foreground)]";
-  }
-  return "text-white";
-}
-
 export function InlineBarCell({
   value,
   max,
@@ -34,12 +26,7 @@ export function InlineBarCell({
           }}
         />
       )}
-      <span
-        className={clsx(
-          "relative z-10 flex h-full items-center whitespace-nowrap px-2 text-xs font-medium tabular-nums",
-          getBarTextClass(barClassName, widthPct),
-        )}
-      >
+      <span className="relative z-10 flex h-full items-center whitespace-nowrap px-2 text-xs font-medium tabular-nums text-[var(--foreground)]">
         {formatted}
       </span>
     </div>

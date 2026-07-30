@@ -7,6 +7,7 @@ import { FilterBar } from "@/components/layout/FilterBar";
 import { TabKpiCards } from "@/components/widgets/KpiCard";
 import {
   ChannelMixChart,
+  MerchSalesChannelsChart,
   SubscriptionPlansChart,
   TopProductsChart,
 } from "@/components/widgets/Charts";
@@ -25,7 +26,7 @@ function DashboardContent() {
     merchKpis,
     subscriptionsKpis,
     weeklyTrend,
-    ticketsPlanFactTrend,
+    ticketsMatchCumulativeSeries,
     subscriptionsPlanFactTrend,
     ticketFilters,
     merchFilters,
@@ -35,6 +36,7 @@ function DashboardContent() {
     subscriptionTariffStats,
     matchSales,
     merchMatchSales,
+    merchSalesChannelRevenue,
     merchSkuSales,
   } = useFilters();
 
@@ -76,24 +78,28 @@ function DashboardContent() {
         )}
 
         {activeTab === "tickets" && (
-          <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-2">
-            <MatchSalesTable data={matchSales} />
-            <TicketsSalesWidget
-              data={ticketsPlanFactTrend}
-              refreshKey={ticketFilters.timeGrouping}
-            />
-          </div>
+          <>
+            <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-2">
+              <MatchSalesTable data={matchSales} />
+              <TicketsSalesWidget
+                series={ticketsMatchCumulativeSeries}
+                ticketFilters={ticketFilters}
+                refreshKey={`${ticketFilters.timeGrouping}-${ticketsMatchCumulativeSeries.length}`}
+              />
+            </div>
+          </>
         )}
 
         {activeTab === "merch" && (
           <>
-            <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-2">
+            <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[1.6fr_1fr]">
               <MerchMatchSalesTable data={merchMatchSales} />
               <div className="flex min-w-0 flex-col gap-4">
                 <MerchSkuSalesTable data={merchSkuSales} />
                 <TopProductsChart data={topProducts} />
               </div>
             </div>
+            <MerchSalesChannelsChart data={merchSalesChannelRevenue} />
           </>
         )}
       </main>

@@ -29,7 +29,7 @@ export const DEFAULT_MERCH_FILTERS: MerchFilters = {
   tournamentStage: "all",
   matchId: "all",
   salesChannels: [...ALL_MERCH_SALES_POINTS],
-  timeGrouping: "week",
+  timeGrouping: "month",
 };
 
 export const MERCH_TIME_GROUPING_LABELS: Record<TimeGrouping, string> = {

@@ -24,6 +24,8 @@ import { formatCurrency, formatNumber } from "@/lib/format";
 import { ChartWidget } from "@/components/widgets/ChartWidget";
 import type {
   ChannelMixPoint,
+  MerchSalesChannelPoint,
+  MerchSalesPoint,
   SectorPoint,
   SubscriptionPlanStat,
   TimeGrouping,
@@ -45,6 +47,15 @@ const COLORS = {
 };
 
 const SECTOR_COLORS = ["#5282FF", "#00BFA5", "#FF7043", "#FFB300"];
+
+const MERCH_CHANNEL_COLORS: Record<MerchSalesPoint, string> = {
+  flagship: "#5282FF",
+  arena_north: "#00BFA5",
+  arena_south: "#26A69A",
+  mall_raduga: "#FF7043",
+  mall_continent: "#FFB300",
+  online_store: "#7B61FF",
+};
 
 function ChartTooltip({
   active,
@@ -214,6 +225,91 @@ export function SectorPieChart({ data }: { data: SectorPoint[] }) {
           <Legend wrapperStyle={{ fontSize: 12 }} />
         </PieChart>
       </ResponsiveContainer>
+    </ChartWidget>
+  );
+}
+
+export function MerchSalesChannelsChart({
+  data,
+}: {
+  data: MerchSalesChannelPoint[];
+}) {
+  const total = useMemo(
+    () => data.reduce((sum, item) => sum + item.value, 0),
+    [data],
+  );
+
+  if (data.length === 0) {
+    return (
+      <ChartWidget title="Выручка по каналам продаж" height={240}>
+        <div className="flex h-full items-center justify-center text-sm text-[var(--muted)]">
+          Нет данных по выбранным каналам
+        </div>
+      </ChartWidget>
+    );
+  }
+
+  return (
+    <ChartWidget title="Выручка по каналам продаж" height={300}>
+      <div className="flex h-full flex-col gap-5 lg:flex-row">
+        <div className="h-[220px] min-w-0 flex-1 lg:h-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={data}
+                dataKey="value"
+                nameKey="channel"
+                cx="50%"
+                cy="50%"
+                innerRadius={54}
+                outerRadius={92}
+                paddingAngle={2}
+              >
+                {data.map((item) => (
+                  <Cell
+                    key={item.channelKey}
+                    fill={MERCH_CHANNEL_COLORS[item.channelKey]}
+                  />
+                ))}
+              </Pie>
+              <Tooltip formatter={(value: number) => formatCurrency(value)} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col justify-center gap-3">
+          {data.map((item) => (
+            <div key={item.channelKey} className="space-y-1">
+              <div className="flex items-center justify-between gap-3 text-xs">
+                <span className="inline-flex items-center gap-2 font-medium text-[var(--foreground)]">
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{
+                      backgroundColor: MERCH_CHANNEL_COLORS[item.channelKey],
+                    }}
+                  />
+                  <span className="truncate">{item.channel}</span>
+                </span>
+                <span className="whitespace-nowrap text-[var(--muted)]">
+                  {item.share.toFixed(1)}%
+                </span>
+              </div>
+              <div className="relative h-6 overflow-hidden rounded-sm bg-[#f0f0f2]">
+                <div
+                  className="absolute left-0 top-0 h-full rounded-sm"
+                  style={{
+                    width: `${total > 0 ? (item.value / total) * 100 : 0}%`,
+                    minWidth: item.value > 0 ? "2.75rem" : undefined,
+                    backgroundColor: MERCH_CHANNEL_COLORS[item.channelKey],
+                  }}
+                />
+                <span className="relative z-10 flex h-full items-center px-2 text-xs font-medium tabular-nums text-[var(--foreground)]">
+                  {formatCurrency(item.value)}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </ChartWidget>
   );
 }

@@ -15,7 +15,7 @@ import {
   matchById,
   matches,
   MOCK_TODAY,
-  SEASON_START,
+  PREV_SEASON_START,
   SUBSCRIPTIONS_PERIOD_END,
   SUBSCRIPTIONS_PERIOD_START,
   subscriptions,
@@ -35,6 +35,7 @@ import type {
   ChannelMixPoint,
   DashboardFilters,
   DashboardTab,
+  League,
   MerchKpiData,
   Subscription,
   SubscriptionPlanStat,
@@ -43,6 +44,8 @@ import type {
   MatchSalesRow,
   MerchFilters,
   MerchMatchSalesRow,
+  MerchSalesChannelPoint,
+  MerchSalesPoint,
   MerchSkuSalesRow,
   SubscriptionFilters,
   TicketFilters,
@@ -50,6 +53,7 @@ import type {
   TopProductPoint,
   Transaction,
   PlanFactTrendPoint,
+  TicketMatchCumulativeSeries,
   WeeklyPoint,
 } from "@/types/dashboard";
 
@@ -97,8 +101,22 @@ function buildSubscriptionsSparkline<T>(
   return points;
 }
 
-function getTicketsSeasonCutoff(): Date {
-  return startOfDay(SEASON_START);
+function getTicketsSeasonCutoff(season: TicketFilters["season"] = "all"): Date {
+  const TICKET_SALES_WINDOW_DAYS = 21;
+  const seasonMatches = matches.filter((match) =>
+    season === "all" ? true : match.season === season,
+  );
+
+  if (seasonMatches.length === 0) {
+    return startOfDay(PREV_SEASON_START);
+  }
+
+  const earliestMatchDate = seasonMatches.reduce(
+    (earliest, match) => (match.date < earliest ? match.date : earliest),
+    seasonMatches[0].date,
+  );
+
+  return startOfDay(subDays(earliestMatchDate, TICKET_SALES_WINDOW_DAYS));
 }
 
 function pctChange(current: number, previous: number): number {
@@ -171,6 +189,81 @@ function passesMerchSalesChannels(
   return Boolean(tx.merchSalesPoint && salesChannels.includes(tx.merchSalesPoint));
 }
 
+
+const MERCH_MATCH_TABLE_EXCLUDED_POINTS = new Set<MerchSalesPoint>([
+  "online_store",
+  "mall_raduga",
+  "mall_continent",
+]);
+
+type MerchAggregateMetrics = {
+  revenue: number;
+  receipts: number;
+  units: number;
+  cost: number;
+  returnsValue: number;
+  grossSales: number;
+};
+
+export type MerchTotals = MerchAggregateMetrics;
+
+function getMerchCost(tx: Transaction): number {
+  return tx.costAmount ?? Math.round(tx.amount * 0.55);
+}
+
+function createMerchMetrics(): MerchAggregateMetrics {
+  return {
+    revenue: 0,
+    receipts: 0,
+    units: 0,
+    cost: 0,
+    returnsValue: 0,
+    grossSales: 0,
+  };
+}
+
+function applyMerchTransaction(
+  metrics: MerchAggregateMetrics,
+  tx: Transaction,
+): void {
+  if (tx.isReturn) {
+    metrics.revenue -= tx.amount;
+    metrics.units -= tx.quantity;
+    metrics.receipts = Math.max(0, metrics.receipts - 1);
+    metrics.cost -= getMerchCost(tx);
+    metrics.returnsValue += tx.amount;
+    return;
+  }
+
+  metrics.revenue += tx.amount;
+  metrics.units += tx.quantity;
+  metrics.receipts += 1;
+  metrics.cost += getMerchCost(tx);
+  metrics.grossSales += tx.amount;
+}
+
+function aggregateMerchTransactions(txs: Transaction[]): MerchAggregateMetrics {
+  const metrics = createMerchMetrics();
+  for (const tx of txs) {
+    applyMerchTransaction(metrics, tx);
+  }
+  return metrics;
+}
+
+function getFilteredMerchTransactions(
+  filters: DashboardFilters,
+  merchFilters: MerchFilters,
+): Transaction[] {
+  return filterMerchTransactions(filters, merchFilters, { useSeasonRange: true });
+}
+
+export function computeMerchTotals(
+  filters: DashboardFilters,
+  merchFilters: MerchFilters,
+): MerchTotals {
+  return aggregateMerchTransactions(getFilteredMerchTransactions(filters, merchFilters));
+}
+
 export function filterMerchTransactions(
   filters: DashboardFilters,
   merchFilters: MerchFilters,
@@ -178,7 +271,7 @@ export function filterMerchTransactions(
 ): Transaction[] {
   const useSeasonRange = options?.useSeasonRange ?? false;
   const cutoff = useSeasonRange
-    ? getTicketsSeasonCutoff()
+    ? getTicketsSeasonCutoff(merchFilters.season)
     : getDateCutoff(filters.dateRange);
   const allowedMatches = filterMatchesByMerchFilters(
     merchFilters,
@@ -246,7 +339,7 @@ export function filterTicketTransactions(
   filters: DashboardFilters,
   ticketFilters: TicketFilters,
 ): Transaction[] {
-  const cutoff = getTicketsSeasonCutoff();
+  const cutoff = getTicketsSeasonCutoff(ticketFilters.season);
   const allowedMatches = filterMatchesByTicketFilters(ticketFilters);
   const allowedMatchIds = new Set(allowedMatches.map((m) => m.id));
 
@@ -487,15 +580,15 @@ export function computeTicketsKpis(
   const loyaltyDiscountPct =
     grossRevenue > 0 ? (loyaltyDiscount / grossRevenue) * 100 : 0;
 
-  const allowedMatches = filterMatchesByTicketFilters(ticketFilters);
-  const totalCapacity = allowedMatches.reduce((sum, match) => sum + match.capacity, 0);
+  const eligibleCapacity = sumEligibleTicketCapacity(ticketFilters);
   const ticketsIssued = countArenaTicketsIssued(current);
-  const fillRate =
-    totalCapacity > 0 ? (ticketsIssued / totalCapacity) * 100 : 0;
+  const rawFillRate =
+    eligibleCapacity > 0 ? (ticketsIssued / eligibleCapacity) * 100 : 0;
 
   const planRevenue = sumTicketPlanRevenue(filters, ticketFilters);
   const planCompletionPct =
     planRevenue > 0 ? (revenue / planRevenue) * 100 : 0;
+  const fillRate = linkFillRateToPlanCompletion(rawFillRate, planCompletionPct);
 
   return {
     revenue,
@@ -526,35 +619,25 @@ export function computeTicketsKpis(
   };
 }
 
-function sumMerchCost(txs: Transaction[]): number {
-  return txs.reduce(
-    (sum, tx) => sum + (tx.costAmount ?? Math.round(tx.amount * 0.55)),
-    0,
-  );
-}
-
 export function computeMerchKpis(
   filters: DashboardFilters,
   merchFilters: MerchFilters,
 ): MerchKpiData {
-  const current = filterMerchTransactions(filters, merchFilters);
-  const salesTxs = current.filter((tx) => !tx.isReturn);
-  const returnTxs = current.filter((tx) => tx.isReturn);
-
-  const revenue = sumAmount(salesTxs);
-  const returnsValue = sumAmount(returnTxs);
-  const grossSales = revenue + returnsValue;
-  const receipts = salesTxs.length;
-  const unitsSold = countUnits(salesTxs);
-  const totalCost = sumMerchCost(salesTxs);
+  const metrics = computeMerchTotals(filters, merchFilters);
 
   return {
-    revenue,
-    avgCheck: receipts > 0 ? revenue / receipts : 0,
-    upt: receipts > 0 ? unitsSold / receipts : 0,
-    receipts,
-    returnsPct: grossSales > 0 ? (returnsValue / grossSales) * 100 : 0,
-    marginPct: revenue > 0 ? ((revenue - totalCost) / revenue) * 100 : 0,
+    revenue: metrics.revenue,
+    avgCheck: metrics.receipts > 0 ? metrics.revenue / metrics.receipts : 0,
+    upt: metrics.receipts > 0 ? metrics.units / metrics.receipts : 0,
+    receipts: metrics.receipts,
+    returnsPct:
+      metrics.grossSales > 0
+        ? (metrics.returnsValue / metrics.grossSales) * 100
+        : 0,
+    marginPct:
+      metrics.revenue > 0
+        ? ((metrics.revenue - metrics.cost) / metrics.revenue) * 100
+        : 0,
   };
 }
 
@@ -635,6 +718,63 @@ const TICKET_PLAN_AVG_PRICE = 1750;
 const TICKET_SALES_WINDOW_DAYS = 21;
 const SUBSCRIPTION_PLAN_EXECUTION_RATE = 0.94;
 
+function getMatchTicketPlanProfile(match: {
+  league: League;
+}): { fillRate: number; avgPrice: number } {
+  switch (match.league) {
+    case "VHL":
+      return { fillRate: TICKET_PLAN_FILL_RATE, avgPrice: 1100 };
+    case "MHL":
+      return { fillRate: TICKET_PLAN_FILL_RATE, avgPrice: 700 };
+    default:
+      return { fillRate: TICKET_PLAN_FILL_RATE, avgPrice: TICKET_PLAN_AVG_PRICE };
+  }
+}
+
+function matchHasEligibleTicketSaleDay(
+  matchDate: Date,
+  cutoff: Date,
+  now: Date,
+): boolean {
+  for (let offset = TICKET_SALES_WINDOW_DAYS; offset >= 1; offset -= 1) {
+    const saleDay = subDays(matchDate, offset);
+    if (saleDay >= cutoff && saleDay <= now) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function sumEligibleTicketCapacity(ticketFilters: TicketFilters): number {
+  const cutoff = getTicketsSeasonCutoff(ticketFilters.season);
+  const now = endOfDay(MOCK_TODAY);
+  const allowedMatches = filterMatchesByTicketFilters(ticketFilters);
+
+  return allowedMatches.reduce((total, match) => {
+    if (!matchHasEligibleTicketSaleDay(match.date, cutoff, now)) {
+      return total;
+    }
+    return total + match.capacity;
+  }, 0);
+}
+
+function linkFillRateToPlanCompletion(
+  fillRate: number,
+  planCompletionPct: number,
+): number {
+  if (planCompletionPct >= 97) {
+    return Math.max(fillRate, 80);
+  }
+  if (planCompletionPct >= 85) {
+    const minFill = 70 + ((planCompletionPct - 85) / 12) * 10;
+    return Math.max(fillRate, minFill);
+  }
+  if (planCompletionPct > 0) {
+    return Math.max(fillRate, planCompletionPct * 0.82);
+  }
+  return fillRate;
+}
+
 function getSubscriptionPeriodWeeks(): Date[] {
   const weeks: Date[] = [];
   let current = startOfWeek(SUBSCRIPTIONS_PERIOD_START, { locale: ru });
@@ -661,17 +801,18 @@ function sumTicketPlanRevenue(
   filters: DashboardFilters,
   ticketFilters: TicketFilters,
 ): number {
-  const cutoff = getTicketsSeasonCutoff();
+  const cutoff = getTicketsSeasonCutoff(ticketFilters.season);
   const now = endOfDay(MOCK_TODAY);
   const allowedMatches = filterMatchesByTicketFilters(ticketFilters);
   const scale = ticketPlanScale(ticketFilters);
   let total = 0;
 
   for (const match of allowedMatches) {
+    const planProfile = getMatchTicketPlanProfile(match);
     const matchPlanTickets = Math.round(
-      match.capacity * TICKET_PLAN_FILL_RATE * scale,
+      match.capacity * planProfile.fillRate * scale,
     );
-    const matchPlanRevenue = Math.round(matchPlanTickets * TICKET_PLAN_AVG_PRICE);
+    const matchPlanRevenue = Math.round(matchPlanTickets * planProfile.avgPrice);
     const dailyPlanRevenue = matchPlanRevenue / TICKET_SALES_WINDOW_DAYS;
 
     for (let offset = TICKET_SALES_WINDOW_DAYS; offset >= 1; offset -= 1) {
@@ -814,14 +955,15 @@ export function computeTicketsPlanFactTrend(
     );
   }
 
-  const cutoff = getTicketsSeasonCutoff();
+  const cutoff = getTicketsSeasonCutoff(ticketFilters.season);
   const now = endOfDay(MOCK_TODAY);
   const allowedMatches = filterMatchesByTicketFilters(ticketFilters);
   const scale = ticketPlanScale(ticketFilters);
 
   for (const match of allowedMatches) {
-    const matchPlanTickets = Math.round(match.capacity * TICKET_PLAN_FILL_RATE * scale);
-    const matchPlanRevenue = Math.round(matchPlanTickets * TICKET_PLAN_AVG_PRICE);
+    const planProfile = getMatchTicketPlanProfile(match);
+    const matchPlanTickets = Math.round(match.capacity * planProfile.fillRate * scale);
+    const matchPlanRevenue = Math.round(matchPlanTickets * planProfile.avgPrice);
     const dailyPlanTickets = matchPlanTickets / TICKET_SALES_WINDOW_DAYS;
     const dailyPlanRevenue = matchPlanRevenue / TICKET_SALES_WINDOW_DAYS;
 
@@ -868,6 +1010,102 @@ export function computeTicketsPlanFactTrend(
     .sort((a, b) => a.sortKey - b.sortKey);
 }
 
+const LEAGUE_COLOR_BANDS: Record<League, { start: number; end: number }> = {
+  KHL: { start: 350, end: 28 },
+  VHL: { start: 138, end: 198 },
+  MHL: { start: 208, end: 286 },
+};
+
+function hueInBand(band: { start: number; end: number }, t: number): number {
+  const { start, end } = band;
+  if (end >= start) {
+    return start + t * (end - start);
+  }
+  const span = 360 - start + end;
+  return (start + t * span) % 360;
+}
+
+function getMatchLineColor(league: League, index: number, total: number): string {
+  const t = total <= 1 ? 0.5 : index / (total - 1);
+  const hue = hueInBand(LEAGUE_COLOR_BANDS[league], t);
+  const saturation = index % 2 === 0 ? 78 : 64;
+  const lightness = 34 + (index % 5) * 9;
+  return `hsl(${Math.round(hue)}, ${saturation}%, ${lightness}%)`;
+}
+
+export function computeTicketsMatchCumulativeSeries(
+  filters: DashboardFilters,
+  ticketFilters: TicketFilters,
+): TicketMatchCumulativeSeries[] {
+  const txs = filterTicketTransactions(filters, ticketFilters);
+  const chartMatches = filterMatchesByTicketFilters(ticketFilters).sort(
+    (a, b) => a.date.getTime() - b.date.getTime(),
+  );
+
+  const leagueTotals: Record<League, number> = { KHL: 0, VHL: 0, MHL: 0 };
+  const leagueColorIndex: Record<League, number> = { KHL: 0, VHL: 0, MHL: 0 };
+
+  for (const match of chartMatches) {
+    const hasSales = txs.some((tx) => tx.matchId === match.id);
+    if (hasSales) {
+      leagueTotals[match.league] += 1;
+    }
+  }
+
+  const series: TicketMatchCumulativeSeries[] = [];
+
+  for (const match of chartMatches) {
+    const matchTxs = txs.filter((tx) => tx.matchId === match.id);
+    if (matchTxs.length === 0) continue;
+
+    const dailyMap = new Map<number, { revenue: number; tickets: number }>();
+
+    for (const tx of matchTxs) {
+      const dateKey = startOfDay(tx.date).getTime();
+      const entry = dailyMap.get(dateKey) ?? { revenue: 0, tickets: 0 };
+      entry.revenue += tx.amount;
+      if (tx.amount > 0) {
+        entry.tickets += tx.quantity;
+      }
+      dailyMap.set(dateKey, entry);
+    }
+
+    let cumulativeRevenue = 0;
+    let cumulativeTickets = 0;
+    const points = Array.from(dailyMap.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([dateKey, day]) => {
+        cumulativeRevenue += day.revenue;
+        cumulativeTickets += day.tickets;
+        return {
+          date: format(new Date(dateKey), "dd.MM.yy"),
+          dateKey,
+          revenue: cumulativeRevenue,
+          tickets: cumulativeTickets,
+        };
+      });
+
+    const colorIndex = leagueColorIndex[match.league];
+    const color = getMatchLineColor(
+      match.league,
+      colorIndex,
+      leagueTotals[match.league],
+    );
+    leagueColorIndex[match.league] += 1;
+
+    series.push({
+      matchId: match.id,
+      label: `${match.opponent} · ${format(match.date, "dd.MM.yy")}`,
+      color,
+      league: match.league,
+      season: match.season,
+      points,
+    });
+  }
+
+  return series;
+}
+
 function buildGroupedTrend(
   items: { date: Date; value: number }[],
   timeGrouping: TicketFilters["timeGrouping"],
@@ -891,15 +1129,13 @@ export function computeMerchTrend(
   filters: DashboardFilters,
   merchFilters: MerchFilters,
 ): WeeklyPoint[] {
-  const useSeasonRange =
-    merchFilters.timeGrouping === "month" ||
-    merchFilters.timeGrouping === "quarter";
-  const txs = filterMerchTransactions(filters, merchFilters, {
-    useSeasonRange,
-  }).filter((tx) => !tx.isReturn);
+  const txs = getFilteredMerchTransactions(filters, merchFilters);
 
   return buildGroupedTrend(
-    txs.map((tx) => ({ date: tx.date, value: tx.amount })),
+    txs.map((tx) => ({
+      date: tx.date,
+      value: tx.isReturn ? -tx.amount : tx.amount,
+    })),
     merchFilters.timeGrouping,
   );
 }
@@ -982,6 +1218,53 @@ export function computeSectorSales(
   }));
 }
 
+function getMerchTransactionsBySalesChannel(
+  merchFilters: MerchFilters,
+): Transaction[] {
+  const cutoff = getTicketsSeasonCutoff(merchFilters.season);
+
+  return transactions.filter((tx) => {
+    if (tx.date < cutoff || tx.date > endOfDay(MOCK_TODAY)) return false;
+    if (tx.stream !== "merch") return false;
+    return passesMerchSalesChannels(tx, merchFilters.salesChannels);
+  });
+}
+
+export function computeMerchSalesChannelRevenue(
+  merchFilters: MerchFilters,
+): MerchSalesChannelPoint[] {
+  const txs = getMerchTransactionsBySalesChannel(merchFilters);
+  const revenueByPoint = new Map<MerchSalesPoint, number>();
+
+  for (const point of ALL_MERCH_SALES_POINTS) {
+    revenueByPoint.set(point, 0);
+  }
+
+  for (const tx of txs) {
+    if (!tx.merchSalesPoint) continue;
+    const delta = tx.isReturn ? -tx.amount : tx.amount;
+    revenueByPoint.set(
+      tx.merchSalesPoint,
+      (revenueByPoint.get(tx.merchSalesPoint) ?? 0) + delta,
+    );
+  }
+
+  const rows = ALL_MERCH_SALES_POINTS.map((point) => ({
+    channel: MERCH_SALES_POINT_LABELS[point],
+    channelKey: point,
+    value: Math.max(0, revenueByPoint.get(point) ?? 0),
+    share: 0,
+  }))
+    .filter((item) => item.value > 0)
+    .sort((a, b) => b.value - a.value);
+
+  const total = rows.reduce((sum, row) => sum + row.value, 0);
+  return rows.map((row) => ({
+    ...row,
+    share: total > 0 ? (row.value / total) * 100 : 0,
+  }));
+}
+
 export function computeChannelMix(
   filters: DashboardFilters,
   tab: DashboardTab,
@@ -1028,21 +1311,30 @@ export function computeTopProducts(
   filters: DashboardFilters,
   merchFilters: MerchFilters,
 ): TopProductPoint[] {
-  const txs = filterMerchTransactions(filters, merchFilters);
+  const txs = getFilteredMerchTransactions(filters, merchFilters);
   const productMap = new Map<string, TopProductPoint>();
 
   for (const tx of txs) {
-    const existing = productMap.get(tx.description) ?? {
-      name: tx.description,
+    const productName = tx.description.replace(/^Возврат:\s*/, "");
+    const existing = productMap.get(productName) ?? {
+      name: productName,
       revenue: 0,
       units: 0,
     };
-    existing.revenue += tx.amount;
-    existing.units += tx.quantity;
-    productMap.set(tx.description, existing);
+
+    if (tx.isReturn) {
+      existing.revenue -= tx.amount;
+      existing.units -= tx.quantity;
+    } else {
+      existing.revenue += tx.amount;
+      existing.units += tx.quantity;
+    }
+
+    productMap.set(productName, existing);
   }
 
   return Array.from(productMap.values())
+    .filter((item) => item.revenue > 0)
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 7);
 }
@@ -1158,52 +1450,42 @@ export function computeMatchSalesTable(
   return rows.sort((a, b) => b.date.getTime() - a.date.getTime());
 }
 
+function getMatchAttendance(match: { attendance: number; capacity: number }): number {
+  return match.attendance > 0 ? match.attendance : Math.round(match.capacity * 0.6);
+}
+
 export function computeMerchMatchSalesTable(
-  _filters: DashboardFilters,
+  filters: DashboardFilters,
   merchFilters: MerchFilters,
 ): MerchMatchSalesRow[] {
-  const cutoff = getTicketsSeasonCutoff();
+  const txs = getFilteredMerchTransactions(filters, merchFilters);
   const allowedMatches = filterMatchesByMerchFilters(merchFilters);
-  const allowedMatchIds = new Set(allowedMatches.map((m) => m.id));
-  const hasMatchFilter = hasMerchMatchFilter(merchFilters);
 
-  const txs = transactions.filter((tx) => {
-    if (tx.date < cutoff || tx.date > endOfDay(MOCK_TODAY)) return false;
-    if (tx.stream !== "merch") return false;
-    if (!passesMerchSalesChannels(tx, merchFilters.salesChannels)) return false;
-    if (!tx.matchId) {
-      return !hasMatchFilter;
-    }
-    return allowedMatchIds.has(tx.matchId);
-  });
-
-  type MatchAgg = {
-    revenue: number;
-    receipts: number;
-    units: number;
-  };
+  type MatchAgg = MerchAggregateMetrics & { latestDate: Date };
 
   const aggByMatch = new Map<string, MatchAgg>();
 
   for (const tx of txs) {
     if (!tx.matchId) continue;
-
-    const agg = aggByMatch.get(tx.matchId) ?? {
-      revenue: 0,
-      receipts: 0,
-      units: 0,
-    };
-
-    if (tx.isReturn) {
-      agg.revenue -= tx.amount;
-      agg.units -= tx.quantity;
-    } else {
-      agg.revenue += tx.amount;
-      agg.receipts += 1;
-      agg.units += tx.quantity;
+    if (
+      tx.merchSalesPoint &&
+      MERCH_MATCH_TABLE_EXCLUDED_POINTS.has(tx.merchSalesPoint)
+    ) {
+      continue;
     }
 
-    aggByMatch.set(tx.matchId, agg);
+    const key = tx.matchId;
+    const agg = aggByMatch.get(key) ?? {
+      ...createMerchMetrics(),
+      latestDate: tx.date,
+    };
+
+    applyMerchTransaction(agg, tx);
+    if (tx.date > agg.latestDate) {
+      agg.latestDate = tx.date;
+    }
+
+    aggByMatch.set(key, agg);
   }
 
   const rows: MerchMatchSalesRow[] = [];
@@ -1212,8 +1494,7 @@ export function computeMerchMatchSalesTable(
     const agg = aggByMatch.get(match.id);
     if (!agg || agg.revenue <= 0 || agg.receipts <= 0) continue;
 
-    const attendance =
-      match.attendance > 0 ? match.attendance : Math.round(match.capacity * 0.6);
+    const attendance = getMatchAttendance(match);
 
     rows.push({
       matchId: match.id,
@@ -1224,6 +1505,7 @@ export function computeMerchMatchSalesTable(
       receipts: agg.receipts,
       units: agg.units,
       upt: agg.units / agg.receipts,
+      attendance,
       purchaseConversionPct:
         attendance > 0 ? (agg.receipts / attendance) * 100 : 0,
     });
@@ -1236,44 +1518,36 @@ export function computeMerchSkuSalesTable(
   filters: DashboardFilters,
   merchFilters: MerchFilters,
 ): MerchSkuSalesRow[] {
-  const txs = filterMerchTransactions(filters, merchFilters);
+  const txs = getFilteredMerchTransactions(filters, merchFilters);
 
-  type SkuAgg = {
-    units: number;
-    receiptIds: Set<string>;
-    revenue: number;
-    cost: number;
-  };
+  type SkuAgg = MerchAggregateMetrics & { receiptsWithProduct: number };
 
   const aggByProduct = new Map<string, SkuAgg>();
 
   for (const tx of txs) {
-    const agg = aggByProduct.get(tx.description) ?? {
-      units: 0,
-      receiptIds: new Set<string>(),
-      revenue: 0,
-      cost: 0,
+    const productName = tx.description.replace(/^Возврат:\s*/, "");
+    const agg = aggByProduct.get(productName) ?? {
+      ...createMerchMetrics(),
+      receiptsWithProduct: 0,
     };
 
     if (tx.isReturn) {
-      agg.units -= tx.quantity;
-      agg.revenue -= tx.amount;
-      agg.cost -= tx.costAmount ?? Math.round(tx.amount * 0.55);
+      applyMerchTransaction(agg, tx);
+      agg.receiptsWithProduct = Math.max(0, agg.receiptsWithProduct - 1);
     } else {
-      agg.units += tx.quantity;
-      agg.receiptIds.add(tx.id);
-      agg.revenue += tx.amount;
-      agg.cost += tx.costAmount ?? Math.round(tx.amount * 0.55);
+      applyMerchTransaction(agg, tx);
+      agg.receiptsWithProduct += 1;
     }
 
-    aggByProduct.set(tx.description, agg);
+    aggByProduct.set(productName, agg);
   }
 
   return Array.from(aggByProduct.entries())
     .map(([productName, agg]) => ({
       productName,
       units: agg.units,
-      receiptsWithProduct: agg.receiptIds.size,
+      revenue: agg.revenue,
+      receiptsWithProduct: agg.receiptsWithProduct,
       marginPct:
         agg.revenue > 0 ? ((agg.revenue - agg.cost) / agg.revenue) * 100 : 0,
     }))

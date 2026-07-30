@@ -74,12 +74,14 @@ export type MerchMatchSalesRow = {
   receipts: number;
   units: number;
   upt: number;
+  attendance: number;
   purchaseConversionPct: number;
 };
 
 export type MerchSkuSalesRow = {
   productName: string;
   units: number;
+  revenue: number;
   receiptsWithProduct: number;
   marginPct: number;
 };
@@ -201,6 +203,22 @@ export type PlanFactTrendPoint = {
   factTickets: number;
 };
 
+export type TicketMatchCumulativePoint = {
+  date: string;
+  dateKey: number;
+  revenue: number;
+  tickets: number;
+};
+
+export type TicketMatchCumulativeSeries = {
+  matchId: string;
+  label: string;
+  color: string;
+  league: League;
+  season: string;
+  points: TicketMatchCumulativePoint[];
+};
+
 export type TopProductPoint = {
   name: string;
   revenue: number;
@@ -210,6 +228,13 @@ export type TopProductPoint = {
 export type ChannelMixPoint = {
   channel: string;
   value: number;
+};
+
+export type MerchSalesChannelPoint = {
+  channel: string;
+  channelKey: MerchSalesPoint;
+  value: number;
+  share: number;
 };
 
 export type TicketsKpiData = {
