@@ -11,6 +11,7 @@ import {
   TICKET_TYPE_OPTIONS,
   TOURNAMENT_STAGE_OPTIONS,
 } from "@/lib/subscription-filter-options";
+import { ResponsiveFilterBar } from "@/components/layout/ResponsiveFilterBar";
 import type {
   ArenaId,
   League,
@@ -35,7 +36,7 @@ export function SubscriptionsFilterBar() {
   }
 
   return (
-    <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-white px-4 py-3 shadow-sm sm:px-6 sm:py-4">
+    <ResponsiveFilterBar onReset={resetSubscriptionFilters}>
       <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end">
         <Select
           label="Сезон"
@@ -115,10 +116,10 @@ export function SubscriptionsFilterBar() {
           ))}
         </Select>
 
-        <Button variant="ghost" onClick={resetSubscriptionFilters} className="mb-0.5 w-full sm:w-auto">
+        <Button variant="ghost" onClick={resetSubscriptionFilters} className="mb-0.5 hidden w-full sm:w-auto lg:inline-flex">
           Сбросить
         </Button>
       </div>
-    </div>
+    </ResponsiveFilterBar>
   );
 }

@@ -12,6 +12,7 @@ import {
   TIME_GROUPING_OPTIONS,
   TOURNAMENT_STAGE_OPTIONS,
 } from "@/lib/merch-filter-options";
+import { ResponsiveFilterBar } from "@/components/layout/ResponsiveFilterBar";
 import type {
   League,
   MerchFilters,
@@ -35,7 +36,7 @@ export function MerchFilterBar() {
   const showOrderDateFilter = merchFilters.salesChannels.includes("online_store");
 
   return (
-    <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-white px-4 py-3 shadow-sm sm:px-6 sm:py-4">
+    <ResponsiveFilterBar onReset={resetMerchFilters}>
       <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end">
         <Select
           label="Сезон"
@@ -120,10 +121,10 @@ export function MerchFilterBar() {
           ))}
         </Select>
 
-        <Button variant="ghost" onClick={resetMerchFilters} className="mb-0.5 w-full sm:w-auto">
+        <Button variant="ghost" onClick={resetMerchFilters} className="mb-0.5 hidden w-full sm:w-auto lg:inline-flex">
           Сбросить
         </Button>
       </div>
-    </div>
+    </ResponsiveFilterBar>
   );
 }

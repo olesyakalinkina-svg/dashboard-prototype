@@ -26,6 +26,7 @@ import type {
   TournamentStage,
   ArenaId,
 } from "@/types/dashboard";
+import { ResponsiveFilterBar } from "@/components/layout/ResponsiveFilterBar";
 import type { ReactNode } from "react";
 
 function FilterGroup({
@@ -58,7 +59,8 @@ export function TicketsFilterBar() {
   }
 
   return (
-    <div className="sticky top-0 z-10 space-y-3 border-b border-[var(--border)] bg-white px-4 py-3 shadow-sm sm:space-y-4 sm:px-6 sm:py-4">
+    <ResponsiveFilterBar onReset={resetTicketFilters}>
+      <div className="space-y-3 sm:space-y-4">
       <FilterGroup title="Фильтры матчей">
         <Select
           label="Сезон"
@@ -205,10 +207,11 @@ export function TicketsFilterBar() {
           ))}
         </Select>
 
-        <Button variant="ghost" onClick={resetTicketFilters} className="mb-0.5 w-full sm:w-auto">
+        <Button variant="ghost" onClick={resetTicketFilters} className="mb-0.5 hidden w-full sm:w-auto lg:inline-flex">
           Сбросить
         </Button>
       </FilterGroup>
-    </div>
+      </div>
+    </ResponsiveFilterBar>
   );
 }
