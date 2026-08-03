@@ -24,6 +24,7 @@ import {
 import {
   ORDER_SOURCE_LABELS,
   ALL_PRICE_ZONES,
+  TICKET_TYPE_LABELS,
   TOURNAMENT_STAGE_OPTIONS,
 } from "@/lib/ticket-filter-options";
 import {
@@ -47,8 +48,13 @@ import type {
   MerchSalesChannelPoint,
   MerchSalesPoint,
   MerchSkuSalesRow,
+  OrderSource,
+  OrderSourceSalesPoint,
+  PriceZoneSalesPoint,
   SubscriptionFilters,
   TicketFilters,
+  TicketType,
+  TicketTypeSalesPoint,
   TicketsKpiData,
   TopProductPoint,
   Transaction,
@@ -532,14 +538,6 @@ function avgTicketPrice(txs: Transaction[]): number {
   return tickets > 0 ? sumAmount(txs) / tickets : 0;
 }
 
-export function hasTicketSpecificFilters(ticketFilters: TicketFilters): boolean {
-  return (
-    ticketFilters.ticketType !== "all" ||
-    ticketFilters.priceZone !== "all" ||
-    ticketFilters.orderSource !== "all"
-  );
-}
-
 function matchLevelTicketFilters(ticketFilters: TicketFilters): TicketFilters {
   return {
     ...ticketFilters,
@@ -680,7 +678,6 @@ export function computeTicketsKpis(
   const loyaltyDiscountPct =
     grossRevenue > 0 ? (loyaltyDiscount / grossRevenue) * 100 : 0;
 
-  const ticketFiltersExcludedFromPlanKpis = hasTicketSpecificFilters(ticketFilters);
   const matchLevelFilters = matchLevelTicketFilters(ticketFilters);
   const planFactTxs = filterTicketTransactions(filters, matchLevelFilters);
 
@@ -707,7 +704,6 @@ export function computeTicketsKpis(
     loyaltyDiscountChange: pctChange(loyaltyDiscount, prevLoyaltyDiscount),
     fillRate,
     planCompletionPct,
-    ticketFiltersExcludedFromPlanKpis,
     revenueToday: sumAmount(todayTxs),
     ticketsToday: countTickets(todayTxs),
     revenueSparkline: buildSparkline(
@@ -1321,6 +1317,81 @@ export function computeSectorSales(
     value: txs
       .filter((tx) => tx.priceZone === zone)
       .reduce((s, tx) => s + tx.quantity, 0),
+  }));
+}
+
+const TICKET_TYPES: TicketType[] = ["arena", "parking"];
+const ORDER_SOURCES: OrderSource[] = [
+  "box_office",
+  "official_site",
+  "yandex_afisha",
+];
+
+export function computeTicketTypeSales(
+  filters: DashboardFilters,
+  ticketFilters: TicketFilters,
+): TicketTypeSalesPoint[] {
+  const txs = filterTicketTransactions(filters, ticketFilters);
+
+  const rows = TICKET_TYPES.map((type) => {
+    const typeTxs = txs.filter((tx) => tx.ticketType === type);
+    return {
+      type,
+      label: TICKET_TYPE_LABELS[type],
+      tickets: countTickets(typeTxs),
+      revenue: sumAmount(typeTxs),
+      share: 0,
+    };
+  }).filter((row) => row.tickets > 0 || row.revenue > 0);
+
+  const totalRevenue = rows.reduce((sum, row) => sum + row.revenue, 0);
+  return rows.map((row) => ({
+    ...row,
+    share: totalRevenue > 0 ? (row.revenue / totalRevenue) * 100 : 0,
+  }));
+}
+
+export function computePriceZoneSales(
+  filters: DashboardFilters,
+  ticketFilters: TicketFilters,
+): PriceZoneSalesPoint[] {
+  const txs = filterTicketTransactions(filters, ticketFilters);
+  const arenaTxs = txs.filter(
+    (tx) => tx.ticketType !== "parking" && tx.priceZone,
+  );
+
+  return ALL_PRICE_ZONES.map((zone) => {
+    const zoneTxs = arenaTxs.filter((tx) => tx.priceZone === zone);
+    return {
+      zone,
+      label: zone,
+      tickets: countTickets(zoneTxs),
+      revenue: sumAmount(zoneTxs),
+    };
+  }).filter((row) => row.tickets > 0);
+}
+
+export function computeOrderSourceSales(
+  filters: DashboardFilters,
+  ticketFilters: TicketFilters,
+): OrderSourceSalesPoint[] {
+  const txs = filterTicketTransactions(filters, ticketFilters);
+
+  const rows = ORDER_SOURCES.map((source) => {
+    const sourceTxs = txs.filter((tx) => tx.orderSource === source);
+    return {
+      source,
+      label: ORDER_SOURCE_LABELS[source],
+      tickets: countTickets(sourceTxs),
+      revenue: sumAmount(sourceTxs),
+      share: 0,
+    };
+  }).filter((row) => row.tickets > 0 || row.revenue > 0);
+
+  const totalRevenue = rows.reduce((sum, row) => sum + row.revenue, 0);
+  return rows.map((row) => ({
+    ...row,
+    share: totalRevenue > 0 ? (row.revenue / totalRevenue) * 100 : 0,
   }));
 }
 

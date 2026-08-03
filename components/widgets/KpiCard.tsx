@@ -111,10 +111,6 @@ export function TabKpiCards({
   }
 
   if (tab === "tickets") {
-    const planKpiSubtitle = ticketsKpis.ticketFiltersExcludedFromPlanKpis
-      ? "По выбранным матчам, без фильтров билетов"
-      : "Процент выполнения плана продаж";
-
     return (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
@@ -125,7 +121,7 @@ export function TabKpiCards({
         <KpiCard
           title="Выполнение плана"
           value={formatPercent(ticketsKpis.planCompletionPct)}
-          subtitle={planKpiSubtitle}
+          subtitle="Процент выполнения плана продаж"
           hideTrend
         />
         <KpiCard
@@ -147,11 +143,7 @@ export function TabKpiCards({
         <KpiCard
           title="Заполняемость"
           value={formatPercent(ticketsKpis.fillRate)}
-          subtitle={
-            ticketsKpis.ticketFiltersExcludedFromPlanKpis
-              ? planKpiSubtitle
-              : "Купленные и бесплатные билеты"
-          }
+          subtitle="Купленные и бесплатные билеты"
           hideTrend
         />
         <KpiCard

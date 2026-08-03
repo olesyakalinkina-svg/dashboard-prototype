@@ -1,17 +1,20 @@
 "use client";
 
 import clsx from "clsx";
+import type { CSSProperties } from "react";
 
 export function InlineBarCell({
   value,
   max,
   formatted,
   barClassName,
+  barStyle,
 }: {
   value: number;
   max: number;
   formatted: string;
   barClassName: string;
+  barStyle?: CSSProperties;
 }) {
   const widthPct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
 
@@ -23,6 +26,7 @@ export function InlineBarCell({
           style={{
             width: `${widthPct}%`,
             minWidth: "2.75rem",
+            ...barStyle,
           }}
         />
       )}

@@ -18,10 +18,13 @@ import {
   computeMerchTotals,
   computeMatchRevenueForTab,
   computeMerchKpis,
+  computeOrderSourceSales,
+  computePriceZoneSales,
   computeSectorSales,
   computeSubscriptionTariffStats,
   computeSubscriptionsKpis,
   computeSubscriptionsPlanFactTrend,
+  computeTicketTypeSales,
   computeTicketsKpis,
   computeTicketsMatchCumulativeSeries,
   computeTicketsPlanFactTrend,
@@ -86,6 +89,9 @@ type FilterContextValue = {
   subscriptionTariffStats: ReturnType<typeof computeSubscriptionTariffStats>;
   ticketTransactions: ReturnType<typeof getTabTransactions>;
   matchSales: ReturnType<typeof computeMatchSalesTable>;
+  ticketTypeSales: ReturnType<typeof computeTicketTypeSales>;
+  priceZoneSales: ReturnType<typeof computePriceZoneSales>;
+  orderSourceSales: ReturnType<typeof computeOrderSourceSales>;
   merchMatchSales: ReturnType<typeof computeMerchMatchSalesTable>;
   merchSalesChannelRevenue: ReturnType<typeof computeMerchSalesChannelRevenue>;
   merchSkuSales: ReturnType<typeof computeMerchSkuSalesTable>;
@@ -115,7 +121,6 @@ const EMPTY_TICKETS_KPIS: TicketsKpiData = {
   loyaltyDiscountChange: 0,
   fillRate: 0,
   planCompletionPct: 0,
-  ticketFiltersExcludedFromPlanKpis: false,
   revenueToday: 0,
   ticketsToday: 0,
   revenueSparkline: [],
@@ -262,6 +267,9 @@ export function FilterProvider({ children }: { children: ReactNode }) {
           subscriptionTariffStats: [],
           ticketTransactions: getTabTransactions(filters, "tickets", ticketFilters),
           matchSales: computeMatchSalesTable(filters, ticketFilters),
+          ticketTypeSales: computeTicketTypeSales(filters, ticketFilters),
+          priceZoneSales: computePriceZoneSales(filters, ticketFilters),
+          orderSourceSales: computeOrderSourceSales(filters, ticketFilters),
           merchMatchSales: [],
           merchSalesChannelRevenue: [],
           merchSkuSales: [],
@@ -288,6 +296,9 @@ export function FilterProvider({ children }: { children: ReactNode }) {
           subscriptionTariffStats: [],
           ticketTransactions: [],
           matchSales: [],
+          ticketTypeSales: [],
+          priceZoneSales: [],
+          orderSourceSales: [],
           merchMatchSales: computeMerchMatchSalesTable(filters, merchFilters),
           merchSalesChannelRevenue: computeMerchSalesChannelRevenue(merchFilters),
           merchSkuSales: computeMerchSkuSalesTable(filters, merchFilters),
@@ -319,6 +330,9 @@ export function FilterProvider({ children }: { children: ReactNode }) {
         ),
         ticketTransactions: [],
         matchSales: [],
+        ticketTypeSales: [],
+        priceZoneSales: [],
+        orderSourceSales: [],
         merchMatchSales: [],
         merchSalesChannelRevenue: [],
         merchSkuSales: [],

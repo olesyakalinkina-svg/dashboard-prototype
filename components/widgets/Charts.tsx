@@ -26,8 +26,13 @@ import type {
   ChannelMixPoint,
   MerchSalesChannelPoint,
   MerchSalesPoint,
+  OrderSource,
+  OrderSourceSalesPoint,
+  PriceZoneSalesPoint,
   SectorPoint,
   SubscriptionPlanStat,
+  TicketType,
+  TicketTypeSalesPoint,
   TimeGrouping,
   TopProductPoint,
   WeeklyPoint,
@@ -56,6 +61,34 @@ const MERCH_CHANNEL_COLORS: Record<MerchSalesPoint, string> = {
   mall_continent: "#FFB300",
   online_store: "#7B61FF",
 };
+
+const TICKET_TYPE_COLORS: Record<TicketType, string> = {
+  arena: "#5282FF",
+  parking: "#00BFA5",
+};
+
+const ORDER_SOURCE_COLORS: Record<OrderSource, string> = {
+  box_office: "#5282FF",
+  official_site: "#00BFA5",
+  yandex_afisha: "#FF7043",
+};
+
+const PRICE_ZONE_COLORS = [
+  "#5282FF",
+  "#00BFA5",
+  "#FF7043",
+  "#FFB300",
+  "#7B61FF",
+  "#26A69A",
+  "#E53935",
+  "#8E24AA",
+  "#3949AB",
+  "#00897B",
+  "#F4511E",
+  "#6D4C41",
+  "#546E7A",
+  "#C0CA33",
+];
 
 function ChartTooltip({
   active,
@@ -487,6 +520,235 @@ export function SubscriptionPlansChart({
             </div>
           </div>
         ))}
+      </div>
+    </ChartWidget>
+  );
+}
+
+function TicketBreakdownEmpty({ message }: { message: string }) {
+  return (
+    <div className="flex h-full items-center justify-center text-sm text-[var(--muted)]">
+      {message}
+    </div>
+  );
+}
+
+export function TicketTypeSalesChart({
+  data,
+  compact = true,
+  refreshKey,
+}: {
+  data: TicketTypeSalesPoint[];
+  compact?: boolean;
+  refreshKey?: string;
+}) {
+  const chartHeight = compact ? 260 : 280;
+
+  if (data.length === 0) {
+    return (
+      <ChartWidget title="Тип билета" height={chartHeight} compact={compact} refreshKey={refreshKey}>
+        <TicketBreakdownEmpty message="Нет данных по типам билетов" />
+      </ChartWidget>
+    );
+  }
+
+  return (
+    <ChartWidget title="Тип билета" height={chartHeight} compact={compact} refreshKey={refreshKey}>
+      <div className="flex h-full flex-col gap-4 sm:flex-row">
+        <div className="h-[180px] min-w-0 flex-1 sm:h-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={data}
+                dataKey="revenue"
+                nameKey="label"
+                cx="50%"
+                cy="50%"
+                innerRadius={48}
+                outerRadius={78}
+                paddingAngle={2}
+              >
+                {data.map((item) => (
+                  <Cell key={item.type} fill={TICKET_TYPE_COLORS[item.type]} />
+                ))}
+              </Pie>
+              <Tooltip formatter={(value: number) => formatCurrency(value)} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col justify-center gap-2.5">
+          {data.map((item) => (
+            <div key={item.type} className="space-y-1">
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="inline-flex items-center gap-2 font-medium text-[var(--foreground)]">
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: TICKET_TYPE_COLORS[item.type] }}
+                  />
+                  {item.label}
+                </span>
+                <span className="whitespace-nowrap text-[var(--muted)]">
+                  {item.share.toFixed(1)}%
+                </span>
+              </div>
+              <div className="relative h-6 overflow-hidden rounded-sm bg-[#f0f0f2]">
+                <div
+                  className="absolute left-0 top-0 h-full rounded-sm"
+                  style={{
+                    width: `${item.share}%`,
+                    minWidth: item.revenue > 0 ? "2.75rem" : undefined,
+                    backgroundColor: TICKET_TYPE_COLORS[item.type],
+                  }}
+                />
+                <span className="relative z-10 flex h-full items-center px-2 text-xs font-medium tabular-nums text-[var(--foreground)]">
+                  {formatCurrency(item.revenue)} · {formatNumber(item.tickets)} шт
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </ChartWidget>
+  );
+}
+
+export function PriceZoneSalesChart({
+  data,
+  compact = true,
+  refreshKey,
+}: {
+  data: PriceZoneSalesPoint[];
+  compact?: boolean;
+  refreshKey?: string;
+}) {
+  const sorted = useMemo(
+    () => [...data].sort((a, b) => b.tickets - a.tickets),
+    [data],
+  );
+  const maxTickets = useMemo(
+    () => Math.max(...sorted.map((d) => d.tickets), 0),
+    [sorted],
+  );
+  const rowHeight = compact ? 28 : 32;
+  const chartHeight = Math.max(compact ? 260 : 280, sorted.length * rowHeight + 48);
+
+  if (sorted.length === 0) {
+    return (
+      <ChartWidget title="Ценовая зона" height={chartHeight} compact={compact} refreshKey={refreshKey}>
+        <TicketBreakdownEmpty message="Нет данных по ценовым зонам" />
+      </ChartWidget>
+    );
+  }
+
+  return (
+    <ChartWidget title="Ценовая зона" height={chartHeight} compact={compact} refreshKey={refreshKey}>
+      <div className="flex h-full flex-col justify-center gap-1.5 overflow-y-auto py-1">
+        {sorted.map((item, index) => (
+          <div key={item.zone} className="flex items-center gap-2">
+            <span
+              className="w-8 shrink-0 text-xs font-medium text-[var(--foreground)]"
+              title={item.label}
+            >
+              {item.label}
+            </span>
+            <div className="min-w-0 flex-1">
+              <InlineBarCell
+                value={item.tickets}
+                max={maxTickets}
+                formatted={`${formatNumber(item.tickets)} шт · ${formatCurrency(item.revenue)}`}
+                barClassName=""
+                barStyle={{
+                  backgroundColor:
+                    PRICE_ZONE_COLORS[index % PRICE_ZONE_COLORS.length],
+                }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </ChartWidget>
+  );
+}
+
+export function OrderSourceSalesChart({
+  data,
+  compact = true,
+  refreshKey,
+}: {
+  data: OrderSourceSalesPoint[];
+  compact?: boolean;
+  refreshKey?: string;
+}) {
+  const chartHeight = compact ? 260 : 280;
+
+  if (data.length === 0) {
+    return (
+      <ChartWidget title="Источник заказа" height={chartHeight} compact={compact} refreshKey={refreshKey}>
+        <TicketBreakdownEmpty message="Нет данных по источникам заказа" />
+      </ChartWidget>
+    );
+  }
+
+  return (
+    <ChartWidget title="Источник заказа" height={chartHeight} compact={compact} refreshKey={refreshKey}>
+      <div className="flex h-full flex-col gap-4 sm:flex-row">
+        <div className="h-[180px] min-w-0 flex-1 sm:h-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={data}
+                dataKey="revenue"
+                nameKey="label"
+                cx="50%"
+                cy="50%"
+                innerRadius={48}
+                outerRadius={78}
+                paddingAngle={2}
+              >
+                {data.map((item) => (
+                  <Cell
+                    key={item.source}
+                    fill={ORDER_SOURCE_COLORS[item.source]}
+                  />
+                ))}
+              </Pie>
+              <Tooltip formatter={(value: number) => formatCurrency(value)} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col justify-center gap-2.5">
+          {data.map((item) => (
+            <div key={item.source} className="space-y-1">
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="inline-flex items-center gap-2 font-medium text-[var(--foreground)]">
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{
+                      backgroundColor: ORDER_SOURCE_COLORS[item.source],
+                    }}
+                  />
+                  <span className="truncate">{item.label}</span>
+                </span>
+                <span className="whitespace-nowrap text-[var(--muted)]">
+                  {item.share.toFixed(1)}%
+                </span>
+              </div>
+              <div className="relative h-6 overflow-hidden rounded-sm bg-[#f0f0f2]">
+                <div
+                  className="absolute left-0 top-0 h-full rounded-sm"
+                  style={{
+                    width: `${item.share}%`,
+                    minWidth: item.revenue > 0 ? "2.75rem" : undefined,
+                    backgroundColor: ORDER_SOURCE_COLORS[item.source],
+                  }}
+                />
+                <span className="relative z-10 flex h-full items-center px-2 text-xs font-medium tabular-nums text-[var(--foreground)]">
+                  {formatCurrency(item.revenue)} · {formatNumber(item.tickets)} шт
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </ChartWidget>
   );

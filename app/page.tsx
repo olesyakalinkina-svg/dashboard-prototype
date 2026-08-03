@@ -25,6 +25,23 @@ const TicketsSalesWidget = dynamic(
   },
 );
 
+const TicketsBreakdownWidget = dynamic(
+  () =>
+    import("@/components/widgets/TicketsBreakdownWidget").then((mod) => ({
+      default: mod.TicketsBreakdownWidget,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-3">
+        <ChartSkeleton height={260} />
+        <ChartSkeleton height={260} />
+        <ChartSkeleton height={260} />
+      </div>
+    ),
+  },
+);
+
 const SubscriptionsSalesWidget = dynamic(
   () =>
     import("@/components/widgets/SubscriptionsSalesWidget").then((mod) => ({
@@ -96,6 +113,9 @@ function DashboardContent() {
     topProducts,
     subscriptionTariffStats,
     matchSales,
+    ticketTypeSales,
+    priceZoneSales,
+    orderSourceSales,
     merchMatchSales,
     merchSalesChannelRevenue,
     merchSkuSales,
@@ -153,6 +173,12 @@ function DashboardContent() {
                 refreshKey={`${ticketFilters.timeGrouping}-${ticketsMatchCumulativeSeries.length}`}
               />
             </div>
+            <TicketsBreakdownWidget
+              ticketTypeSales={ticketTypeSales}
+              priceZoneSales={priceZoneSales}
+              orderSourceSales={orderSourceSales}
+              refreshKey={`${ticketFilters.ticketType}-${ticketFilters.priceZone}-${ticketFilters.orderSource}`}
+            />
           </>
         )}
 
