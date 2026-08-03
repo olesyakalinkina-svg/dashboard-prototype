@@ -4,6 +4,7 @@ import {
   endOfDay,
   format,
   isSameDay,
+  parseISO,
   startOfDay,
   startOfMonth,
   startOfQuarter,
@@ -28,7 +29,10 @@ import {
   TOURNAMENT_STAGE_OPTIONS,
 } from "@/lib/ticket-filter-options";
 import {
+  ALL_MERCH_PRODUCT_CATEGORIES,
   ALL_MERCH_SALES_POINTS,
+  getMerchProductCategory,
+  MERCH_PRODUCT_CATEGORY_LABELS,
   MERCH_SALES_POINT_LABELS,
 } from "@/lib/merch-filter-options";
 import { SUBSCRIPTION_CHANNEL_LABELS } from "@/lib/subscription-filter-options";
@@ -45,6 +49,8 @@ import type {
   MatchSalesRow,
   MerchFilters,
   MerchMatchSalesRow,
+  MerchProductCategory,
+  MerchProductCategoryPoint,
   MerchSalesChannelPoint,
   MerchSalesPoint,
   MerchSkuSalesRow,
@@ -89,6 +95,7 @@ function ticketFilterCacheKey(
     ticketFilters.season,
     ticketFilters.league,
     ticketFilters.tournamentStage,
+    ticketFilters.matchClass,
     ticketFilters.arena,
     ticketFilters.eventCompleted,
     ticketFilters.matchId,
@@ -110,9 +117,32 @@ function merchFilterCacheKey(
     merchFilters.season,
     merchFilters.league,
     merchFilters.tournamentStage,
+    merchFilters.matchClass,
     merchFilters.matchId,
     merchFilters.salesChannels.join(","),
+    merchFilters.orderDateRange.from ?? "",
+    merchFilters.orderDateRange.to ?? "",
   ].join("|");
+}
+
+function passesOnlineStoreOrderDate(
+  tx: Transaction,
+  orderDateRange: MerchFilters["orderDateRange"],
+  salesChannels: MerchFilters["salesChannels"],
+): boolean {
+  if (tx.merchSalesPoint !== "online_store") return true;
+  if (!salesChannels.includes("online_store")) return true;
+  const { from, to } = orderDateRange;
+  if (!from && !to) return true;
+  if (from) {
+    const fromDate = startOfDay(parseISO(from));
+    if (tx.date < fromDate) return false;
+  }
+  if (to) {
+    const toDate = endOfDay(parseISO(to));
+    if (tx.date > toDate) return false;
+  }
+  return true;
 }
 
 function getDateCutoff(days: number): Date {
@@ -222,20 +252,17 @@ export function filterMatchesByMerchFilters(
     ) {
       return false;
     }
+    if (
+      merchFilters.matchClass !== "all" &&
+      match.matchClass !== merchFilters.matchClass
+    ) {
+      return false;
+    }
     if (merchFilters.matchId !== "all" && match.id !== merchFilters.matchId) {
       return false;
     }
     return true;
   });
-}
-
-function hasMerchMatchFilter(merchFilters: MerchFilters): boolean {
-  return (
-    merchFilters.season !== "all" ||
-    merchFilters.league !== "all" ||
-    merchFilters.tournamentStage !== "all" ||
-    merchFilters.matchId !== "all"
-  );
 }
 
 function passesMerchSalesChannels(
@@ -322,6 +349,24 @@ export function computeMerchTotals(
   return aggregateMerchTransactions(getFilteredMerchTransactions(filters, merchFilters));
 }
 
+export function getOnlineStoreOrderDates(
+  filters: DashboardFilters,
+  merchFilters: MerchFilters,
+): string[] {
+  const txs = filterMerchTransactions(
+    filters,
+    { ...merchFilters, orderDateRange: { from: null, to: null } },
+    { useSeasonRange: true },
+  );
+  const dates = new Set<string>();
+  for (const tx of txs) {
+    if (tx.merchSalesPoint === "online_store") {
+      dates.add(format(tx.date, "yyyy-MM-dd"));
+    }
+  }
+  return Array.from(dates).sort();
+}
+
 export function filterMerchTransactions(
   filters: DashboardFilters,
   merchFilters: MerchFilters,
@@ -352,14 +397,23 @@ function filterMerchTransactionsImpl(
     useSeasonRange ? undefined : filters.dateRange,
   );
   const allowedMatchIds = new Set(allowedMatches.map((m) => m.id));
-  const hasMatchFilter = hasMerchMatchFilter(merchFilters);
 
   return transactions.filter((tx) => {
     if (tx.date < cutoff || tx.date > endOfDay(MOCK_TODAY)) return false;
     if (tx.stream !== "merch") return false;
     if (!passesMerchSalesChannels(tx, merchFilters.salesChannels)) return false;
+    if (
+      !passesOnlineStoreOrderDate(
+        tx,
+        merchFilters.orderDateRange,
+        merchFilters.salesChannels,
+      )
+    ) {
+      return false;
+    }
     if (!tx.matchId) {
-      return !hasMatchFilter;
+      // Off-match sales (online store, mall kiosks) are not tied to a match.
+      return merchFilters.matchId === "all";
     }
     return allowedMatchIds.has(tx.matchId);
   });
@@ -382,6 +436,12 @@ export function filterMatchesByTicketFilters(
     if (
       ticketFilters.tournamentStage !== "all" &&
       match.tournamentStage !== ticketFilters.tournamentStage
+    ) {
+      return false;
+    }
+    if (
+      ticketFilters.matchClass !== "all" &&
+      match.matchClass !== ticketFilters.matchClass
     ) {
       return false;
     }
@@ -890,6 +950,37 @@ function getSubscriptionPeriodWeeks(): Date[] {
   return weeks;
 }
 
+// Mirrors lib/mock/hockey-generator.ts ZONE_PRICES — used to derive zone plan mix.
+const ZONE_PLAN_PRICES: Record<(typeof ALL_PRICE_ZONES)[number], number> = {
+  A: 2500,
+  B1: 2200,
+  B2: 2100,
+  B3: 2000,
+  B4: 1900,
+  C1: 1600,
+  C2: 1500,
+  C3: 1400,
+  C4: 1300,
+  D1: 1100,
+  D2: 1000,
+  D3: 900,
+  D4: 800,
+  VIP: 8500,
+};
+
+// Arena vs parking split — aligned with ticketPlanScale and mock generator (~12% parking).
+const TICKET_TYPE_PLAN_SHARE: Record<TicketType, number> = {
+  arena: 0.88,
+  parking: 0.12,
+};
+
+// Channel mix from mock pickOrderSource(): 40% site, 25% box office, 35% Yandex Afisha.
+const ORDER_SOURCE_PLAN_SHARE: Record<OrderSource, number> = {
+  official_site: 0.4,
+  box_office: 0.25,
+  yandex_afisha: 0.35,
+};
+
 function ticketPlanScale(ticketFilters: TicketFilters): number {
   let scale = 1;
   if (ticketFilters.ticketType === "parking") scale *= 0.12;
@@ -899,15 +990,35 @@ function ticketPlanScale(ticketFilters: TicketFilters): number {
   return scale;
 }
 
-function sumTicketPlanRevenue(
+function getNormalizedZonePlanShares(): Record<(typeof ALL_PRICE_ZONES)[number], number> {
+  const rawWeights = ALL_PRICE_ZONES.map(
+    (zone) => 1 / ZONE_PLAN_PRICES[zone],
+  );
+  const total = rawWeights.reduce((sum, weight) => sum + weight, 0);
+  return Object.fromEntries(
+    ALL_PRICE_ZONES.map((zone, index) => [
+      zone,
+      rawWeights[index] / total,
+    ]),
+  ) as Record<(typeof ALL_PRICE_ZONES)[number], number>;
+}
+
+const NORMALIZED_ZONE_PLAN_SHARES = getNormalizedZonePlanShares();
+
+function planFulfillmentPct(fact: number, plan: number): number {
+  return plan > 0 ? (fact / plan) * 100 : 0;
+}
+
+function sumTicketPlanMetrics(
   filters: DashboardFilters,
   ticketFilters: TicketFilters,
-): number {
+): { revenue: number; tickets: number } {
   const cutoff = getTicketsSeasonCutoff(ticketFilters.season);
   const now = endOfDay(MOCK_TODAY);
   const allowedMatches = filterMatchesByTicketFilters(ticketFilters);
   const scale = ticketPlanScale(ticketFilters);
-  let total = 0;
+  let totalRevenue = 0;
+  let totalTickets = 0;
 
   for (const match of allowedMatches) {
     const planProfile = getMatchTicketPlanProfile(match);
@@ -915,16 +1026,35 @@ function sumTicketPlanRevenue(
       match.capacity * planProfile.fillRate * scale,
     );
     const matchPlanRevenue = Math.round(matchPlanTickets * planProfile.avgPrice);
+    const dailyPlanTickets = matchPlanTickets / TICKET_SALES_WINDOW_DAYS;
     const dailyPlanRevenue = matchPlanRevenue / TICKET_SALES_WINDOW_DAYS;
 
     for (let offset = TICKET_SALES_WINDOW_DAYS; offset >= 1; offset -= 1) {
       const saleDay = subDays(match.date, offset);
       if (saleDay < cutoff || saleDay > now) continue;
-      total += dailyPlanRevenue;
+      totalRevenue += dailyPlanRevenue;
+      totalTickets += dailyPlanTickets;
     }
   }
 
-  return Math.round(total);
+  return {
+    revenue: Math.round(totalRevenue),
+    tickets: Math.round(totalTickets),
+  };
+}
+
+function sumTicketPlanRevenue(
+  filters: DashboardFilters,
+  ticketFilters: TicketFilters,
+): number {
+  return sumTicketPlanMetrics(filters, ticketFilters).revenue;
+}
+
+function getMatchLevelPlanTotals(
+  filters: DashboardFilters,
+  ticketFilters: TicketFilters,
+): { revenue: number; tickets: number } {
+  return sumTicketPlanMetrics(filters, matchLevelTicketFilters(ticketFilters));
 }
 
 function addPlanFactValue(
@@ -1332,17 +1462,27 @@ export function computeTicketTypeSales(
   ticketFilters: TicketFilters,
 ): TicketTypeSalesPoint[] {
   const txs = filterTicketTransactions(filters, ticketFilters);
+  const planTotals = getMatchLevelPlanTotals(filters, ticketFilters);
 
   const rows = TICKET_TYPES.map((type) => {
     const typeTxs = txs.filter((tx) => tx.ticketType === type);
+    const revenue = sumAmount(typeTxs);
+    const tickets = countTickets(typeTxs);
+    const typeShare = TICKET_TYPE_PLAN_SHARE[type];
+    const planRevenue = Math.round(planTotals.revenue * typeShare);
+    const planTickets = Math.round(planTotals.tickets * typeShare);
+
     return {
       type,
       label: TICKET_TYPE_LABELS[type],
-      tickets: countTickets(typeTxs),
-      revenue: sumAmount(typeTxs),
+      tickets,
+      revenue,
       share: 0,
+      planRevenue,
+      planTickets,
+      fulfillmentPct: planFulfillmentPct(revenue, planRevenue),
     };
-  }).filter((row) => row.tickets > 0 || row.revenue > 0);
+  }).filter((row) => row.tickets > 0 || row.revenue > 0 || row.planRevenue > 0);
 
   const totalRevenue = rows.reduce((sum, row) => sum + row.revenue, 0);
   return rows.map((row) => ({
@@ -1359,16 +1499,28 @@ export function computePriceZoneSales(
   const arenaTxs = txs.filter(
     (tx) => tx.ticketType !== "parking" && tx.priceZone,
   );
+  const planTotals = getMatchLevelPlanTotals(filters, ticketFilters);
+  const arenaPlanRevenue = planTotals.revenue * TICKET_TYPE_PLAN_SHARE.arena;
+  const arenaPlanTickets = planTotals.tickets * TICKET_TYPE_PLAN_SHARE.arena;
 
   return ALL_PRICE_ZONES.map((zone) => {
     const zoneTxs = arenaTxs.filter((tx) => tx.priceZone === zone);
+    const revenue = sumAmount(zoneTxs);
+    const tickets = countTickets(zoneTxs);
+    const zoneShare = NORMALIZED_ZONE_PLAN_SHARES[zone];
+    const planRevenue = Math.round(arenaPlanRevenue * zoneShare);
+    const planTickets = Math.round(arenaPlanTickets * zoneShare);
+
     return {
       zone,
       label: zone,
-      tickets: countTickets(zoneTxs),
-      revenue: sumAmount(zoneTxs),
+      tickets,
+      revenue,
+      planRevenue,
+      planTickets,
+      fulfillmentPct: planFulfillmentPct(revenue, planRevenue),
     };
-  }).filter((row) => row.tickets > 0);
+  }).filter((row) => row.tickets > 0 || row.planRevenue > 0);
 }
 
 export function computeOrderSourceSales(
@@ -1376,17 +1528,27 @@ export function computeOrderSourceSales(
   ticketFilters: TicketFilters,
 ): OrderSourceSalesPoint[] {
   const txs = filterTicketTransactions(filters, ticketFilters);
+  const planTotals = getMatchLevelPlanTotals(filters, ticketFilters);
 
   const rows = ORDER_SOURCES.map((source) => {
     const sourceTxs = txs.filter((tx) => tx.orderSource === source);
+    const revenue = sumAmount(sourceTxs);
+    const tickets = countTickets(sourceTxs);
+    const sourceShare = ORDER_SOURCE_PLAN_SHARE[source];
+    const planRevenue = Math.round(planTotals.revenue * sourceShare);
+    const planTickets = Math.round(planTotals.tickets * sourceShare);
+
     return {
       source,
       label: ORDER_SOURCE_LABELS[source],
-      tickets: countTickets(sourceTxs),
-      revenue: sumAmount(sourceTxs),
+      tickets,
+      revenue,
       share: 0,
+      planRevenue,
+      planTickets,
+      fulfillmentPct: planFulfillmentPct(revenue, planRevenue),
     };
-  }).filter((row) => row.tickets > 0 || row.revenue > 0);
+  }).filter((row) => row.tickets > 0 || row.revenue > 0 || row.planRevenue > 0);
 
   const totalRevenue = rows.reduce((sum, row) => sum + row.revenue, 0);
   return rows.map((row) => ({
@@ -1395,22 +1557,11 @@ export function computeOrderSourceSales(
   }));
 }
 
-function getMerchTransactionsBySalesChannel(
-  merchFilters: MerchFilters,
-): Transaction[] {
-  const cutoff = getTicketsSeasonCutoff(merchFilters.season);
-
-  return transactions.filter((tx) => {
-    if (tx.date < cutoff || tx.date > endOfDay(MOCK_TODAY)) return false;
-    if (tx.stream !== "merch") return false;
-    return passesMerchSalesChannels(tx, merchFilters.salesChannels);
-  });
-}
-
 export function computeMerchSalesChannelRevenue(
+  filters: DashboardFilters,
   merchFilters: MerchFilters,
 ): MerchSalesChannelPoint[] {
-  const txs = getMerchTransactionsBySalesChannel(merchFilters);
+  const txs = getFilteredMerchTransactions(filters, merchFilters);
   const revenueByPoint = new Map<MerchSalesPoint, number>();
 
   for (const point of ALL_MERCH_SALES_POINTS) {
@@ -1430,6 +1581,52 @@ export function computeMerchSalesChannelRevenue(
     channel: MERCH_SALES_POINT_LABELS[point],
     channelKey: point,
     value: Math.max(0, revenueByPoint.get(point) ?? 0),
+    share: 0,
+  }))
+    .filter((item) => item.value > 0)
+    .sort((a, b) => b.value - a.value);
+
+  const total = rows.reduce((sum, row) => sum + row.value, 0);
+  return rows.map((row) => ({
+    ...row,
+    share: total > 0 ? (row.value / total) * 100 : 0,
+  }));
+}
+
+export function computeMerchProductCategoryRevenue(
+  filters: DashboardFilters,
+  merchFilters: MerchFilters,
+): MerchProductCategoryPoint[] {
+  const txs = getFilteredMerchTransactions(filters, merchFilters);
+  const revenueByCategory = new Map<
+    MerchProductCategory,
+    { value: number; units: number }
+  >();
+
+  for (const category of ALL_MERCH_PRODUCT_CATEGORIES) {
+    revenueByCategory.set(category, { value: 0, units: 0 });
+  }
+
+  for (const tx of txs) {
+    const category = getMerchProductCategory(tx);
+    if (!category) continue;
+
+    const existing = revenueByCategory.get(category) ?? { value: 0, units: 0 };
+    if (tx.isReturn) {
+      existing.value -= tx.amount;
+      existing.units -= tx.quantity;
+    } else {
+      existing.value += tx.amount;
+      existing.units += tx.quantity;
+    }
+    revenueByCategory.set(category, existing);
+  }
+
+  const rows = ALL_MERCH_PRODUCT_CATEGORIES.map((categoryKey) => ({
+    category: MERCH_PRODUCT_CATEGORY_LABELS[categoryKey],
+    categoryKey,
+    value: Math.max(0, revenueByCategory.get(categoryKey)?.value ?? 0),
+    units: Math.max(0, revenueByCategory.get(categoryKey)?.units ?? 0),
     share: 0,
   }))
     .filter((item) => item.value > 0)

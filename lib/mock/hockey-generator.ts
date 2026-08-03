@@ -3,6 +3,8 @@ import type {
   ArenaId,
   League,
   Match,
+  MatchClass,
+  MerchProductCategory,
   MerchSalesPoint,
   OrderSource,
   PriceZone,
@@ -69,7 +71,7 @@ const OPPONENTS = [
   "Сибирь",
   "Амур",
   "Сочи",
-  "Torpedo",
+  "Торпедо",
   "Шанхай",
 ];
 
@@ -112,6 +114,8 @@ function getKhlTournamentStage(index: number): Match["tournamentStage"] {
   if (index >= 9 && index <= 12) return "playoff";
   return "regular";
 }
+
+const DERBY_OPPONENTS = new Set(["СКА", "ЦСКА", "Спартак", "Динамо М"]);
 
 const CURRENT_SEASON_SCHEDULES: LeagueSchedule[] = [
   {
@@ -272,6 +276,7 @@ function generateOffMatchMerchSales(
         amount,
         quantity: qty,
         merchSalesPoint: channel.point,
+        productCategory: item.category,
         costAmount,
       });
     }
@@ -284,27 +289,32 @@ function pickMerchQuantity(): number {
   return rand() < 0.34 ? 1 : 2;
 }
 
-const MERCH_ITEMS: { desc: string; price: number; weight: number }[] = [
-  { desc: "Футболка домашняя", price: 3500, weight: 14 },
-  { desc: "Футболка гостевая", price: 3500, weight: 12 },
-  { desc: "Шарф клубный", price: 1500, weight: 18 },
-  { desc: "Кепка с логотипом", price: 2200, weight: 11 },
-  { desc: "Хоккейная клюшка mini", price: 2800, weight: 5 },
-  { desc: "Детская форма", price: 4000, weight: 9 },
-  { desc: "Термокружка", price: 1200, weight: 13 },
-  { desc: "Свитшот с капюшоном", price: 5500, weight: 10 },
-  { desc: "Джерси игровое", price: 8500, weight: 6 },
-  { desc: "Шапка зимняя", price: 1800, weight: 12 },
-  { desc: "Брелок клубный", price: 450, weight: 8 },
-  { desc: "Значок клубный", price: 350, weight: 7 },
-  { desc: "Носки хоккейные", price: 900, weight: 10 },
-  { desc: "Рюкзак клубный", price: 4200, weight: 7 },
-  { desc: "Плед с эмблемой", price: 3200, weight: 6 },
-  { desc: "Кружка керамическая", price: 800, weight: 9 },
-  { desc: "Автошторка", price: 1100, weight: 5 },
-  { desc: "Варежки детские", price: 1400, weight: 8 },
-  { desc: "Футболка поло", price: 3800, weight: 8 },
-  { desc: "Шорты тренировочные", price: 2600, weight: 6 },
+const MERCH_ITEMS: {
+  desc: string;
+  price: number;
+  weight: number;
+  category: MerchProductCategory;
+}[] = [
+  { desc: "Футболка домашняя", price: 3500, weight: 14, category: "jerseys" },
+  { desc: "Футболка гостевая", price: 3500, weight: 12, category: "jerseys" },
+  { desc: "Шарф клубный", price: 1500, weight: 18, category: "scarves" },
+  { desc: "Кепка с логотипом", price: 2200, weight: 11, category: "caps" },
+  { desc: "Хоккейная клюшка mini", price: 2800, weight: 5, category: "equipment" },
+  { desc: "Детская форма", price: 4000, weight: 9, category: "jerseys" },
+  { desc: "Термокружка", price: 1200, weight: 13, category: "drinkware" },
+  { desc: "Свитшот с капюшоном", price: 5500, weight: 10, category: "apparel" },
+  { desc: "Джерси игровое", price: 8500, weight: 6, category: "jerseys" },
+  { desc: "Шапка зимняя", price: 1800, weight: 12, category: "caps" },
+  { desc: "Брелок клубный", price: 450, weight: 8, category: "souvenirs" },
+  { desc: "Значок клубный", price: 350, weight: 7, category: "souvenirs" },
+  { desc: "Носки хоккейные", price: 900, weight: 10, category: "equipment" },
+  { desc: "Рюкзак клубный", price: 4200, weight: 7, category: "accessories" },
+  { desc: "Плед с эмблемой", price: 3200, weight: 6, category: "accessories" },
+  { desc: "Кружка керамическая", price: 800, weight: 9, category: "drinkware" },
+  { desc: "Автошторка", price: 1100, weight: 5, category: "accessories" },
+  { desc: "Варежки детские", price: 1400, weight: 8, category: "apparel" },
+  { desc: "Футболка поло", price: 3800, weight: 8, category: "jerseys" },
+  { desc: "Шорты тренировочные", price: 2600, weight: 6, category: "equipment" },
 ];
 
 function pickMerchItem(): (typeof MERCH_ITEMS)[number] {
@@ -330,6 +340,18 @@ function seededRandom(seed: number): () => number {
 }
 
 const rand = seededRandom(42);
+
+function getMatchClass(
+  opponent: string,
+  tournamentStage: Match["tournamentStage"],
+  league: League,
+): MatchClass {
+  if (DERBY_OPPONENTS.has(opponent)) return "derby";
+  if (tournamentStage === "playoff" || opponent === "Шанхай") return "special";
+  if (league === "KHL" && rand() < 0.12) return "special";
+  if (league !== "KHL" && rand() < 0.08) return "special";
+  return "regular";
+}
 
 function randomInt(min: number, max: number): number {
   return Math.floor(rand() * (max - min + 1)) + min;
@@ -361,6 +383,8 @@ function buildSeasonMatches({
         ? Math.round(schedule.capacity * fillFactor)
         : 0;
 
+      const tournamentStage = schedule.getTournamentStage(i, matchCount);
+
       seasonMatches.push({
         id: `match-${nextId++}`,
         date,
@@ -370,7 +394,8 @@ function buildSeasonMatches({
         eventCompleted,
         season,
         league: schedule.league,
-        tournamentStage: schedule.getTournamentStage(i, matchCount),
+        tournamentStage,
+        matchClass: getMatchClass(opponent, tournamentStage, schedule.league),
         arena: schedule.arena,
       });
     }
@@ -432,7 +457,7 @@ const TICKET_PLAN_FILL_RATE = 0.82;
 const TICKET_PLAN_AVG_PRICE = 1750;
 
 const HIGH_DEMAND_OPPONENTS = new Set(["Ак Барс", "Локомотив", "Трактор"]);
-const LOW_DEMAND_OPPONENTS = new Set(["Сочи", "Torpedo"]);
+const LOW_DEMAND_OPPONENTS = new Set(["Сочи", "Торпедо"]);
 
 function getOpponentSalesFactor(opponent: string): number {
   if (HIGH_DEMAND_OPPONENTS.has(opponent)) {
@@ -691,6 +716,7 @@ function generateTransactions(allMatches: Match[]): Transaction[] {
         amount,
         quantity: qty,
         merchSalesPoint,
+        productCategory: item.category,
         costAmount,
       });
 
@@ -707,6 +733,7 @@ function generateTransactions(allMatches: Match[]): Transaction[] {
           amount: returnAmount,
           quantity: returnQty,
           merchSalesPoint,
+          productCategory: item.category,
           isReturn: true,
         });
       }

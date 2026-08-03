@@ -13,6 +13,7 @@ import {
   computeChannelMix,
   computeMatchSalesTable,
   computeMerchMatchSalesTable,
+  computeMerchProductCategoryRevenue,
   computeMerchSalesChannelRevenue,
   computeMerchSkuSalesTable,
   computeMerchTotals,
@@ -33,6 +34,7 @@ import {
   computeWeeklyTrend,
   filterMatchesByMerchFilters,
   filterMatchesByTicketFilters,
+  getOnlineStoreOrderDates,
   getTabTransactions,
   runWithFilterCache,
   type MerchTotals,
@@ -94,12 +96,14 @@ type FilterContextValue = {
   orderSourceSales: ReturnType<typeof computeOrderSourceSales>;
   merchMatchSales: ReturnType<typeof computeMerchMatchSalesTable>;
   merchSalesChannelRevenue: ReturnType<typeof computeMerchSalesChannelRevenue>;
+  merchProductCategoryRevenue: ReturnType<typeof computeMerchProductCategoryRevenue>;
   merchSkuSales: ReturnType<typeof computeMerchSkuSalesTable>;
   merchTotals: ReturnType<typeof computeMerchTotals>;
   merchTransactions: ReturnType<typeof getTabTransactions>;
   availableMatches: typeof matches;
   ticketMatchOptions: ReturnType<typeof buildMatchFilterOptions>;
   merchMatchOptions: ReturnType<typeof buildMatchFilterOptions>;
+  onlineStoreOrderDates: ReadonlySet<string>;
 };
 
 const defaultFilters: DashboardFilters = {
@@ -222,6 +226,9 @@ export function FilterProvider({ children }: { children: ReactNode }) {
       const merchMatchOptions = buildMatchFilterOptions(
         filterMatchesByMerchFilters({ ...merchFilters, matchId: "all" }),
       );
+      const onlineStoreOrderDates = new Set(
+        getOnlineStoreOrderDates(filters, merchFilters),
+      );
 
       const shared = {
         filters,
@@ -244,6 +251,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
         availableMatches,
         ticketMatchOptions,
         merchMatchOptions,
+        onlineStoreOrderDates,
       };
 
       if (activeTab === "tickets") {
@@ -272,6 +280,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
           orderSourceSales: computeOrderSourceSales(filters, ticketFilters),
           merchMatchSales: [],
           merchSalesChannelRevenue: [],
+          merchProductCategoryRevenue: [],
           merchSkuSales: [],
           merchTotals: EMPTY_MERCH_TOTALS,
           merchTransactions: [],
@@ -300,7 +309,14 @@ export function FilterProvider({ children }: { children: ReactNode }) {
           priceZoneSales: [],
           orderSourceSales: [],
           merchMatchSales: computeMerchMatchSalesTable(filters, merchFilters),
-          merchSalesChannelRevenue: computeMerchSalesChannelRevenue(merchFilters),
+          merchSalesChannelRevenue: computeMerchSalesChannelRevenue(
+            filters,
+            merchFilters,
+          ),
+          merchProductCategoryRevenue: computeMerchProductCategoryRevenue(
+            filters,
+            merchFilters,
+          ),
           merchSkuSales: computeMerchSkuSalesTable(filters, merchFilters),
           merchTotals: computeMerchTotals(filters, merchFilters),
           merchTransactions: getTabTransactions(filters, "merch", merchFilters),
@@ -335,6 +351,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
         orderSourceSales: [],
         merchMatchSales: [],
         merchSalesChannelRevenue: [],
+        merchProductCategoryRevenue: [],
         merchSkuSales: [],
         merchTotals: EMPTY_MERCH_TOTALS,
         merchTransactions: [],

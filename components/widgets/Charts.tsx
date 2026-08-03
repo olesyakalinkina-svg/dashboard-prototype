@@ -20,11 +20,13 @@ import { useMemo } from "react";
 import clsx from "clsx";
 import { Card, CardContent } from "@/components/ui/Card";
 import { InlineBarCell } from "@/components/ui/InlineBarCell";
-import { formatCurrency, formatNumber } from "@/lib/format";
+import { formatCurrency, formatNumber, formatPercent } from "@/lib/format";
 import { ChartWidget } from "@/components/widgets/ChartWidget";
 import type {
   ChannelMixPoint,
   MerchSalesChannelPoint,
+  MerchProductCategory,
+  MerchProductCategoryPoint,
   MerchSalesPoint,
   OrderSource,
   OrderSourceSalesPoint,
@@ -60,6 +62,17 @@ const MERCH_CHANNEL_COLORS: Record<MerchSalesPoint, string> = {
   mall_raduga: "#FF7043",
   mall_continent: "#FFB300",
   online_store: "#7B61FF",
+};
+
+const MERCH_CATEGORY_COLORS: Record<MerchProductCategory, string> = {
+  jerseys: "#5282FF",
+  scarves: "#00BFA5",
+  caps: "#26A69A",
+  souvenirs: "#FF7043",
+  drinkware: "#FFB300",
+  equipment: "#7B61FF",
+  apparel: "#EC407A",
+  accessories: "#8D6E63",
 };
 
 const TICKET_TYPE_COLORS: Record<TicketType, string> = {
@@ -250,10 +263,14 @@ export function SectorPieChart({ data }: { data: SectorPoint[] }) {
 export function getMerchChartsRowHeight(
   topProducts: TopProductPoint[],
   channels: MerchSalesChannelPoint[],
+  categories?: MerchProductCategoryPoint[],
 ): number {
   const topProductsHeight = Math.max(300, topProducts.length * 36 + 48);
   const channelsHeight = Math.max(300, channels.length * 48 + 72);
-  return Math.max(topProductsHeight, channelsHeight);
+  const categoriesHeight = categories
+    ? Math.max(300, categories.length * 48 + 72)
+    : 0;
+  return Math.max(topProductsHeight, channelsHeight, categoriesHeight);
 }
 
 export function MerchSalesChannelsChart({
@@ -348,6 +365,111 @@ export function MerchSalesChannelsChart({
                 />
                 <span className="relative z-10 flex h-full items-center px-2 text-xs font-medium tabular-nums text-[var(--foreground)]">
                   {formatCurrency(item.value)}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </ChartWidget>
+  );
+}
+
+export function MerchProductCategoriesChart({
+  data,
+  className,
+  height,
+  fillHeight = false,
+}: {
+  data: MerchProductCategoryPoint[];
+  className?: string;
+  height?: number;
+  fillHeight?: boolean;
+}) {
+  const total = useMemo(
+    () => data.reduce((sum, item) => sum + item.value, 0),
+    [data],
+  );
+  const chartHeight = height ?? Math.max(300, data.length * 48 + 72);
+
+  if (data.length === 0) {
+    return (
+      <ChartWidget
+        title="Выручка по товарным категориям"
+        height={chartHeight}
+        className={className}
+        fillHeight={fillHeight}
+      >
+        <div className="flex h-full items-center justify-center text-sm text-[var(--muted)]">
+          Нет данных по выбранным фильтрам
+        </div>
+      </ChartWidget>
+    );
+  }
+
+  return (
+    <ChartWidget
+      title="Выручка по товарным категориям"
+      height={chartHeight}
+      className={className}
+      fillHeight={fillHeight}
+    >
+      <div className="flex h-full flex-col gap-5 lg:flex-row">
+        <div className="h-[220px] min-w-0 flex-1 lg:h-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={data}
+                dataKey="value"
+                nameKey="category"
+                cx="50%"
+                cy="50%"
+                innerRadius={54}
+                outerRadius={92}
+                paddingAngle={2}
+              >
+                {data.map((item) => (
+                  <Cell
+                    key={item.categoryKey}
+                    fill={MERCH_CATEGORY_COLORS[item.categoryKey]}
+                  />
+                ))}
+              </Pie>
+              <Tooltip formatter={(value: number) => formatCurrency(value)} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col justify-center gap-3">
+          {data.map((item) => (
+            <div key={item.categoryKey} className="space-y-1">
+              <div className="flex items-center justify-between gap-3 text-xs">
+                <span className="inline-flex items-center gap-2 font-medium text-[var(--foreground)]">
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{
+                      backgroundColor: MERCH_CATEGORY_COLORS[item.categoryKey],
+                    }}
+                  />
+                  <span className="truncate">{item.category}</span>
+                </span>
+                <span className="whitespace-nowrap text-[var(--muted)]">
+                  {item.share.toFixed(1)}%
+                </span>
+              </div>
+              <div className="relative h-6 overflow-hidden rounded-sm bg-[#f0f0f2]">
+                <div
+                  className="absolute left-0 top-0 h-full rounded-sm"
+                  style={{
+                    width: `${total > 0 ? (item.value / total) * 100 : 0}%`,
+                    minWidth: item.value > 0 ? "2.75rem" : undefined,
+                    backgroundColor: MERCH_CATEGORY_COLORS[item.categoryKey],
+                  }}
+                />
+                <span className="relative z-10 flex h-full items-center justify-between gap-2 px-2 text-xs font-medium tabular-nums text-[var(--foreground)]">
+                  <span>{formatCurrency(item.value)}</span>
+                  <span className="text-[var(--muted)]">
+                    {formatNumber(item.units)} шт.
+                  </span>
                 </span>
               </div>
             </div>
@@ -518,6 +640,51 @@ function TicketBreakdownEmpty({ message }: { message: string }) {
   );
 }
 
+export function getTicketsBreakdownRowHeight(): number {
+  const pieChartHeight = 260;
+  const priceZoneHeight = Math.max(260, 14 * 28 + 48);
+  return Math.max(pieChartHeight * 2 + 16, priceZoneHeight);
+}
+
+function BreakdownPieTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: {
+    payload: TicketTypeSalesPoint | OrderSourceSalesPoint;
+  }[];
+}) {
+  if (!active || !payload?.length) return null;
+  const item = payload[0].payload;
+  return (
+    <div className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-xs shadow-sm">
+      <p className="mb-1 font-medium text-[var(--foreground)]">{item.label}</p>
+      <p className="text-[var(--foreground)]">
+        Выручка: {formatCurrency(item.revenue)}
+      </p>
+      <p className="text-[var(--muted)]">
+        План: {formatCurrency(item.planRevenue)}
+      </p>
+      <p className="text-[var(--muted)]">
+        Билеты: {formatNumber(item.tickets)} / {formatNumber(item.planTickets)} шт
+      </p>
+      <p
+        className={clsx(
+          "font-medium",
+          item.fulfillmentPct >= 100
+            ? "text-emerald-600"
+            : item.fulfillmentPct >= 85
+              ? "text-[var(--foreground)]"
+              : "text-amber-600",
+        )}
+      >
+        Выполнение: {formatPercent(item.fulfillmentPct)}
+      </p>
+    </div>
+  );
+}
+
 export function TicketTypeSalesChart({
   data,
   compact = true,
@@ -527,24 +694,38 @@ export function TicketTypeSalesChart({
   compact?: boolean;
   refreshKey?: string;
 }) {
+  const sorted = useMemo(
+    () => [...data].sort((a, b) => b.revenue - a.revenue),
+    [data],
+  );
   const chartHeight = compact ? 260 : 280;
 
-  if (data.length === 0) {
+  if (sorted.length === 0) {
     return (
-      <ChartWidget title="Тип билета" height={chartHeight} compact={compact} refreshKey={refreshKey}>
+      <ChartWidget
+        title="Тип билета"
+        height={chartHeight}
+        compact={compact}
+        refreshKey={refreshKey}
+      >
         <TicketBreakdownEmpty message="Нет данных по типам билетов" />
       </ChartWidget>
     );
   }
 
   return (
-    <ChartWidget title="Тип билета" height={chartHeight} compact={compact} refreshKey={refreshKey}>
+    <ChartWidget
+      title="Тип билета"
+      height={chartHeight}
+      compact={compact}
+      refreshKey={refreshKey}
+    >
       <div className="flex h-full flex-col gap-4 sm:flex-row">
         <div className="h-[180px] min-w-0 flex-1 sm:h-full">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
-                data={data}
+                data={sorted}
                 dataKey="revenue"
                 nameKey="label"
                 cx="50%"
@@ -553,16 +734,16 @@ export function TicketTypeSalesChart({
                 outerRadius={78}
                 paddingAngle={2}
               >
-                {data.map((item) => (
+                {sorted.map((item) => (
                   <Cell key={item.type} fill={TICKET_TYPE_COLORS[item.type]} />
                 ))}
               </Pie>
-              <Tooltip formatter={(value: number) => formatCurrency(value)} />
+              <Tooltip content={<BreakdownPieTooltip />} />
             </PieChart>
           </ResponsiveContainer>
         </div>
         <div className="flex min-w-0 flex-1 flex-col justify-center gap-2.5">
-          {data.map((item) => (
+          {sorted.map((item) => (
             <div key={item.type} className="space-y-1">
               <div className="flex items-center justify-between gap-2 text-xs">
                 <span className="inline-flex items-center gap-2 font-medium text-[var(--foreground)]">
@@ -589,6 +770,18 @@ export function TicketTypeSalesChart({
                   {formatCurrency(item.revenue)} · {formatNumber(item.tickets)} шт
                 </span>
               </div>
+              <span
+                className={clsx(
+                  "block text-[10px] tabular-nums",
+                  item.fulfillmentPct >= 100
+                    ? "text-emerald-600"
+                    : item.fulfillmentPct >= 85
+                      ? "text-[var(--muted)]"
+                      : "text-amber-600",
+                )}
+              >
+                {formatPercent(item.fulfillmentPct)} плана
+              </span>
             </div>
           ))}
         </div>
@@ -674,24 +867,38 @@ export function OrderSourceSalesChart({
   compact?: boolean;
   refreshKey?: string;
 }) {
+  const sorted = useMemo(
+    () => [...data].sort((a, b) => b.revenue - a.revenue),
+    [data],
+  );
   const chartHeight = compact ? 260 : 280;
 
-  if (data.length === 0) {
+  if (sorted.length === 0) {
     return (
-      <ChartWidget title="Источник заказа" height={chartHeight} compact={compact} refreshKey={refreshKey}>
+      <ChartWidget
+        title="Источник заказа"
+        height={chartHeight}
+        compact={compact}
+        refreshKey={refreshKey}
+      >
         <TicketBreakdownEmpty message="Нет данных по источникам заказа" />
       </ChartWidget>
     );
   }
 
   return (
-    <ChartWidget title="Источник заказа" height={chartHeight} compact={compact} refreshKey={refreshKey}>
+    <ChartWidget
+      title="Источник заказа"
+      height={chartHeight}
+      compact={compact}
+      refreshKey={refreshKey}
+    >
       <div className="flex h-full flex-col gap-4 sm:flex-row">
         <div className="h-[180px] min-w-0 flex-1 sm:h-full">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
-                data={data}
+                data={sorted}
                 dataKey="revenue"
                 nameKey="label"
                 cx="50%"
@@ -700,19 +907,19 @@ export function OrderSourceSalesChart({
                 outerRadius={78}
                 paddingAngle={2}
               >
-                {data.map((item) => (
+                {sorted.map((item) => (
                   <Cell
                     key={item.source}
                     fill={ORDER_SOURCE_COLORS[item.source]}
                   />
                 ))}
               </Pie>
-              <Tooltip formatter={(value: number) => formatCurrency(value)} />
+              <Tooltip content={<BreakdownPieTooltip />} />
             </PieChart>
           </ResponsiveContainer>
         </div>
         <div className="flex min-w-0 flex-1 flex-col justify-center gap-2.5">
-          {data.map((item) => (
+          {sorted.map((item) => (
             <div key={item.source} className="space-y-1">
               <div className="flex items-center justify-between gap-2 text-xs">
                 <span className="inline-flex items-center gap-2 font-medium text-[var(--foreground)]">
@@ -741,6 +948,18 @@ export function OrderSourceSalesChart({
                   {formatCurrency(item.revenue)} · {formatNumber(item.tickets)} шт
                 </span>
               </div>
+              <span
+                className={clsx(
+                  "block text-[10px] tabular-nums",
+                  item.fulfillmentPct >= 100
+                    ? "text-emerald-600"
+                    : item.fulfillmentPct >= 85
+                      ? "text-[var(--muted)]"
+                      : "text-amber-600",
+                )}
+              >
+                {formatPercent(item.fulfillmentPct)} плана
+              </span>
             </div>
           ))}
         </div>

@@ -27,7 +27,7 @@ INSERT INTO opponent (id, name) VALUES
     (11, 'Сибирь'),
     (12, 'Амур'),
     (13, 'Сочи'),
-    (14, 'Torpedo'),
+    (14, 'Торпедо'),
     (15, 'Шанхай');
 
 INSERT INTO revenue_stream (id, code, name) VALUES

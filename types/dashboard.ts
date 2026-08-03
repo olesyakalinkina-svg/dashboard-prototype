@@ -12,8 +12,19 @@ export type MerchSalesPoint =
   | "mall_continent"
   | "online_store";
 
+export type MerchProductCategory =
+  | "jerseys"
+  | "scarves"
+  | "caps"
+  | "souvenirs"
+  | "drinkware"
+  | "equipment"
+  | "apparel"
+  | "accessories";
+
 export type League = "KHL" | "VHL" | "MHL";
 export type TournamentStage = "regular" | "playoff";
+export type MatchClass = "regular" | "derby" | "special";
 export type ArenaId = "main" | "secondary";
 export type TicketType = "parking" | "arena";
 export type PriceZone =
@@ -50,6 +61,7 @@ export type Transaction = {
   priceZone?: PriceZone;
   orderSource?: OrderSource;
   merchSalesPoint?: MerchSalesPoint;
+  productCategory?: MerchProductCategory;
   isReturn?: boolean;
   costAmount?: number;
 };
@@ -95,6 +107,7 @@ export type Match = {
   season: string;
   league: League;
   tournamentStage: TournamentStage;
+  matchClass: MatchClass;
   arena: ArenaId;
   eventCompleted: boolean;
 };
@@ -124,6 +137,7 @@ export type TicketFilters = {
   season: string | "all";
   league: League | "all";
   tournamentStage: TournamentStage | "all";
+  matchClass: MatchClass | "all";
   arena: ArenaId | "all";
   eventCompleted: "all" | "yes" | "no";
   matchId: string | "all";
@@ -133,12 +147,21 @@ export type TicketFilters = {
   timeGrouping: TimeGrouping;
 };
 
+/** ISO date (yyyy-MM-dd) range for online_store order filtering */
+export type MerchOrderDateRange = {
+  from: string | null;
+  to: string | null;
+};
+
 export type MerchFilters = {
   season: string | "all";
   league: League | "all";
   tournamentStage: TournamentStage | "all";
+  matchClass: MatchClass | "all";
   matchId: string | "all";
   salesChannels: MerchSalesPoint[];
+  /** Order date window for online_store transactions only */
+  orderDateRange: MerchOrderDateRange;
   timeGrouping: TimeGrouping;
 };
 
@@ -237,6 +260,14 @@ export type MerchSalesChannelPoint = {
   share: number;
 };
 
+export type MerchProductCategoryPoint = {
+  category: string;
+  categoryKey: MerchProductCategory;
+  value: number;
+  units: number;
+  share: number;
+};
+
 export type TicketsKpiData = {
   revenue: number;
   revenueChange: number;
@@ -309,7 +340,13 @@ export type SectorPoint = {
   value: number;
 };
 
-export type TicketTypeSalesPoint = {
+export type TicketBreakdownPlanFact = {
+  planRevenue: number;
+  planTickets: number;
+  fulfillmentPct: number;
+};
+
+export type TicketTypeSalesPoint = TicketBreakdownPlanFact & {
   type: TicketType;
   label: string;
   tickets: number;
@@ -317,14 +354,14 @@ export type TicketTypeSalesPoint = {
   share: number;
 };
 
-export type PriceZoneSalesPoint = {
+export type PriceZoneSalesPoint = TicketBreakdownPlanFact & {
   zone: PriceZone;
   label: string;
   tickets: number;
   revenue: number;
 };
 
-export type OrderSourceSalesPoint = {
+export type OrderSourceSalesPoint = TicketBreakdownPlanFact & {
   source: OrderSource;
   label: string;
   tickets: number;

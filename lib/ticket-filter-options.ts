@@ -4,6 +4,7 @@ import type {
   ArenaId,
   League,
   Match,
+  MatchClass,
   OrderSource,
   PriceZone,
   TicketFilters,
@@ -33,6 +34,7 @@ export const DEFAULT_TICKET_FILTERS: TicketFilters = {
   season: "2025/26",
   league: "all",
   tournamentStage: "all",
+  matchClass: "all",
   arena: "all",
   eventCompleted: "all",
   matchId: "all",
@@ -77,6 +79,13 @@ export const TOURNAMENT_STAGE_OPTIONS: {
   { value: "all", label: "Все этапы" },
   { value: "regular", label: "Регулярный чемпионат" },
   { value: "playoff", label: "Плей-офф" },
+];
+
+export const MATCH_CLASS_OPTIONS: { value: MatchClass | "all"; label: string }[] = [
+  { value: "all", label: "Все классы" },
+  { value: "regular", label: "Обычный" },
+  { value: "derby", label: "Дерби" },
+  { value: "special", label: "Спецматч" },
 ];
 
 export const ARENA_OPTIONS: { value: ArenaId | "all"; label: string }[] = [

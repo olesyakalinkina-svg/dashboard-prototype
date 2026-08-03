@@ -7,6 +7,7 @@ import {
   ARENA_OPTIONS,
   EVENT_COMPLETED_OPTIONS,
   LEAGUE_OPTIONS,
+  MATCH_CLASS_OPTIONS,
   ORDER_SOURCE_OPTIONS,
   PRICE_ZONE_OPTIONS,
   SEASON_OPTIONS,
@@ -16,6 +17,7 @@ import {
 } from "@/lib/ticket-filter-options";
 import type {
   League,
+  MatchClass,
   OrderSource,
   PriceZone,
   TicketFilters,
@@ -91,6 +93,21 @@ export function TicketsFilterBar() {
           className="sm:min-w-[160px]"
         >
           {TOURNAMENT_STAGE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </Select>
+
+        <Select
+          label="Класс матча"
+          value={ticketFilters.matchClass}
+          onChange={(e) =>
+            update("matchClass", e.target.value as MatchClass | "all")
+          }
+          className="sm:min-w-[160px]"
+        >
+          {MATCH_CLASS_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
             </option>

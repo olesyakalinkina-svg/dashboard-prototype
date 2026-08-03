@@ -2,6 +2,7 @@
 
 import { useFilters } from "@/context/FilterContext";
 import { Button } from "@/components/ui/Button";
+import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { MultiSelect } from "@/components/ui/MultiSelect";
 import { Select } from "@/components/ui/Select";
 import {
@@ -23,6 +24,7 @@ export function MerchFilterBar() {
   const {
     merchFilters,
     merchMatchOptions,
+    onlineStoreOrderDates,
     setMerchFilters,
     resetMerchFilters,
   } = useFilters();
@@ -30,6 +32,8 @@ export function MerchFilterBar() {
   function update<K extends keyof MerchFilters>(key: K, value: MerchFilters[K]) {
     setMerchFilters({ [key]: value });
   }
+
+  const showOrderDateFilter = merchFilters.salesChannels.includes("online_store");
 
   return (
     <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-white px-4 py-3 shadow-sm sm:px-6 sm:py-4">
@@ -95,6 +99,16 @@ export function MerchFilterBar() {
           }
           className="sm:min-w-[220px]"
         />
+
+        {showOrderDateFilter && (
+          <DateRangePicker
+            label="Дата заказа"
+            value={merchFilters.orderDateRange}
+            onChange={(orderDateRange) => update("orderDateRange", orderDateRange)}
+            availableDates={onlineStoreOrderDates}
+            className="sm:min-w-[220px]"
+          />
+        )}
 
         <Select
           label="Группировка"
