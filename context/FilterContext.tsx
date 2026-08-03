@@ -115,6 +115,7 @@ const EMPTY_TICKETS_KPIS: TicketsKpiData = {
   loyaltyDiscountChange: 0,
   fillRate: 0,
   planCompletionPct: 0,
+  ticketFiltersExcludedFromPlanKpis: false,
   revenueToday: 0,
   ticketsToday: 0,
   revenueSparkline: [],

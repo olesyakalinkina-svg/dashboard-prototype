@@ -532,6 +532,23 @@ function avgTicketPrice(txs: Transaction[]): number {
   return tickets > 0 ? sumAmount(txs) / tickets : 0;
 }
 
+export function hasTicketSpecificFilters(ticketFilters: TicketFilters): boolean {
+  return (
+    ticketFilters.ticketType !== "all" ||
+    ticketFilters.priceZone !== "all" ||
+    ticketFilters.orderSource !== "all"
+  );
+}
+
+function matchLevelTicketFilters(ticketFilters: TicketFilters): TicketFilters {
+  return {
+    ...ticketFilters,
+    ticketType: "all",
+    priceZone: "all",
+    orderSource: "all",
+  };
+}
+
 function passesTicketFilters(
   tx: Transaction,
   ticketFilters: TicketFilters,
@@ -663,14 +680,19 @@ export function computeTicketsKpis(
   const loyaltyDiscountPct =
     grossRevenue > 0 ? (loyaltyDiscount / grossRevenue) * 100 : 0;
 
-  const eligibleCapacity = sumEligibleTicketCapacity(ticketFilters);
-  const ticketsIssued = countArenaTicketsIssued(current);
+  const ticketFiltersExcludedFromPlanKpis = hasTicketSpecificFilters(ticketFilters);
+  const matchLevelFilters = matchLevelTicketFilters(ticketFilters);
+  const planFactTxs = filterTicketTransactions(filters, matchLevelFilters);
+
+  const eligibleCapacity = sumEligibleTicketCapacity(matchLevelFilters);
+  const ticketsIssued = countArenaTicketsIssued(planFactTxs);
   const rawFillRate =
     eligibleCapacity > 0 ? (ticketsIssued / eligibleCapacity) * 100 : 0;
 
-  const planRevenue = sumTicketPlanRevenue(filters, ticketFilters);
+  const planRevenue = sumTicketPlanRevenue(filters, matchLevelFilters);
+  const planFactRevenue = sumAmount(planFactTxs);
   const planCompletionPct =
-    planRevenue > 0 ? (revenue / planRevenue) * 100 : 0;
+    planRevenue > 0 ? (planFactRevenue / planRevenue) * 100 : 0;
   const fillRate = linkFillRateToPlanCompletion(rawFillRate, planCompletionPct);
 
   return {
@@ -685,6 +707,7 @@ export function computeTicketsKpis(
     loyaltyDiscountChange: pctChange(loyaltyDiscount, prevLoyaltyDiscount),
     fillRate,
     planCompletionPct,
+    ticketFiltersExcludedFromPlanKpis,
     revenueToday: sumAmount(todayTxs),
     ticketsToday: countTickets(todayTxs),
     revenueSparkline: buildSparkline(

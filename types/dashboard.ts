@@ -249,6 +249,8 @@ export type TicketsKpiData = {
   loyaltyDiscountChange: number;
   fillRate: number;
   planCompletionPct: number;
+  /** True when ticket-type/zone/source filters are active; plan KPIs ignore them */
+  ticketFiltersExcludedFromPlanKpis: boolean;
   revenueToday: number;
   ticketsToday: number;
   revenueSparkline: number[];
