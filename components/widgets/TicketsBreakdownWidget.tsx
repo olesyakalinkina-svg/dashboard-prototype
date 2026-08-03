@@ -25,10 +25,16 @@ export function TicketsBreakdownWidget({
   refreshKey,
 }: TicketsBreakdownWidgetProps) {
   return (
-    <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-3">
-      <TicketTypeSalesChart data={ticketTypeSales} refreshKey={refreshKey} />
-      <PriceZoneSalesChart data={priceZoneSales} refreshKey={refreshKey} />
-      <OrderSourceSalesChart data={orderSourceSales} refreshKey={refreshKey} />
+    <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-[1fr_1.4fr]">
+      <div className="flex min-w-0 flex-col gap-4">
+        <TicketTypeSalesChart data={ticketTypeSales} refreshKey={refreshKey} />
+        <OrderSourceSalesChart data={orderSourceSales} refreshKey={refreshKey} />
+      </div>
+      <PriceZoneSalesChart
+        data={priceZoneSales}
+        refreshKey={refreshKey}
+        fillHeight
+      />
     </div>
   );
 }

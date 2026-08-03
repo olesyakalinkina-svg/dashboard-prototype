@@ -7,13 +7,13 @@ export function InlineBarCell({
   value,
   max,
   formatted,
-  barClassName,
+  barClassName = "",
   barStyle,
 }: {
   value: number;
   max: number;
   formatted: string;
-  barClassName: string;
+  barClassName?: string;
   barStyle?: CSSProperties;
 }) {
   const widthPct = max > 0 ? Math.min(100, (value / max) * 100) : 0;

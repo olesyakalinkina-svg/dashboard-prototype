@@ -33,10 +33,12 @@ const TicketsBreakdownWidget = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-3">
-        <ChartSkeleton height={260} />
-        <ChartSkeleton height={260} />
-        <ChartSkeleton height={260} />
+      <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[1fr_1.4fr]">
+        <div className="flex flex-col gap-4">
+          <ChartSkeleton height={260} />
+          <ChartSkeleton height={260} />
+        </div>
+        <ChartSkeleton height={560} />
       </div>
     ),
   },

@@ -73,22 +73,7 @@ const ORDER_SOURCE_COLORS: Record<OrderSource, string> = {
   yandex_afisha: "#FF7043",
 };
 
-const PRICE_ZONE_COLORS = [
-  "#5282FF",
-  "#00BFA5",
-  "#FF7043",
-  "#FFB300",
-  "#7B61FF",
-  "#26A69A",
-  "#E53935",
-  "#8E24AA",
-  "#3949AB",
-  "#00897B",
-  "#F4511E",
-  "#6D4C41",
-  "#546E7A",
-  "#C0CA33",
-];
+const PRICE_ZONE_BAR_GRADIENT = `linear-gradient(to right, #93c5fd, ${COLORS.primary})`;
 
 function ChartTooltip({
   active,
@@ -616,10 +601,12 @@ export function PriceZoneSalesChart({
   data,
   compact = true,
   refreshKey,
+  fillHeight = false,
 }: {
   data: PriceZoneSalesPoint[];
   compact?: boolean;
   refreshKey?: string;
+  fillHeight?: boolean;
 }) {
   const sorted = useMemo(
     () => [...data].sort((a, b) => b.tickets - a.tickets),
@@ -634,16 +621,28 @@ export function PriceZoneSalesChart({
 
   if (sorted.length === 0) {
     return (
-      <ChartWidget title="Ценовая зона" height={chartHeight} compact={compact} refreshKey={refreshKey}>
+      <ChartWidget
+        title="Ценовая зона"
+        height={chartHeight}
+        compact={compact}
+        fillHeight={fillHeight}
+        refreshKey={refreshKey}
+      >
         <TicketBreakdownEmpty message="Нет данных по ценовым зонам" />
       </ChartWidget>
     );
   }
 
   return (
-    <ChartWidget title="Ценовая зона" height={chartHeight} compact={compact} refreshKey={refreshKey}>
+    <ChartWidget
+      title="Ценовая зона"
+      height={chartHeight}
+      compact={compact}
+      fillHeight={fillHeight}
+      refreshKey={refreshKey}
+    >
       <div className="flex h-full flex-col justify-center gap-1.5 overflow-y-auto py-1">
-        {sorted.map((item, index) => (
+        {sorted.map((item) => (
           <div key={item.zone} className="flex items-center gap-2">
             <span
               className="w-8 shrink-0 text-xs font-medium text-[var(--foreground)]"
@@ -656,11 +655,7 @@ export function PriceZoneSalesChart({
                 value={item.tickets}
                 max={maxTickets}
                 formatted={`${formatNumber(item.tickets)} шт · ${formatCurrency(item.revenue)}`}
-                barClassName=""
-                barStyle={{
-                  backgroundColor:
-                    PRICE_ZONE_COLORS[index % PRICE_ZONE_COLORS.length],
-                }}
+                barStyle={{ background: PRICE_ZONE_BAR_GRADIENT }}
               />
             </div>
           </div>
