@@ -14,13 +14,13 @@ export function DashboardTabs() {
   const { activeTab, setActiveTab } = useFilters();
 
   return (
-    <div className="flex gap-1 border-b border-[var(--border)] bg-white px-6">
+    <div className="flex gap-1 border-b border-[var(--border)] bg-white px-4 sm:px-6">
       {TABS.map((tab) => (
         <button
           key={tab.id}
           onClick={() => setActiveTab(tab.id)}
           className={clsx(
-            "relative px-4 py-3 text-sm font-medium transition-colors",
+            "relative flex-1 px-3 py-3 text-center text-sm font-medium transition-colors sm:flex-none sm:px-4",
             activeTab === tab.id
               ? "text-[var(--accent)]"
               : "text-[var(--muted)] hover:text-[var(--foreground)]",

@@ -365,8 +365,8 @@ export function ChannelMixChart({
           <YAxis
             type="category"
             dataKey="channel"
-            width={compact ? 80 : 100}
-            tick={{ fontSize: compact ? 10 : 11, fill: "#8B8B8E" }}
+            width={compact ? 64 : 80}
+            tick={{ fontSize: compact ? 9 : 10, fill: "#8B8B8E" }}
           />
           <Tooltip formatter={(value: number) => formatCurrency(value)} />
           <Bar dataKey="value" name="Выручка" fill={COLORS.secondary} radius={[0, 4, 4, 0]} />
@@ -407,8 +407,8 @@ export function TopProductsChart({
           <YAxis
             type="category"
             dataKey="name"
-            width={130}
-            tick={{ fontSize: 10, fill: "#8B8B8E" }}
+            width={90}
+            tick={{ fontSize: 9, fill: "#8B8B8E" }}
           />
           <Tooltip formatter={(value: number) => formatCurrency(value)} />
           <Bar dataKey="revenue" name="Выручка" fill={COLORS.secondary} radius={[0, 4, 4, 0]} />
@@ -465,7 +465,7 @@ export function SubscriptionPlansChart({
             <span
               className={clsx(
                 "shrink-0 truncate font-medium text-[var(--foreground)]",
-                compact ? "w-[110px] text-[11px]" : "w-[140px] text-xs",
+                compact ? "w-[88px] text-[10px]" : "w-[110px] text-xs sm:w-[140px]",
               )}
               title={item.plan}
             >

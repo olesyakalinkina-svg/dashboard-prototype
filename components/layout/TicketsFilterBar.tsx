@@ -38,7 +38,7 @@ function FilterGroup({
       <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
         {title}
       </p>
-      <div className="flex flex-wrap items-end gap-3">{children}</div>
+      <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end">{children}</div>
     </div>
   );
 }
@@ -56,7 +56,7 @@ export function TicketsFilterBar() {
   }
 
   return (
-    <div className="sticky top-0 z-10 space-y-4 border-b border-[var(--border)] bg-white px-6 py-4 shadow-sm">
+    <div className="sticky top-0 z-10 space-y-3 border-b border-[var(--border)] bg-white px-4 py-3 shadow-sm sm:space-y-4 sm:px-6 sm:py-4">
       <FilterGroup title="Фильтры матчей">
         <Select
           label="Сезон"
@@ -88,7 +88,7 @@ export function TicketsFilterBar() {
           onChange={(e) =>
             update("tournamentStage", e.target.value as TournamentStage | "all")
           }
-          className="min-w-[160px]"
+          className="sm:min-w-[160px]"
         >
           {TOURNAMENT_STAGE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -101,7 +101,7 @@ export function TicketsFilterBar() {
           label="Арена"
           value={ticketFilters.arena}
           onChange={(e) => update("arena", e.target.value as ArenaId | "all")}
-          className="min-w-[180px]"
+          className="sm:min-w-[180px]"
         >
           {ARENA_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -128,7 +128,7 @@ export function TicketsFilterBar() {
           label="Матч"
           value={ticketFilters.matchId}
           onChange={(e) => update("matchId", e.target.value)}
-          className="min-w-[220px]"
+          className="sm:min-w-[220px]"
         >
           {ticketMatchOptions.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -167,7 +167,7 @@ export function TicketsFilterBar() {
           label="Источник заказа"
           value={ticketFilters.orderSource}
           onChange={(e) => update("orderSource", e.target.value as OrderSource | "all")}
-          className="min-w-[180px]"
+          className="sm:min-w-[180px]"
         >
           {ORDER_SOURCE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -188,7 +188,7 @@ export function TicketsFilterBar() {
           ))}
         </Select>
 
-        <Button variant="ghost" onClick={resetTicketFilters} className="mb-0.5">
+        <Button variant="ghost" onClick={resetTicketFilters} className="mb-0.5 w-full sm:w-auto">
           Сбросить
         </Button>
       </FilterGroup>

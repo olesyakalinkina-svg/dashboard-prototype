@@ -512,16 +512,16 @@ export function TicketsSalesWidget({
 
   return (
     <Card className="min-w-0">
-      <CardHeader>
+      <CardHeader className="w-full sm:w-auto">
         <CardTitle>График</CardTitle>
-        <div className="flex rounded-md border border-[var(--border)] bg-[var(--background)] p-0.5">
+        <div className="flex w-full rounded-md border border-[var(--border)] bg-[var(--background)] p-0.5 sm:w-auto">
           {SALES_TABS.map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
               className={clsx(
-                "rounded px-3 py-1.5 text-xs font-medium transition-colors",
+                "flex-1 rounded px-3 py-1.5 text-xs font-medium transition-colors sm:flex-none",
                 activeTab === tab.id
                   ? "bg-white text-[var(--accent)] shadow-sm"
                   : "text-[var(--muted)] hover:text-[var(--foreground)]",

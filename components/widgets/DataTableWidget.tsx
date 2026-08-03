@@ -87,7 +87,7 @@ function DataTable<T>({
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
             placeholder={searchPlaceholder}
-            className="h-8 w-48 rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)]"
+            className="h-8 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] sm:w-48"
           />
         </div>
       </CardHeader>
@@ -132,7 +132,7 @@ function DataTable<T>({
             ))}
           </tbody>
         </table>
-        <div className="mt-3 flex items-center justify-between text-xs text-[var(--muted)]">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted)]">
           <span>
             {table.getFilteredRowModel().rows.length} записей
           </span>
@@ -279,7 +279,7 @@ export function MatchSalesTable({
         value={globalFilter}
         onChange={(e) => setGlobalFilter(e.target.value)}
         placeholder="Поиск по мероприятию..."
-        className="h-8 w-48 rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)]"
+        className="h-8 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] sm:w-48"
       />
     </div>
   );
@@ -329,7 +329,7 @@ export function MatchSalesTable({
           ))}
         </tbody>
       </table>
-      <div className="mt-3 flex items-center justify-between text-xs text-[var(--muted)]">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted)]">
         <span>{table.getFilteredRowModel().rows.length} мероприятий</span>
         <div className="flex gap-2">
           <button
@@ -427,7 +427,7 @@ function MerchSalesTable<T>({
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
             placeholder={searchPlaceholder}
-            className="h-8 w-48 rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)]"
+            className="h-8 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] sm:w-48"
           />
         </div>
       </CardHeader>
@@ -473,7 +473,7 @@ function MerchSalesTable<T>({
             {summary}
           </tbody>
         </table>
-        <div className="mt-auto flex items-center justify-between pt-3 text-xs text-[var(--muted)]">
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-3 text-xs text-[var(--muted)]">
           <span>
             {filteredRows.length} {countLabel}
           </span>

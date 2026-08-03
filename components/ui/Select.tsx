@@ -7,7 +7,7 @@ type SelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
 
 export function Select({ label, className, children, ...props }: SelectProps) {
   return (
-    <label className="flex flex-col gap-1">
+    <label className="flex w-full min-w-0 flex-col gap-1 sm:w-auto">
       {label && (
         <span className="text-xs text-[var(--muted)]">{label}</span>
       )}

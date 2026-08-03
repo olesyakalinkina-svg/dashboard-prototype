@@ -1,9 +1,9 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import clsx from "clsx";
-import { Line, LineChart, ResponsiveContainer } from "recharts";
-import { MerchRevenueTrendChart } from "@/components/widgets/Charts";
 import { Card, CardContent } from "@/components/ui/Card";
+import { ChartSkeleton } from "@/components/ui/ChartSkeleton";
 import { formatCurrency, formatNumber, formatPercent, formatPercentSigned } from "@/lib/format";
 import type {
   DashboardTab,
@@ -13,6 +13,22 @@ import type {
   TimeGrouping,
   WeeklyPoint,
 } from "@/types/dashboard";
+
+const LazyMerchRevenueTrendChart = dynamic(
+  () =>
+    import("@/components/widgets/Charts").then((mod) => ({
+      default: mod.MerchRevenueTrendChart,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <ChartSkeleton
+        height={120}
+        className="col-span-full sm:col-span-2 xl:col-span-1"
+      />
+    ),
+  },
+);
 
 type KpiCardProps = {
   title: string;
@@ -24,41 +40,16 @@ type KpiCardProps = {
   hideTrend?: boolean;
 };
 
-function SparklineChart({ data }: { data: { i: number; v: number }[] }) {
-  if (data.length === 0) return null;
-
-  return (
-    <div className="h-8 w-24 shrink-0">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart
-          data={data}
-          margin={{ top: 2, right: 2, bottom: 2, left: 2 }}
-        >
-          <Line
-            type="monotone"
-            dataKey="v"
-            stroke="var(--accent)"
-            strokeWidth={1.5}
-            dot={false}
-          />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
 export function KpiCard({
   title,
   value,
   subtitle,
   change = 0,
-  sparkline = [],
   positiveIsGood = true,
   hideTrend = false,
 }: KpiCardProps) {
   const isPositive = change >= 0;
   const isGood = positiveIsGood ? isPositive : !isPositive;
-  const chartData = sparkline.map((v, i) => ({ i, v }));
 
   return (
     <Card className="min-w-0">
@@ -80,7 +71,6 @@ export function KpiCard({
             >
               {formatPercentSigned(change)} к пред. периоду
             </span>
-            <SparklineChart data={chartData} />
           </div>
         )}
       </CardContent>
@@ -180,7 +170,7 @@ export function TabKpiCards({
         hideTrend
       />
       {merchWeeklyTrend && (
-        <MerchRevenueTrendChart
+        <LazyMerchRevenueTrendChart
           data={merchWeeklyTrend}
           timeGrouping={merchTimeGrouping}
           className="col-span-full sm:col-span-2 xl:col-span-1"

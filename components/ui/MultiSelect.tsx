@@ -61,12 +61,12 @@ export function MultiSelect({
   }
 
   return (
-    <div ref={rootRef} className={clsx("relative flex flex-col gap-1", className)}>
+    <div ref={rootRef} className={clsx("relative flex w-full min-w-0 flex-col gap-1 sm:w-auto", className)}>
       {label && <span className="text-xs text-[var(--muted)]">{label}</span>}
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="flex h-9 min-w-[200px] items-center justify-between gap-2 rounded-md border border-[var(--border)] bg-white px-3 text-left text-sm text-[var(--foreground)] outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)]"
+        className="flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-[var(--border)] bg-white px-3 text-left text-sm text-[var(--foreground)] outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] sm:min-w-[200px]"
       >
         <span className="truncate">{displayText}</span>
         <ChevronDown

@@ -57,6 +57,58 @@ import type {
   WeeklyPoint,
 } from "@/types/dashboard";
 
+type FilterPassCache = {
+  ticket: Map<string, Transaction[]>;
+  merch: Map<string, Transaction[]>;
+};
+
+let filterPassCache: FilterPassCache | null = null;
+
+export function runWithFilterCache<T>(fn: () => T): T {
+  filterPassCache = { ticket: new Map(), merch: new Map() };
+  try {
+    return fn();
+  } finally {
+    filterPassCache = null;
+  }
+}
+
+function ticketFilterCacheKey(
+  filters: DashboardFilters,
+  ticketFilters: TicketFilters,
+): string {
+  return [
+    filters.dateRange,
+    filters.matchId,
+    ticketFilters.season,
+    ticketFilters.league,
+    ticketFilters.tournamentStage,
+    ticketFilters.arena,
+    ticketFilters.eventCompleted,
+    ticketFilters.matchId,
+    ticketFilters.ticketType,
+    ticketFilters.priceZone,
+    ticketFilters.orderSource,
+  ].join("|");
+}
+
+function merchFilterCacheKey(
+  filters: DashboardFilters,
+  merchFilters: MerchFilters,
+  useSeasonRange: boolean,
+): string {
+  return [
+    useSeasonRange,
+    filters.dateRange,
+    filters.matchId,
+    merchFilters.season,
+    merchFilters.league,
+    merchFilters.tournamentStage,
+    merchFilters.matchId,
+    merchFilters.salesChannels.join(","),
+  ].join("|");
+}
+
 function getDateCutoff(days: number): Date {
   return startOfDay(subDays(MOCK_TODAY, days));
 }
@@ -270,6 +322,22 @@ export function filterMerchTransactions(
   options?: { useSeasonRange?: boolean },
 ): Transaction[] {
   const useSeasonRange = options?.useSeasonRange ?? false;
+  if (filterPassCache) {
+    const key = merchFilterCacheKey(filters, merchFilters, useSeasonRange);
+    const cached = filterPassCache.merch.get(key);
+    if (cached) return cached;
+    const result = filterMerchTransactionsImpl(filters, merchFilters, useSeasonRange);
+    filterPassCache.merch.set(key, result);
+    return result;
+  }
+  return filterMerchTransactionsImpl(filters, merchFilters, useSeasonRange);
+}
+
+function filterMerchTransactionsImpl(
+  filters: DashboardFilters,
+  merchFilters: MerchFilters,
+  useSeasonRange: boolean,
+): Transaction[] {
   const cutoff = useSeasonRange
     ? getTicketsSeasonCutoff(merchFilters.season)
     : getDateCutoff(filters.dateRange);
@@ -336,6 +404,21 @@ function isTicketTransactionAllowed(
 }
 
 export function filterTicketTransactions(
+  filters: DashboardFilters,
+  ticketFilters: TicketFilters,
+): Transaction[] {
+  if (filterPassCache) {
+    const key = ticketFilterCacheKey(filters, ticketFilters);
+    const cached = filterPassCache.ticket.get(key);
+    if (cached) return cached;
+    const result = filterTicketTransactionsImpl(filters, ticketFilters);
+    filterPassCache.ticket.set(key, result);
+    return result;
+  }
+  return filterTicketTransactionsImpl(filters, ticketFilters);
+}
+
+function filterTicketTransactionsImpl(
   filters: DashboardFilters,
   ticketFilters: TicketFilters,
 ): Transaction[] {

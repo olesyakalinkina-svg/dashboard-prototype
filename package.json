@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "db:generate": "node database/generate-seed.mjs",
+    "mock:generate": "npx tsx scripts/generate-mock-json.ts",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "db:reset": "powershell -ExecutionPolicy Bypass -File database/reset.ps1",

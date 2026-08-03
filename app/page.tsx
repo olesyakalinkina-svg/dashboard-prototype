@@ -1,24 +1,84 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { FilterProvider, useFilters } from "@/context/FilterContext";
 import { DashboardHeader } from "@/components/layout/DashboardHeader";
 import { DashboardTabs } from "@/components/layout/DashboardTabs";
 import { FilterBar } from "@/components/layout/FilterBar";
 import { TabKpiCards } from "@/components/widgets/KpiCard";
-import {
-  ChannelMixChart,
-  getMerchChartsRowHeight,
-  MerchSalesChannelsChart,
-  SubscriptionPlansChart,
-  TopProductsChart,
-} from "@/components/widgets/Charts";
-import { SubscriptionsSalesWidget } from "@/components/widgets/SubscriptionsSalesWidget";
+import { getMerchChartsRowHeight } from "@/components/widgets/Charts";
+import { ChartSkeleton } from "@/components/ui/ChartSkeleton";
 import {
   MerchMatchSalesTable,
   MerchSkuSalesTable,
   MatchSalesTable,
 } from "@/components/widgets/DataTableWidget";
-import { TicketsSalesWidget } from "@/components/widgets/TicketsSalesWidget";
+
+const TicketsSalesWidget = dynamic(
+  () =>
+    import("@/components/widgets/TicketsSalesWidget").then((mod) => ({
+      default: mod.TicketsSalesWidget,
+    })),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton height={420} />,
+  },
+);
+
+const SubscriptionsSalesWidget = dynamic(
+  () =>
+    import("@/components/widgets/SubscriptionsSalesWidget").then((mod) => ({
+      default: mod.SubscriptionsSalesWidget,
+    })),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton height={360} />,
+  },
+);
+
+const SubscriptionPlansChart = dynamic(
+  () =>
+    import("@/components/widgets/Charts").then((mod) => ({
+      default: mod.SubscriptionPlansChart,
+    })),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton height={180} />,
+  },
+);
+
+const ChannelMixChart = dynamic(
+  () =>
+    import("@/components/widgets/Charts").then((mod) => ({
+      default: mod.ChannelMixChart,
+    })),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton height={180} />,
+  },
+);
+
+const MerchSalesChannelsChart = dynamic(
+  () =>
+    import("@/components/widgets/Charts").then((mod) => ({
+      default: mod.MerchSalesChannelsChart,
+    })),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton height={320} />,
+  },
+);
+
+const TopProductsChart = dynamic(
+  () =>
+    import("@/components/widgets/Charts").then((mod) => ({
+      default: mod.TopProductsChart,
+    })),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton height={320} />,
+  },
+);
 
 function DashboardContent() {
   const {
@@ -52,7 +112,7 @@ function DashboardContent() {
       <DashboardTabs />
       <FilterBar />
 
-      <main className="min-w-0 space-y-6 p-6">
+      <main className="min-w-0 space-y-4 p-4 sm:space-y-6 sm:p-6">
         <TabKpiCards
           tab={activeTab}
           ticketsKpis={ticketsKpis}

@@ -31,6 +31,8 @@ import {
   filterMatchesByMerchFilters,
   filterMatchesByTicketFilters,
   getTabTransactions,
+  runWithFilterCache,
+  type MerchTotals,
 } from "@/lib/filters";
 import {
   buildMatchFilterOptions,
@@ -44,8 +46,11 @@ import type {
   DashboardTab,
   DateRangePreset,
   MerchFilters,
+  MerchKpiData,
   SubscriptionFilters,
+  SubscriptionsKpiData,
   TicketFilters,
+  TicketsKpiData,
 } from "@/types/dashboard";
 
 type FilterContextValue = {
@@ -96,6 +101,53 @@ const defaultFilters: DashboardFilters = {
   stream: "all",
   matchId: "all",
   promotionId: "all",
+};
+
+const EMPTY_TICKETS_KPIS: TicketsKpiData = {
+  revenue: 0,
+  revenueChange: 0,
+  ticketsSold: 0,
+  ticketsChange: 0,
+  avgPrice: 0,
+  avgPriceChange: 0,
+  loyaltyDiscount: 0,
+  loyaltyDiscountPct: 0,
+  loyaltyDiscountChange: 0,
+  fillRate: 0,
+  planCompletionPct: 0,
+  revenueToday: 0,
+  ticketsToday: 0,
+  revenueSparkline: [],
+  ticketsSparkline: [],
+};
+
+const EMPTY_MERCH_KPIS: MerchKpiData = {
+  revenue: 0,
+  avgCheck: 0,
+  upt: 0,
+  receipts: 0,
+  returnsPct: 0,
+  marginPct: 0,
+};
+
+const EMPTY_SUBSCRIPTIONS_KPIS: SubscriptionsKpiData = {
+  revenue: 0,
+  revenueChange: 0,
+  sold: 0,
+  soldChange: 0,
+  avgUtilization: 0,
+  activeCount: 0,
+  revenueSparkline: [],
+  soldSparkline: [],
+};
+
+const EMPTY_MERCH_TOTALS: MerchTotals = {
+  revenue: 0,
+  receipts: 0,
+  units: 0,
+  cost: 0,
+  returnsValue: 0,
+  grossSales: 0,
 };
 
 const FilterContext = createContext<FilterContextValue | null>(null);
@@ -155,87 +207,124 @@ export function FilterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<FilterContextValue>(() => {
-    const cutoff = subDays(MOCK_TODAY, filters.dateRange);
-    const availableMatches = matches.filter((m) => m.date >= cutoff);
-    const ticketMatchOptions = buildMatchFilterOptions(
-      filterMatchesByTicketFilters({ ...ticketFilters, matchId: "all" }),
-    );
-    const merchMatchOptions = buildMatchFilterOptions(
-      filterMatchesByMerchFilters({ ...merchFilters, matchId: "all" }),
-    );
+    return runWithFilterCache(() => {
+      const cutoff = subDays(MOCK_TODAY, filters.dateRange);
+      const availableMatches = matches.filter((m) => m.date >= cutoff);
+      const ticketMatchOptions = buildMatchFilterOptions(
+        filterMatchesByTicketFilters({ ...ticketFilters, matchId: "all" }),
+      );
+      const merchMatchOptions = buildMatchFilterOptions(
+        filterMatchesByMerchFilters({ ...merchFilters, matchId: "all" }),
+      );
 
-    const matchTab = activeTab === "merch" ? "merch" : "tickets";
-    const merchTabFilters = activeTab === "merch" ? merchFilters : undefined;
-    const ticketsTabFilters = activeTab === "tickets" ? ticketFilters : undefined;
-    const subscriptionsTabFilters =
-      activeTab === "subscriptions" ? subscriptionFilters : undefined;
-
-    return {
-      filters,
-      ticketFilters,
-      merchFilters,
-      subscriptionFilters,
-      activeTab,
-      lastUpdated,
-      setDateRange,
-      setMatchId,
-      setTicketFilters,
-      setMerchFilters,
-      setSubscriptionFilters,
-      setActiveTab,
-      resetFilters,
-      resetTicketFilters,
-      resetMerchFilters,
-      resetSubscriptionFilters,
-      refresh,
-      ticketsKpis: computeTicketsKpis(filters, ticketFilters),
-      merchKpis: computeMerchKpis(filters, merchFilters),
-      subscriptionsKpis: computeSubscriptionsKpis(filters, subscriptionFilters),
-      weeklyTrend: computeWeeklyTrend(
-        filters,
-        activeTab,
-        subscriptionsTabFilters ?? merchTabFilters ?? ticketsTabFilters,
-      ),
-      ticketsTrend: computeTicketsTrend(filters, ticketFilters),
-      ticketsPlanFactTrend: computeTicketsPlanFactTrend(filters, ticketFilters),
-      ticketsMatchCumulativeSeries: computeTicketsMatchCumulativeSeries(
+      const shared = {
         filters,
         ticketFilters,
-      ),
-      subscriptionsPlanFactTrend: computeSubscriptionsPlanFactTrend(
-        filters,
+        merchFilters,
         subscriptionFilters,
-      ),
-      matchRevenue:
-        activeTab === "subscriptions"
-          ? []
-          : computeMatchRevenueForTab(
-              filters,
-              matchTab,
-              merchTabFilters ?? ticketsTabFilters,
-            ),
-      sectorSales: computeSectorSales(filters, ticketFilters),
-      channelMix: computeChannelMix(
-        filters,
         activeTab,
-        subscriptionsTabFilters ?? merchTabFilters ?? ticketsTabFilters,
-      ),
-      topProducts: computeTopProducts(filters, merchFilters),
-      subscriptionTariffStats: computeSubscriptionTariffStats(
-        filters,
-        subscriptionFilters,
-      ),
-      ticketTransactions: getTabTransactions(filters, "tickets", ticketFilters),
-      matchSales: computeMatchSalesTable(filters, ticketFilters),
-      merchMatchSales: computeMerchMatchSalesTable(filters, merchFilters),
-      merchSalesChannelRevenue: computeMerchSalesChannelRevenue(merchFilters),
-      merchSkuSales: computeMerchSkuSalesTable(filters, merchFilters),
-      merchTotals: computeMerchTotals(filters, merchFilters),
-      merchTransactions: getTabTransactions(filters, "merch", merchFilters),
-      availableMatches,
-      ticketMatchOptions,
-      merchMatchOptions,
-    };
+        lastUpdated,
+        setDateRange,
+        setMatchId,
+        setTicketFilters,
+        setMerchFilters,
+        setSubscriptionFilters,
+        setActiveTab,
+        resetFilters,
+        resetTicketFilters,
+        resetMerchFilters,
+        resetSubscriptionFilters,
+        refresh,
+        availableMatches,
+        ticketMatchOptions,
+        merchMatchOptions,
+      };
+
+      if (activeTab === "tickets") {
+        return {
+          ...shared,
+          ticketsKpis: computeTicketsKpis(filters, ticketFilters),
+          merchKpis: EMPTY_MERCH_KPIS,
+          subscriptionsKpis: EMPTY_SUBSCRIPTIONS_KPIS,
+          weeklyTrend: [],
+          ticketsTrend: computeTicketsTrend(filters, ticketFilters),
+          ticketsPlanFactTrend: computeTicketsPlanFactTrend(filters, ticketFilters),
+          ticketsMatchCumulativeSeries: computeTicketsMatchCumulativeSeries(
+            filters,
+            ticketFilters,
+          ),
+          subscriptionsPlanFactTrend: [],
+          matchRevenue: computeMatchRevenueForTab(filters, "tickets", ticketFilters),
+          sectorSales: computeSectorSales(filters, ticketFilters),
+          channelMix: computeChannelMix(filters, "tickets", ticketFilters),
+          topProducts: [],
+          subscriptionTariffStats: [],
+          ticketTransactions: getTabTransactions(filters, "tickets", ticketFilters),
+          matchSales: computeMatchSalesTable(filters, ticketFilters),
+          merchMatchSales: [],
+          merchSalesChannelRevenue: [],
+          merchSkuSales: [],
+          merchTotals: EMPTY_MERCH_TOTALS,
+          merchTransactions: [],
+        };
+      }
+
+      if (activeTab === "merch") {
+        return {
+          ...shared,
+          ticketsKpis: EMPTY_TICKETS_KPIS,
+          merchKpis: computeMerchKpis(filters, merchFilters),
+          subscriptionsKpis: EMPTY_SUBSCRIPTIONS_KPIS,
+          weeklyTrend: computeWeeklyTrend(filters, "merch", merchFilters),
+          ticketsTrend: [],
+          ticketsPlanFactTrend: [],
+          ticketsMatchCumulativeSeries: [],
+          subscriptionsPlanFactTrend: [],
+          matchRevenue: computeMatchRevenueForTab(filters, "merch", merchFilters),
+          sectorSales: [],
+          channelMix: computeChannelMix(filters, "merch", merchFilters),
+          topProducts: computeTopProducts(filters, merchFilters),
+          subscriptionTariffStats: [],
+          ticketTransactions: [],
+          matchSales: [],
+          merchMatchSales: computeMerchMatchSalesTable(filters, merchFilters),
+          merchSalesChannelRevenue: computeMerchSalesChannelRevenue(merchFilters),
+          merchSkuSales: computeMerchSkuSalesTable(filters, merchFilters),
+          merchTotals: computeMerchTotals(filters, merchFilters),
+          merchTransactions: getTabTransactions(filters, "merch", merchFilters),
+        };
+      }
+
+      return {
+        ...shared,
+        ticketsKpis: EMPTY_TICKETS_KPIS,
+        merchKpis: EMPTY_MERCH_KPIS,
+        subscriptionsKpis: computeSubscriptionsKpis(filters, subscriptionFilters),
+        weeklyTrend: computeWeeklyTrend(filters, "subscriptions", subscriptionFilters),
+        ticketsTrend: [],
+        ticketsPlanFactTrend: [],
+        ticketsMatchCumulativeSeries: [],
+        subscriptionsPlanFactTrend: computeSubscriptionsPlanFactTrend(
+          filters,
+          subscriptionFilters,
+        ),
+        matchRevenue: [],
+        sectorSales: [],
+        channelMix: computeChannelMix(filters, "subscriptions", subscriptionFilters),
+        topProducts: [],
+        subscriptionTariffStats: computeSubscriptionTariffStats(
+          filters,
+          subscriptionFilters,
+        ),
+        ticketTransactions: [],
+        matchSales: [],
+        merchMatchSales: [],
+        merchSalesChannelRevenue: [],
+        merchSkuSales: [],
+        merchTotals: EMPTY_MERCH_TOTALS,
+        merchTransactions: [],
+      };
+    });
   }, [
     filters,
     ticketFilters,

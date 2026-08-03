@@ -27,7 +27,7 @@ export function CardHeader({
   className?: string;
 }) {
   return (
-    <div className={clsx("flex items-center justify-between px-4 py-3", className)}>
+    <div className={clsx("flex flex-wrap items-center justify-between gap-2 px-3 py-3 sm:gap-3 sm:px-4", className)}>
       {children}
     </div>
   );
@@ -35,7 +35,7 @@ export function CardHeader({
 
 export function CardTitle({ children }: { children: ReactNode }) {
   return (
-    <h3 className="text-sm font-semibold text-[var(--foreground)]">{children}</h3>
+    <h3 className="min-w-0 truncate text-sm font-semibold text-[var(--foreground)]">{children}</h3>
   );
 }
 
@@ -46,5 +46,5 @@ export function CardContent({
   children: ReactNode;
   className?: string;
 }) {
-  return <div className={clsx("px-4 pb-4", className)}>{children}</div>;
+  return <div className={clsx("px-3 pb-3 sm:px-4 sm:pb-4", className)}>{children}</div>;
 }

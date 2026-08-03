@@ -60,7 +60,7 @@ export function SubscriptionsSalesWidget({
         <CardTitle>Динамика продаж абонементов</CardTitle>
       </CardHeader>
       <CardContent>
-        <div style={{ height: 380 }} key={refreshKey}>
+        <div className="h-[280px] sm:h-[380px]" key={refreshKey}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#E5E5E7" />

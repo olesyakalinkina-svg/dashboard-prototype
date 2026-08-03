@@ -30,7 +30,7 @@ export const ALL_PRICE_ZONES: PriceZone[] = [
 ];
 
 export const DEFAULT_TICKET_FILTERS: TicketFilters = {
-  season: "all",
+  season: "2025/26",
   league: "all",
   tournamentStage: "all",
   arena: "all",

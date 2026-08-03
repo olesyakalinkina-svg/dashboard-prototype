@@ -32,8 +32,8 @@ export function MerchFilterBar() {
   }
 
   return (
-    <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-white px-6 py-4 shadow-sm">
-      <div className="flex flex-wrap items-end gap-3">
+    <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-white px-4 py-3 shadow-sm sm:px-6 sm:py-4">
+      <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end">
         <Select
           label="Сезон"
           value={merchFilters.season}
@@ -64,7 +64,7 @@ export function MerchFilterBar() {
           onChange={(e) =>
             update("tournamentStage", e.target.value as TournamentStage | "all")
           }
-          className="min-w-[160px]"
+          className="sm:min-w-[160px]"
         >
           {TOURNAMENT_STAGE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -77,7 +77,7 @@ export function MerchFilterBar() {
           label="Матч"
           value={merchFilters.matchId}
           onChange={(e) => update("matchId", e.target.value)}
-          className="min-w-[220px]"
+          className="sm:min-w-[220px]"
         >
           {merchMatchOptions.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -93,7 +93,7 @@ export function MerchFilterBar() {
           onChange={(value) =>
             update("salesChannels", value as MerchSalesPoint[])
           }
-          className="min-w-[220px]"
+          className="sm:min-w-[220px]"
         />
 
         <Select
@@ -108,7 +108,7 @@ export function MerchFilterBar() {
           ))}
         </Select>
 
-        <Button variant="ghost" onClick={resetMerchFilters} className="mb-0.5">
+        <Button variant="ghost" onClick={resetMerchFilters} className="mb-0.5 w-full sm:w-auto">
           Сбросить
         </Button>
       </div>

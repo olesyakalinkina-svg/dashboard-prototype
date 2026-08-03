@@ -35,8 +35,8 @@ export function SubscriptionsFilterBar() {
   }
 
   return (
-    <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-white px-6 py-4 shadow-sm">
-      <div className="flex flex-wrap items-end gap-3">
+    <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-white px-4 py-3 shadow-sm sm:px-6 sm:py-4">
+      <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end">
         <Select
           label="Сезон"
           value={subscriptionFilters.season}
@@ -67,7 +67,7 @@ export function SubscriptionsFilterBar() {
           onChange={(e) =>
             update("tournamentStage", e.target.value as TournamentStage | "all")
           }
-          className="min-w-[160px]"
+          className="sm:min-w-[160px]"
         >
           {TOURNAMENT_STAGE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -80,7 +80,7 @@ export function SubscriptionsFilterBar() {
           label="Арена"
           value={subscriptionFilters.arena}
           onChange={(e) => update("arena", e.target.value as ArenaId | "all")}
-          className="min-w-[180px]"
+          className="sm:min-w-[180px]"
         >
           {ARENA_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -115,7 +115,7 @@ export function SubscriptionsFilterBar() {
           ))}
         </Select>
 
-        <Button variant="ghost" onClick={resetSubscriptionFilters} className="mb-0.5">
+        <Button variant="ghost" onClick={resetSubscriptionFilters} className="mb-0.5 w-full sm:w-auto">
           Сбросить
         </Button>
       </div>
