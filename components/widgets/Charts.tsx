@@ -66,11 +66,8 @@ const MERCH_CHANNEL_COLORS: Record<MerchSalesPoint, string> = {
 
 const MERCH_CATEGORY_COLORS: Record<MerchProductCategory, string> = {
   jerseys: "#5282FF",
-  scarves: "#00BFA5",
-  caps: "#26A69A",
   souvenirs: "#FF7043",
   drinkware: "#FFB300",
-  equipment: "#7B61FF",
   apparel: "#EC407A",
   accessories: "#8D6E63",
 };

@@ -31,24 +31,25 @@ export const MERCH_SALES_POINT_OPTIONS = ALL_MERCH_SALES_POINTS.map((value) => (
 
 export const ALL_MERCH_PRODUCT_CATEGORIES: MerchProductCategory[] = [
   "jerseys",
-  "scarves",
-  "caps",
   "souvenirs",
   "drinkware",
-  "equipment",
   "apparel",
   "accessories",
 ];
 
 export const MERCH_PRODUCT_CATEGORY_LABELS: Record<MerchProductCategory, string> = {
   jerseys: "Джерси и форма",
-  scarves: "Шарфы",
-  caps: "Кепки и шапки",
   souvenirs: "Сувениры",
   drinkware: "Посуда",
-  equipment: "Экипировка",
   apparel: "Одежда",
   accessories: "Аксессуары",
+};
+
+/** Maps legacy category keys from older mock data to the current taxonomy. */
+export const LEGACY_MERCH_PRODUCT_CATEGORY_MAP: Record<string, MerchProductCategory> = {
+  equipment: "jerseys",
+  caps: "accessories",
+  scarves: "accessories",
 };
 
 export const MERCH_PRODUCT_CATEGORY_OPTIONS = ALL_MERCH_PRODUCT_CATEGORIES.map(
@@ -62,30 +63,34 @@ export const MERCH_DESCRIPTION_CATEGORY_MAP: Record<string, MerchProductCategory
   {
     "Футболка домашняя": "jerseys",
     "Футболка гостевая": "jerseys",
-    "Шарф клубный": "scarves",
-    "Кепка с логотипом": "caps",
-    "Хоккейная клюшка mini": "equipment",
+    "Шарф клубный": "accessories",
+    "Кепка с логотипом": "accessories",
+    "Хоккейная клюшка mini": "jerseys",
     "Детская форма": "jerseys",
     "Термокружка": "drinkware",
     "Свитшот с капюшоном": "apparel",
     "Джерси игровое": "jerseys",
-    "Шапка зимняя": "caps",
+    "Шапка зимняя": "accessories",
     "Брелок клубный": "souvenirs",
     "Значок клубный": "souvenirs",
-    "Носки хоккейные": "equipment",
+    "Носки хоккейные": "jerseys",
     "Рюкзак клубный": "accessories",
     "Плед с эмблемой": "accessories",
     "Кружка керамическая": "drinkware",
     "Автошторка": "accessories",
     "Варежки детские": "apparel",
     "Футболка поло": "jerseys",
-    "Шорты тренировочные": "equipment",
+    "Шорты тренировочные": "jerseys",
   };
 
 export function getMerchProductCategory(
   tx: Pick<Transaction, "description" | "productCategory">,
 ): MerchProductCategory | null {
-  if (tx.productCategory) return tx.productCategory;
+  if (tx.productCategory) {
+    return (
+      LEGACY_MERCH_PRODUCT_CATEGORY_MAP[tx.productCategory] ?? tx.productCategory
+    );
+  }
   const productName = tx.description.replace(/^Возврат:\s*/, "");
   return MERCH_DESCRIPTION_CATEGORY_MAP[productName] ?? null;
 }

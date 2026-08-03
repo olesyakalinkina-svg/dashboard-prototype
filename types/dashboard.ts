@@ -14,11 +14,8 @@ export type MerchSalesPoint =
 
 export type MerchProductCategory =
   | "jerseys"
-  | "scarves"
-  | "caps"
   | "souvenirs"
   | "drinkware"
-  | "equipment"
   | "apparel"
   | "accessories";
 
