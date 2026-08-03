@@ -24,8 +24,6 @@ type DateRangePickerProps = {
   label?: string;
   value: MerchOrderDateRange;
   onChange: (value: MerchOrderDateRange) => void;
-  /** ISO dates (yyyy-MM-dd) selectable in the calendar; others are disabled */
-  availableDates?: ReadonlySet<string>;
   className?: string;
 };
 
@@ -50,7 +48,6 @@ export function DateRangePicker({
   label,
   value,
   onChange,
-  availableDates,
   className,
 }: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
@@ -99,14 +96,7 @@ export function DateRangePicker({
     return days;
   }, [viewMonth]);
 
-  function isDateAvailable(day: Date): boolean {
-    if (!availableDates) return true;
-    return availableDates.has(toIsoDate(day));
-  }
-
   function handleDayClick(day: Date) {
-    if (!isDateAvailable(day)) return;
-
     const iso = toIsoDate(day);
 
     if (pendingFrom) {
@@ -260,26 +250,19 @@ export function DateRangePicker({
           <div className="grid grid-cols-7 gap-0.5">
             {calendarDays.map((day) => {
               const inCurrentMonth = isSameMonth(day, viewMonth);
-              const available = isDateAvailable(day);
-              const selected = available && isInRange(day);
-              const rangeStart = available && isRangeStart(day);
-              const rangeEnd = available && isRangeEnd(day);
+              const selected = isInRange(day);
+              const rangeStart = isRangeStart(day);
+              const rangeEnd = isRangeEnd(day);
 
               return (
                 <button
                   key={day.toISOString()}
                   type="button"
-                  disabled={!available}
                   onClick={() => handleDayClick(day)}
                   className={clsx(
                     "relative h-8 rounded text-sm transition-colors",
-                    !available &&
-                      "cursor-not-allowed text-[var(--muted)]/35 line-through decoration-[var(--muted)]/35",
-                    available && !inCurrentMonth && "text-[var(--muted)]/60",
-                    available &&
-                      inCurrentMonth &&
-                      !selected &&
-                      "hover:bg-[var(--background)]",
+                    !inCurrentMonth && "text-[var(--muted)]/60",
+                    inCurrentMonth && !selected && "hover:bg-[var(--background)]",
                     selected && "bg-[var(--accent)]/15 text-[var(--foreground)]",
                     (rangeStart || rangeEnd) &&
                       "bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]",

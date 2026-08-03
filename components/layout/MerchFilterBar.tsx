@@ -24,7 +24,6 @@ export function MerchFilterBar() {
   const {
     merchFilters,
     merchMatchOptions,
-    onlineStoreOrderDates,
     setMerchFilters,
     resetMerchFilters,
   } = useFilters();
@@ -105,7 +104,6 @@ export function MerchFilterBar() {
             label="Дата заказа"
             value={merchFilters.orderDateRange}
             onChange={(orderDateRange) => update("orderDateRange", orderDateRange)}
-            availableDates={onlineStoreOrderDates}
             className="sm:min-w-[220px]"
           />
         )}

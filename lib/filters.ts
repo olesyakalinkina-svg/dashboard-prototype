@@ -27,6 +27,7 @@ import {
   ALL_PRICE_ZONES,
   TICKET_TYPE_LABELS,
   TOURNAMENT_STAGE_OPTIONS,
+  getPreviousSeason,
 } from "@/lib/ticket-filter-options";
 import {
   ALL_MERCH_PRODUCT_CATEGORIES,
@@ -61,7 +62,9 @@ import type {
   TicketFilters,
   TicketType,
   TicketTypeSalesPoint,
+  MerchSeasonComparison,
   TicketsKpiData,
+  TicketsSeasonComparison,
   TopProductPoint,
   Transaction,
   PlanFactTrendPoint,
@@ -347,24 +350,6 @@ export function computeMerchTotals(
   merchFilters: MerchFilters,
 ): MerchTotals {
   return aggregateMerchTransactions(getFilteredMerchTransactions(filters, merchFilters));
-}
-
-export function getOnlineStoreOrderDates(
-  filters: DashboardFilters,
-  merchFilters: MerchFilters,
-): string[] {
-  const txs = filterMerchTransactions(
-    filters,
-    { ...merchFilters, orderDateRange: { from: null, to: null } },
-    { useSeasonRange: true },
-  );
-  const dates = new Set<string>();
-  for (const tx of txs) {
-    if (tx.merchSalesPoint === "online_store") {
-      dates.add(format(tx.date, "yyyy-MM-dd"));
-    }
-  }
-  return Array.from(dates).sort();
 }
 
 export function filterMerchTransactions(
@@ -726,14 +711,70 @@ export function computeTicketsKpis(
   const previous = previousPeriodTicketTransactions(filters, ticketFilters);
   const todayTxs = filterTicketTransactionsToday(ticketFilters);
 
-  const revenue = sumAmount(current);
+  const metrics = computeTicketsKpiMetrics(filters, ticketFilters, current);
+
   const prevRevenue = sumAmount(previous);
-  const ticketsSold = countTickets(current);
   const prevTickets = countTickets(previous);
-  const avgPrice = avgTicketPrice(current);
   const prevAvgPrice = avgTicketPrice(previous);
-  const loyaltyDiscount = sumLoyaltyDiscount(current);
   const prevLoyaltyDiscount = sumLoyaltyDiscount(previous);
+
+  const seasonComparison = buildTicketsSeasonComparison(
+    filters,
+    ticketFilters,
+    metrics,
+  );
+
+  return {
+    revenue: metrics.revenue,
+    revenueChange: pctChange(metrics.revenue, prevRevenue),
+    ticketsSold: metrics.ticketsSold,
+    ticketsChange: pctChange(metrics.ticketsSold, prevTickets),
+    avgPrice: metrics.avgPrice,
+    avgPriceChange: pctChange(metrics.avgPrice, prevAvgPrice),
+    loyaltyDiscount: metrics.loyaltyDiscount,
+    loyaltyDiscountPct: metrics.loyaltyDiscountPct,
+    loyaltyDiscountChange: pctChange(metrics.loyaltyDiscount, prevLoyaltyDiscount),
+    fillRate: metrics.fillRate,
+    planCompletionPct: metrics.planCompletionPct,
+    revenueToday: sumAmount(todayTxs),
+    ticketsToday: countTickets(todayTxs),
+    revenueSparkline: buildSparkline(
+      current,
+      filters.dateRange,
+      (tx) => tx.date,
+      sumAmount,
+    ),
+    ticketsSparkline: buildSparkline(
+      current,
+      filters.dateRange,
+      (tx) => tx.date,
+      countTickets,
+    ),
+    seasonComparison,
+  };
+}
+
+type TicketsKpiMetrics = {
+  revenue: number;
+  ticketsSold: number;
+  avgPrice: number;
+  loyaltyDiscount: number;
+  loyaltyDiscountPct: number;
+  fillRate: number;
+  planCompletionPct: number;
+};
+
+function computeTicketsKpiMetrics(
+  filters: DashboardFilters,
+  ticketFilters: TicketFilters,
+  txs?: Transaction[],
+): TicketsKpiMetrics {
+  const current = txs ?? filterTicketTransactions(filters, ticketFilters);
+
+  const revenue = sumAmount(current);
+  const ticketsSold = countTickets(current);
+  const avgPrice = avgTicketPrice(current);
+  const loyaltyDiscount = sumLoyaltyDiscount(current);
   const grossRevenue = revenue + loyaltyDiscount;
   const loyaltyDiscountPct =
     grossRevenue > 0 ? (loyaltyDiscount / grossRevenue) * 100 : 0;
@@ -754,38 +795,63 @@ export function computeTicketsKpis(
 
   return {
     revenue,
-    revenueChange: pctChange(revenue, prevRevenue),
     ticketsSold,
-    ticketsChange: pctChange(ticketsSold, prevTickets),
     avgPrice,
-    avgPriceChange: pctChange(avgPrice, prevAvgPrice),
     loyaltyDiscount,
     loyaltyDiscountPct,
-    loyaltyDiscountChange: pctChange(loyaltyDiscount, prevLoyaltyDiscount),
     fillRate,
     planCompletionPct,
-    revenueToday: sumAmount(todayTxs),
-    ticketsToday: countTickets(todayTxs),
-    revenueSparkline: buildSparkline(
-      current,
-      filters.dateRange,
-      (tx) => tx.date,
-      sumAmount,
-    ),
-    ticketsSparkline: buildSparkline(
-      current,
-      filters.dateRange,
-      (tx) => tx.date,
-      countTickets,
-    ),
   };
 }
 
-export function computeMerchKpis(
+function buildTicketsSeasonComparison(
+  filters: DashboardFilters,
+  ticketFilters: TicketFilters,
+  current: TicketsKpiMetrics,
+): TicketsSeasonComparison | undefined {
+  if (ticketFilters.season === "all") return undefined;
+
+  const previousSeason = getPreviousSeason(ticketFilters.season);
+  if (!previousSeason) return undefined;
+
+  const prevFilters: TicketFilters = {
+    ...ticketFilters,
+    season: previousSeason,
+  };
+  const prevMetrics = computeTicketsKpiMetrics(filters, prevFilters);
+
+  return {
+    previousSeason,
+    revenueChange: pctChange(current.revenue, prevMetrics.revenue),
+    planCompletionChange: pctChange(
+      current.planCompletionPct,
+      prevMetrics.planCompletionPct,
+    ),
+    fillRateChange: pctChange(current.fillRate, prevMetrics.fillRate),
+    loyaltyDiscountPctChange: pctChange(
+      current.loyaltyDiscountPct,
+      prevMetrics.loyaltyDiscountPct,
+    ),
+    ticketsChange: pctChange(current.ticketsSold, prevMetrics.ticketsSold),
+    avgPriceChange: pctChange(current.avgPrice, prevMetrics.avgPrice),
+  };
+}
+
+type MerchKpiMetrics = {
+  revenue: number;
+  avgCheck: number;
+  upt: number;
+  receipts: number;
+  returnsPct: number;
+  marginPct: number;
+};
+
+function computeMerchKpiMetrics(
   filters: DashboardFilters,
   merchFilters: MerchFilters,
-): MerchKpiData {
-  const metrics = computeMerchTotals(filters, merchFilters);
+  totals?: MerchAggregateMetrics,
+): MerchKpiMetrics {
+  const metrics = totals ?? computeMerchTotals(filters, merchFilters);
 
   return {
     revenue: metrics.revenue,
@@ -800,6 +866,49 @@ export function computeMerchKpis(
       metrics.revenue > 0
         ? ((metrics.revenue - metrics.cost) / metrics.revenue) * 100
         : 0,
+  };
+}
+
+function buildMerchSeasonComparison(
+  filters: DashboardFilters,
+  merchFilters: MerchFilters,
+  current: MerchKpiMetrics,
+): MerchSeasonComparison | undefined {
+  if (merchFilters.season === "all") return undefined;
+
+  const previousSeason = getPreviousSeason(merchFilters.season);
+  if (!previousSeason) return undefined;
+
+  const prevFilters: MerchFilters = {
+    ...merchFilters,
+    season: previousSeason,
+  };
+  const prevMetrics = computeMerchKpiMetrics(filters, prevFilters);
+
+  return {
+    previousSeason,
+    revenueChange: pctChange(current.revenue, prevMetrics.revenue),
+    avgCheckChange: pctChange(current.avgCheck, prevMetrics.avgCheck),
+    receiptsChange: pctChange(current.receipts, prevMetrics.receipts),
+    returnsPctChange: pctChange(current.returnsPct, prevMetrics.returnsPct),
+    marginPctChange: pctChange(current.marginPct, prevMetrics.marginPct),
+  };
+}
+
+export function computeMerchKpis(
+  filters: DashboardFilters,
+  merchFilters: MerchFilters,
+): MerchKpiData {
+  const metrics = computeMerchKpiMetrics(filters, merchFilters);
+  const seasonComparison = buildMerchSeasonComparison(
+    filters,
+    merchFilters,
+    metrics,
+  );
+
+  return {
+    ...metrics,
+    seasonComparison,
   };
 }
 

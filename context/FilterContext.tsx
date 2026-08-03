@@ -34,7 +34,6 @@ import {
   computeWeeklyTrend,
   filterMatchesByMerchFilters,
   filterMatchesByTicketFilters,
-  getOnlineStoreOrderDates,
   getTabTransactions,
   runWithFilterCache,
   type MerchTotals,
@@ -103,7 +102,6 @@ type FilterContextValue = {
   availableMatches: typeof matches;
   ticketMatchOptions: ReturnType<typeof buildMatchFilterOptions>;
   merchMatchOptions: ReturnType<typeof buildMatchFilterOptions>;
-  onlineStoreOrderDates: ReadonlySet<string>;
 };
 
 const defaultFilters: DashboardFilters = {
@@ -226,10 +224,6 @@ export function FilterProvider({ children }: { children: ReactNode }) {
       const merchMatchOptions = buildMatchFilterOptions(
         filterMatchesByMerchFilters({ ...merchFilters, matchId: "all" }),
       );
-      const onlineStoreOrderDates = new Set(
-        getOnlineStoreOrderDates(filters, merchFilters),
-      );
-
       const shared = {
         filters,
         ticketFilters,
@@ -251,7 +245,6 @@ export function FilterProvider({ children }: { children: ReactNode }) {
         availableMatches,
         ticketMatchOptions,
         merchMatchOptions,
-        onlineStoreOrderDates,
       };
 
       if (activeTab === "tickets") {

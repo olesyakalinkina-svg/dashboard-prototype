@@ -268,6 +268,16 @@ export type MerchProductCategoryPoint = {
   share: number;
 };
 
+export type TicketsSeasonComparison = {
+  previousSeason: string;
+  revenueChange: number;
+  planCompletionChange: number;
+  fillRateChange: number;
+  loyaltyDiscountPctChange: number;
+  ticketsChange: number;
+  avgPriceChange: number;
+};
+
 export type TicketsKpiData = {
   revenue: number;
   revenueChange: number;
@@ -284,6 +294,16 @@ export type TicketsKpiData = {
   ticketsToday: number;
   revenueSparkline: number[];
   ticketsSparkline: number[];
+  seasonComparison?: TicketsSeasonComparison;
+};
+
+export type MerchSeasonComparison = {
+  previousSeason: string;
+  revenueChange: number;
+  avgCheckChange: number;
+  receiptsChange: number;
+  returnsPctChange: number;
+  marginPctChange: number;
 };
 
 export type MerchKpiData = {
@@ -293,6 +313,7 @@ export type MerchKpiData = {
   receipts: number;
   returnsPct: number;
   marginPct: number;
+  seasonComparison?: MerchSeasonComparison;
 };
 
 export type SubscriptionsKpiData = {

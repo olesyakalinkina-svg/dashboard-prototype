@@ -65,6 +65,15 @@ export const SEASON_OPTIONS = [
   { value: "2024/25", label: "2024/25" },
 ] as const;
 
+const SEASON_ORDER = ["2024/25", "2025/26"] as const;
+
+/** Returns the season immediately before `season`, or null if none exists. */
+export function getPreviousSeason(season: string): string | null {
+  const index = SEASON_ORDER.indexOf(season as (typeof SEASON_ORDER)[number]);
+  if (index <= 0) return null;
+  return SEASON_ORDER[index - 1];
+}
+
 export const LEAGUE_OPTIONS: { value: League | "all"; label: string }[] = [
   { value: "all", label: "Все лиги" },
   { value: "KHL", label: "КХЛ" },
