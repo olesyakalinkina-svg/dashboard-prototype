@@ -1,18 +1,18 @@
 "use client";
 
 import clsx from "clsx";
-import { format } from "date-fns";
 import { useEffect, useMemo, useState } from "react";
 import {
   CartesianGrid,
   Line,
   LineChart,
+  ReferenceDot,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
-import { formatCurrency, formatNumber } from "@/lib/format";
+import { formatCurrency, formatNumber, formatPercent } from "@/lib/format";
 import { LEAGUE_OPTIONS, SEASON_OPTIONS } from "@/lib/ticket-filter-options";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import type {
@@ -32,6 +32,7 @@ const SALES_TABS: { id: SalesTab; label: string }[] = [
 
 const CURRENT_SEASON = "2025/26";
 const TOOLTIP_LIMIT = 6;
+const TICKET_SALES_WINDOW_DAYS = 21;
 const CONTRAST_LINE_COLORS = [
   "#E41A1C",
   "#377EB8",
@@ -54,6 +55,12 @@ const CONTRAST_LINE_COLORS = [
   "#66A61E",
   "#E6AB02",
 ];
+
+const LEAGUE_LABELS: Record<League, string> = {
+  KHL: "КХЛ",
+  VHL: "ВХЛ",
+  MHL: "МХЛ",
+};
 
 function getContrastingLineColor(index: number): string {
   return CONTRAST_LINE_COLORS[index % CONTRAST_LINE_COLORS.length];
@@ -89,91 +96,172 @@ function applyContrastColors(
     color: getContrastingLineColor(index),
   }));
 }
-const LEAGUE_LABELS: Record<League, string> = {
-  KHL: "КХЛ",
-  VHL: "ВХЛ",
-  MHL: "МХЛ",
-};
+
+function factKey(matchId: string): string {
+  return `${matchId}_fact`;
+}
+
+function planKey(matchId: string): string {
+  return `${matchId}_plan`;
+}
 
 type ChartRow = {
-  date: string;
-  dateKey: number;
-  [matchId: string]: string | number | null;
+  daysBeforeMatch: number;
+  xLabel: string;
+  [key: string]: string | number | null;
 };
+
+function formatDaysBeforeLabel(days: number): string {
+  return days === 0 ? "матч" : `D-${days}`;
+}
 
 function buildChartData(
   series: TicketMatchCumulativeSeries[],
   mode: SalesTab,
 ): ChartRow[] {
-  const dateKeySet = new Set<number>();
-  const seriesBounds = new Map<
-    string,
-    { firstSaleDateKey: number; lastSaleDateKey: number }
-  >();
+  const rows: ChartRow[] = [];
 
-  for (const s of series) {
-    if (s.points.length === 0) continue;
-
-    const dateKeys = s.points.map((p) => p.dateKey);
-    seriesBounds.set(s.matchId, {
-      firstSaleDateKey: Math.min(...dateKeys),
-      lastSaleDateKey: Math.max(...dateKeys),
-    });
-
-    for (const p of s.points) {
-      dateKeySet.add(p.dateKey);
-    }
-  }
-
-  const sortedKeys = Array.from(dateKeySet).sort((a, b) => a - b);
-
-  return sortedKeys.map((dateKey) => {
+  for (let days = TICKET_SALES_WINDOW_DAYS; days >= 0; days -= 1) {
     const row: ChartRow = {
-      date: format(new Date(dateKey), "dd.MM.yy"),
-      dateKey,
+      daysBeforeMatch: days,
+      xLabel: formatDaysBeforeLabel(days),
     };
 
     for (const s of series) {
-      const bounds = seriesBounds.get(s.matchId);
-      if (
-        !bounds ||
-        dateKey < bounds.firstSaleDateKey ||
-        dateKey > bounds.lastSaleDateKey
-      ) {
-        row[s.matchId] = null;
+      const point = s.points.find((p) => p.daysBeforeMatch === days);
+      if (!point) {
+        row[factKey(s.matchId)] = null;
+        row[planKey(s.matchId)] = null;
         continue;
       }
 
-      let value: number | null = null;
-      for (const p of s.points) {
-        if (p.dateKey <= dateKey) {
-          value = mode === "revenue" ? p.revenue : p.tickets;
-        }
-      }
-      row[s.matchId] = value;
+      row[factKey(s.matchId)] =
+        mode === "revenue" ? point.revenue : point.tickets;
+      row[planKey(s.matchId)] =
+        mode === "revenue" ? point.planRevenue : point.planTickets;
     }
 
-    return row;
-  });
+    rows.push(row);
+  }
+
+  return rows;
 }
+
+function getCurrentPoint(
+  item: TicketMatchCumulativeSeries,
+  mode: SalesTab,
+): { fact: number; plan: number } | null {
+  if (item.currentDaysBeforeMatch == null) return null;
+  const point = item.points.find(
+    (p) => p.daysBeforeMatch === item.currentDaysBeforeMatch,
+  );
+  if (!point) return null;
+
+  const fact = mode === "revenue" ? point.revenue : point.tickets;
+  const plan = mode === "revenue" ? point.planRevenue : point.planTickets;
+  if (fact == null) return null;
+
+  return { fact, plan };
+}
+
+function findNextUpcomingMatch(
+  series: TicketMatchCumulativeSeries[],
+): TicketMatchCumulativeSeries | null {
+  const upcoming = series
+    .filter((s) => !s.eventCompleted && s.currentDaysBeforeMatch != null)
+    .sort((a, b) => a.matchDateKey - b.matchDateKey);
+
+  return upcoming[0] ?? null;
+}
+
+function UpcomingMatchSummary({
+  match,
+  mode,
+}: {
+  match: TicketMatchCumulativeSeries;
+  mode: SalesTab;
+}) {
+  const current = getCurrentPoint(match, mode);
+  if (!current) return null;
+
+  const isRevenue = mode === "revenue";
+  const factLabel = isRevenue
+    ? formatCurrency(current.fact)
+    : `${formatNumber(current.fact)} шт`;
+  const planLabel = isRevenue
+    ? formatCurrency(current.plan)
+    : `${formatNumber(current.plan)} шт`;
+  const pct =
+    current.plan > 0 ? (current.fact / current.plan) * 100 : 0;
+  const daysLabel =
+    match.currentDaysBeforeMatch === 0
+      ? "сегодня матч"
+      : `D-${match.currentDaysBeforeMatch}`;
+
+  return (
+    <div className="mb-3 rounded-md border border-[var(--accent)]/20 bg-[var(--accent)]/5 px-3 py-2.5">
+      <p className="text-[11px] font-medium text-[var(--foreground)]">
+        Ближайший матч · {LEAGUE_LABELS[match.league]} · {match.label}
+      </p>
+      <p className="mt-0.5 text-[10px] text-[var(--muted)]">
+        {daysLabel} · факт {factLabel} / план {planLabel} ({formatPercent(pct)})
+      </p>
+    </div>
+  );
+}
+
+type TooltipEntry = {
+  matchId: string;
+  label: string;
+  color: string;
+  fact: number;
+  plan: number;
+  date: string;
+};
 
 function MatchSeriesTooltip({
   active,
   payload,
   label,
-  formatter,
+  series,
+  mode,
 }: {
   active?: boolean;
-  payload?: { name: string; value: number; color: string }[];
+  payload?: { dataKey: string; value: number | null; color?: string }[];
   label?: string;
-  formatter: (value: number) => string;
+  series: TicketMatchCumulativeSeries[];
+  mode: SalesTab;
 }) {
-  if (!active || !payload?.length) return null;
+  if (!active || !payload?.length || label == null) return null;
 
-  const entries = payload
-    .filter((entry) => entry.value != null)
-    .sort((a, b) => b.value - a.value);
+  const daysBeforeMatch = Number(label);
+  const dateLabel = formatDaysBeforeLabel(daysBeforeMatch);
+  const formatter =
+    mode === "revenue"
+      ? formatCurrency
+      : (v: number) => `${formatNumber(v)} шт`;
 
+  const entries: TooltipEntry[] = [];
+
+  for (const item of series) {
+    const point = item.points.find((p) => p.daysBeforeMatch === daysBeforeMatch);
+    if (!point) continue;
+
+    const fact = mode === "revenue" ? point.revenue : point.tickets;
+    const plan = mode === "revenue" ? point.planRevenue : point.planTickets;
+    if (fact == null) continue;
+
+    entries.push({
+      matchId: item.matchId,
+      label: `${LEAGUE_LABELS[item.league]} · ${item.label}`,
+      color: item.color,
+      fact,
+      plan,
+      date: point.date,
+    });
+  }
+
+  entries.sort((a, b) => b.fact - a.fact);
   if (entries.length === 0) return null;
 
   const visibleEntries = entries.slice(0, TOOLTIP_LIMIT);
@@ -181,12 +269,19 @@ function MatchSeriesTooltip({
 
   return (
     <div className="max-h-64 overflow-y-auto rounded-md border border-[var(--border)] bg-white px-3 py-2 text-xs shadow-sm">
-      <p className="mb-1 font-medium text-[var(--foreground)]">{label}</p>
-      {visibleEntries.map((entry) => (
-        <p key={entry.name} style={{ color: entry.color }}>
-          {entry.name}: {formatter(entry.value)}
-        </p>
-      ))}
+      <p className="mb-1 font-medium text-[var(--foreground)]">
+        {dateLabel}
+        {visibleEntries[0]?.date ? ` · ${visibleEntries[0].date}` : ""}
+      </p>
+      {visibleEntries.map((entry) => {
+        const pct = entry.plan > 0 ? (entry.fact / entry.plan) * 100 : 0;
+        return (
+          <p key={entry.matchId} style={{ color: entry.color }}>
+            {entry.label}: {formatter(entry.fact)} / {formatter(entry.plan)} (
+            {formatPercent(pct)})
+          </p>
+        );
+      })}
       {hiddenCount > 0 && (
         <p className="mt-1 text-[var(--muted)]">и ещё {hiddenCount}</p>
       )}
@@ -287,7 +382,8 @@ function ChartLegend({
   return (
     <div className="mt-3 border-t border-[var(--border)] pt-3">
       <p className="mb-2 text-[11px] text-[var(--muted)]">
-        Нажмите на матч, чтобы скрыть или показать линию. Наведите для подсветки.
+        Сплошная линия — факт, пунктир — план. Нажмите на матч, чтобы скрыть
+        линии. Наведите для подсветки.
       </p>
       <div className="max-h-28 overflow-y-auto">
         <div className="flex flex-wrap gap-x-3 gap-y-1.5">
@@ -295,6 +391,7 @@ function ChartLegend({
             const isHidden = hiddenSeries.has(item.matchId);
             const isHovered = hoveredSeries === item.matchId;
             const isPreviousSeason = item.season !== CURRENT_SEASON;
+            const isUpcoming = !item.eventCompleted;
 
             return (
               <button
@@ -307,25 +404,39 @@ function ChartLegend({
                   "inline-flex max-w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-[10px] transition-opacity",
                   isHidden && "opacity-40",
                   isHovered && "bg-[var(--background)]",
+                  isUpcoming && !isHidden && "font-medium",
                 )}
               >
-                <span
-                  className="h-0.5 w-4 shrink-0 rounded-full"
-                  style={{
-                    backgroundColor: item.color,
-                    opacity: isPreviousSeason ? 0.7 : 1,
-                  }}
-                />
+                <span className="flex shrink-0 items-center gap-0.5">
+                  <span
+                    className="h-0.5 w-3 rounded-full"
+                    style={{
+                      backgroundColor: item.color,
+                      opacity: isPreviousSeason ? 0.7 : 1,
+                    }}
+                  />
+                  <span
+                    className="h-0 w-3 border-t border-dashed"
+                    style={{
+                      borderColor: item.color,
+                      opacity: isPreviousSeason ? 0.5 : 0.7,
+                    }}
+                  />
+                </span>
                 <span
                   className={clsx(
                     "truncate",
                     isHidden && "line-through",
                     isPreviousSeason && "text-[var(--muted)]",
+                    isUpcoming && "text-[var(--foreground)]",
                   )}
                 >
                   <span className="font-medium">{LEAGUE_LABELS[item.league]}</span>
                   {" · "}
                   {item.label}
+                  {isUpcoming && item.currentDaysBeforeMatch != null
+                    ? ` · D-${item.currentDaysBeforeMatch}`
+                    : ""}
                   {isPreviousSeason ? ` · ${item.season}` : ""}
                 </span>
               </button>
@@ -358,14 +469,11 @@ function MatchCumulativeChart({
     [visibleSeries, mode],
   );
   const isRevenue = mode === "revenue";
-  const formatter = isRevenue
-    ? formatCurrency
-    : (v: number) => `${formatNumber(v)} шт`;
 
   if (series.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-[var(--muted)]">
-        Нет данных по продажам билетов
+        Нет матчей по выбранным фильтрам
       </div>
     );
   }
@@ -383,10 +491,14 @@ function MatchCumulativeChart({
       <LineChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#E5E5E7" />
         <XAxis
-          dataKey="date"
+          dataKey="daysBeforeMatch"
           tick={{ fontSize: 11, fill: "#8B8B8E" }}
+          tickFormatter={formatDaysBeforeLabel}
           interval="preserveStartEnd"
-          minTickGap={24}
+          minTickGap={16}
+          type="number"
+          domain={[0, TICKET_SALES_WINDOW_DAYS]}
+          reversed
         />
         <YAxis
           tick={{ fontSize: 11, fill: "#8B8B8E" }}
@@ -399,27 +511,80 @@ function MatchCumulativeChart({
               : formatNumber(v)
           }
         />
-        <Tooltip content={<MatchSeriesTooltip formatter={formatter} />} />
-        {visibleSeries.map((item) => {
+        <Tooltip
+          content={
+            <MatchSeriesTooltip series={visibleSeries} mode={mode} />
+          }
+        />
+        {visibleSeries.flatMap((item) => {
           const isPreviousSeason = item.season !== CURRENT_SEASON;
+          const isUpcoming = !item.eventCompleted;
           const isHovered = hoveredSeries === item.matchId;
           const isDimmed = hoveredSeries != null && !isHovered;
+          const fKey = factKey(item.matchId);
+          const pKey = planKey(item.matchId);
+          const currentPoint = getCurrentPoint(item, mode);
+          const planTarget =
+            mode === "revenue" ? item.planRevenue : item.planTickets;
 
-          return (
+          const elements = [
             <Line
-              key={item.matchId}
+              key={`${item.matchId}-plan`}
               type="monotone"
-              dataKey={item.matchId}
+              dataKey={pKey}
+              name={`${LEAGUE_LABELS[item.league]} · ${item.label} (план)`}
+              stroke={item.color}
+              strokeWidth={isHovered ? 2 : 1.25}
+              strokeOpacity={isDimmed ? 0.08 : isPreviousSeason ? 0.35 : 0.5}
+              strokeDasharray="5 4"
+              dot={false}
+              connectNulls
+              isAnimationActive={false}
+            />,
+            <Line
+              key={`${item.matchId}-fact`}
+              type="monotone"
+              dataKey={fKey}
               name={`${LEAGUE_LABELS[item.league]} · ${item.label}`}
               stroke={item.color}
-              strokeWidth={isHovered ? 2.5 : 1.5}
-              strokeOpacity={isDimmed ? 0.12 : isPreviousSeason ? 0.55 : 0.9}
-              strokeDasharray={isPreviousSeason ? "5 4" : undefined}
+              strokeWidth={isHovered ? 2.5 : isUpcoming ? 2 : 1.5}
+              strokeOpacity={
+                isDimmed ? 0.12 : isPreviousSeason ? 0.55 : isUpcoming ? 1 : 0.9
+              }
               dot={false}
               connectNulls={false}
               isAnimationActive={false}
-            />
-          );
+            />,
+            <ReferenceDot
+              key={`${item.matchId}-plan-target`}
+              x={0}
+              y={planTarget}
+              r={isUpcoming ? 4 : 3}
+              fill={item.color}
+              fillOpacity={isDimmed ? 0.15 : isUpcoming ? 0.9 : 0.6}
+              stroke="white"
+              strokeWidth={1}
+              ifOverflow="discard"
+            />,
+          ];
+
+          if (item.currentDaysBeforeMatch != null && currentPoint != null) {
+            elements.push(
+              <ReferenceDot
+                key={`${item.matchId}-current`}
+                x={item.currentDaysBeforeMatch}
+                y={currentPoint.fact}
+                r={isUpcoming ? 5 : 3}
+                fill={item.color}
+                fillOpacity={isDimmed ? 0.2 : 1}
+                stroke="white"
+                strokeWidth={2}
+                ifOverflow="discard"
+              />,
+            );
+          }
+
+          return elements;
         })}
       </LineChart>
     </ResponsiveContainer>
@@ -429,11 +594,9 @@ function MatchCumulativeChart({
 export function TicketsSalesWidget({
   series,
   ticketFilters,
-  refreshKey,
 }: {
   series: TicketMatchCumulativeSeries[];
   ticketFilters: TicketFilters;
-  refreshKey: string;
 }) {
   const [activeTab, setActiveTab] = useState<SalesTab>("revenue");
   const [seasonScope, setSeasonScope] = useState<SeasonScope>(CURRENT_SEASON);
@@ -491,10 +654,15 @@ export function TicketsSalesWidget({
     leagueScope,
   ]);
 
+  const nextUpcoming = useMemo(
+    () => findNextUpcomingMatch(displaySeries),
+    [displaySeries],
+  );
+
   useEffect(() => {
     setHiddenSeries(new Set());
     setHoveredSeries(null);
-  }, [refreshKey, seasonScope, leagueScope]);
+  }, [series, seasonScope, leagueScope]);
 
   const toggleSeries = (matchId: string) => {
     setHiddenSeries((current) => {
@@ -513,7 +681,12 @@ export function TicketsSalesWidget({
   return (
     <Card className="min-w-0">
       <CardHeader className="w-full sm:w-auto">
-        <CardTitle>График</CardTitle>
+        <div className="min-w-0">
+          <CardTitle>График продаж к матчу</CardTitle>
+          <p className="mt-0.5 text-[11px] text-[var(--muted)]">
+            Накопительный факт и план по дням до матча (D-21 → матч)
+          </p>
+        </div>
         <div className="flex w-full rounded-md border border-[var(--border)] bg-[var(--background)] p-0.5 sm:w-auto">
           {SALES_TABS.map((tab) => (
             <button
@@ -541,12 +714,17 @@ export function TicketsSalesWidget({
           onSeasonScopeChange={setSeasonScope}
           onLeagueScopeChange={setLeagueScope}
         />
+        {nextUpcoming && (
+          <div className={clsx(showSeasonScope || showLeagueScope ? "mt-3" : "")}>
+            <UpcomingMatchSummary match={nextUpcoming} mode={activeTab} />
+          </div>
+        )}
         <div
           className={clsx(
-            (showSeasonScope || showLeagueScope) && "mt-3",
+            (showSeasonScope || showLeagueScope || nextUpcoming) && "mt-3",
           )}
           style={{ height: chartHeight }}
-          key={`${activeTab}-${refreshKey}-${seasonScope}-${leagueScope}`}
+          key={`${activeTab}-${seasonScope}-${leagueScope}`}
         >
           <MatchCumulativeChart
             series={displaySeries}

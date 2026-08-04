@@ -15,14 +15,12 @@ type TicketsBreakdownWidgetProps = {
   ticketTypeSales: TicketTypeSalesPoint[];
   priceZoneSales: PriceZoneSalesPoint[];
   orderSourceSales: OrderSourceSalesPoint[];
-  refreshKey?: string;
 };
 
 export function TicketsBreakdownWidget({
   ticketTypeSales,
   priceZoneSales,
   orderSourceSales,
-  refreshKey,
 }: TicketsBreakdownWidgetProps) {
   return (
     <section className="min-w-0 space-y-3">
@@ -36,14 +34,10 @@ export function TicketsBreakdownWidget({
       </div>
       <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-[1fr_1.4fr]">
         <div className="flex min-w-0 flex-col gap-4">
-          <TicketTypeSalesChart data={ticketTypeSales} refreshKey={refreshKey} />
-          <OrderSourceSalesChart data={orderSourceSales} refreshKey={refreshKey} />
+          <TicketTypeSalesChart data={ticketTypeSales} />
+          <OrderSourceSalesChart data={orderSourceSales} />
         </div>
-        <PriceZoneSalesChart
-          data={priceZoneSales}
-          refreshKey={refreshKey}
-          fillHeight
-        />
+        <PriceZoneSalesChart data={priceZoneSales} fillHeight />
       </div>
     </section>
   );

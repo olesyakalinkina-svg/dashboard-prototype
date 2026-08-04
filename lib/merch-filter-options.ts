@@ -105,7 +105,7 @@ export const DEFAULT_MERCH_FILTERS: MerchFilters = {
   league: "all",
   tournamentStage: "all",
   matchClass: "all",
-  matchId: "all",
+  matchId: [],
   salesChannels: [...ALL_MERCH_SALES_POINTS],
   orderDateRange: DEFAULT_MERCH_ORDER_DATE_RANGE,
   timeGrouping: "month",

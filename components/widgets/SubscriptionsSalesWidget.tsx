@@ -43,10 +43,8 @@ function PlanFactTooltip({
 
 export function SubscriptionsSalesWidget({
   data,
-  refreshKey,
 }: {
   data: PlanFactTrendPoint[];
-  refreshKey: string;
 }) {
   const chartData = data.map((point) => ({
     period: point.period,
@@ -60,7 +58,7 @@ export function SubscriptionsSalesWidget({
         <CardTitle>Динамика продаж абонементов</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="h-[280px] sm:h-[380px]" key={refreshKey}>
+        <div className="h-[280px] sm:h-[380px]">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#E5E5E7" />

@@ -30,6 +30,19 @@ export const ALL_PRICE_ZONES: PriceZone[] = [
   "VIP",
 ];
 
+export const DEFAULT_TICKET_TRANSACTION_DATE_RANGE: TicketFilters["transactionDateRange"] =
+  {
+    from: null,
+    to: null,
+  };
+
+/** Sentinel: explicit "no matches selected" (distinct from [] = all matches). */
+export const NO_MATCHES_FILTER_VALUE = "__no_matches__";
+
+export function isNoMatchesFilterValue(matchIds: string[]): boolean {
+  return matchIds.length === 1 && matchIds[0] === NO_MATCHES_FILTER_VALUE;
+}
+
 export const DEFAULT_TICKET_FILTERS: TicketFilters = {
   season: "2025/26",
   league: "all",
@@ -37,26 +50,24 @@ export const DEFAULT_TICKET_FILTERS: TicketFilters = {
   matchClass: "all",
   arena: "all",
   eventCompleted: "all",
-  matchId: "all",
+  matchId: [],
   ticketType: "all",
   priceZone: "all",
   orderSource: "all",
+  transactionDateRange: DEFAULT_TICKET_TRANSACTION_DATE_RANGE,
   timeGrouping: "week",
 };
 
 export function buildMatchFilterOptions(
   matchList: Match[],
 ): { value: string; label: string }[] {
-  return [
-    { value: "all", label: "Все матчи" },
-    ...matchList
-      .slice()
-      .sort((a, b) => b.date.getTime() - a.date.getTime())
-      .map((match) => ({
-        value: match.id,
-        label: `vs ${match.opponent} · ${format(match.date, "d MMM yyyy", { locale: ru })}`,
-      })),
-  ];
+  return matchList
+    .slice()
+    .sort((a, b) => b.date.getTime() - a.date.getTime())
+    .map((match) => ({
+      value: match.id,
+      label: `vs ${match.opponent} · ${format(match.date, "d MMM yyyy", { locale: ru })}`,
+    }));
 }
 
 export const SEASON_OPTIONS = [
@@ -92,9 +103,9 @@ export const TOURNAMENT_STAGE_OPTIONS: {
 
 export const MATCH_CLASS_OPTIONS: { value: MatchClass | "all"; label: string }[] = [
   { value: "all", label: "Все классы" },
-  { value: "regular", label: "Обычный" },
-  { value: "derby", label: "Дерби" },
-  { value: "special", label: "Спецматч" },
+  { value: "class_1", label: "1 класс" },
+  { value: "class_2", label: "2 класс" },
+  { value: "class_3", label: "3 класс" },
 ];
 
 export const ARENA_OPTIONS: { value: ArenaId | "all"; label: string }[] = [

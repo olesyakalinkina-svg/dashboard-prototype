@@ -21,7 +21,7 @@ export type MerchProductCategory =
 
 export type League = "KHL" | "VHL" | "MHL";
 export type TournamentStage = "regular" | "playoff";
-export type MatchClass = "regular" | "derby" | "special";
+export type MatchClass = "class_1" | "class_2" | "class_3";
 export type ArenaId = "main" | "secondary";
 export type TicketType = "parking" | "arena";
 export type PriceZone =
@@ -68,9 +68,12 @@ export type MatchSalesRow = {
   eventLabel: string;
   date: Date;
   revenue: number;
+  planRevenue: number;
   avgPrice: number;
   ticketsSold: number;
   freeTickets: number;
+  issuedTickets: number;
+  capacity: number;
   loyaltyDiscountPct: number;
 };
 
@@ -130,6 +133,12 @@ export type DashboardFilters = {
   promotionId: string | "all";
 };
 
+/** ISO date (yyyy-MM-dd) range for transaction date filtering */
+export type MerchOrderDateRange = {
+  from: string | null;
+  to: string | null;
+};
+
 export type TicketFilters = {
   season: string | "all";
   league: League | "all";
@@ -137,17 +146,13 @@ export type TicketFilters = {
   matchClass: MatchClass | "all";
   arena: ArenaId | "all";
   eventCompleted: "all" | "yes" | "no";
-  matchId: string | "all";
+  matchId: string[];
   ticketType: TicketType | "all";
   priceZone: PriceZone | "all";
   orderSource: OrderSource | "all";
+  /** Purchase date window for ticket transactions (within season window) */
+  transactionDateRange: MerchOrderDateRange;
   timeGrouping: TimeGrouping;
-};
-
-/** ISO date (yyyy-MM-dd) range for online_store order filtering */
-export type MerchOrderDateRange = {
-  from: string | null;
-  to: string | null;
 };
 
 export type MerchFilters = {
@@ -155,9 +160,9 @@ export type MerchFilters = {
   league: League | "all";
   tournamentStage: TournamentStage | "all";
   matchClass: MatchClass | "all";
-  matchId: string | "all";
+  matchId: string[];
   salesChannels: MerchSalesPoint[];
-  /** Order date window for online_store transactions only */
+  /** Order date window for merch transactions (all sales channels) */
   orderDateRange: MerchOrderDateRange;
   timeGrouping: TimeGrouping;
 };
@@ -226,8 +231,11 @@ export type PlanFactTrendPoint = {
 export type TicketMatchCumulativePoint = {
   date: string;
   dateKey: number;
-  revenue: number;
-  tickets: number;
+  daysBeforeMatch: number;
+  revenue: number | null;
+  tickets: number | null;
+  planRevenue: number;
+  planTickets: number;
 };
 
 export type TicketMatchCumulativeSeries = {
@@ -236,6 +244,11 @@ export type TicketMatchCumulativeSeries = {
   color: string;
   league: League;
   season: string;
+  matchDateKey: number;
+  eventCompleted: boolean;
+  planRevenue: number;
+  planTickets: number;
+  currentDaysBeforeMatch: number | null;
   points: TicketMatchCumulativePoint[];
 };
 
@@ -257,12 +270,24 @@ export type MerchSalesChannelPoint = {
   share: number;
 };
 
+export type MerchSalesChannelTrendPoint = {
+  period: string;
+  sortKey: number;
+  channels: Record<MerchSalesPoint, number>;
+};
+
 export type MerchProductCategoryPoint = {
   category: string;
   categoryKey: MerchProductCategory;
   value: number;
   units: number;
   share: number;
+};
+
+export type MerchProductCategoryTrendPoint = {
+  period: string;
+  sortKey: number;
+  categories: Record<MerchProductCategory, number>;
 };
 
 export type TicketsSeasonComparison = {

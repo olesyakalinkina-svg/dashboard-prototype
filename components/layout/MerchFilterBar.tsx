@@ -1,13 +1,14 @@
 "use client";
 
 import { useFilters } from "@/context/FilterContext";
-import { Button } from "@/components/ui/Button";
+import { NO_MATCHES_FILTER_VALUE } from "@/lib/ticket-filter-options";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { MultiSelect } from "@/components/ui/MultiSelect";
 import { Select } from "@/components/ui/Select";
 import {
   LEAGUE_OPTIONS,
   MERCH_SALES_POINT_OPTIONS,
+  MATCH_CLASS_OPTIONS,
   SEASON_OPTIONS,
   TIME_GROUPING_OPTIONS,
   TOURNAMENT_STAGE_OPTIONS,
@@ -15,6 +16,7 @@ import {
 import { ResponsiveFilterBar } from "@/components/layout/ResponsiveFilterBar";
 import type {
   League,
+  MatchClass,
   MerchFilters,
   MerchSalesPoint,
   TimeGrouping,
@@ -32,8 +34,6 @@ export function MerchFilterBar() {
   function update<K extends keyof MerchFilters>(key: K, value: MerchFilters[K]) {
     setMerchFilters({ [key]: value });
   }
-
-  const showOrderDateFilter = merchFilters.salesChannels.includes("online_store");
 
   return (
     <ResponsiveFilterBar onReset={resetMerchFilters}>
@@ -78,17 +78,32 @@ export function MerchFilterBar() {
         </Select>
 
         <Select
-          label="Матч"
-          value={merchFilters.matchId}
-          onChange={(e) => update("matchId", e.target.value)}
-          className="sm:min-w-[220px]"
+          label="Класс матча"
+          value={merchFilters.matchClass}
+          onChange={(e) =>
+            update("matchClass", e.target.value as MatchClass | "all")
+          }
+          className="sm:min-w-[160px]"
         >
-          {merchMatchOptions.map((opt) => (
+          {MATCH_CLASS_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
             </option>
           ))}
         </Select>
+
+        <MultiSelect
+          label="Матч"
+          options={merchMatchOptions}
+          value={merchFilters.matchId}
+          onChange={(matchId) => update("matchId", matchId)}
+          selectAllLabel="Все матчи"
+          allSelectedLabel="Все матчи"
+          emptyMeansAll
+          applyOnClose
+          noneValue={NO_MATCHES_FILTER_VALUE}
+          className="sm:min-w-[220px]"
+        />
 
         <MultiSelect
           label="Канал продаж"
@@ -100,14 +115,12 @@ export function MerchFilterBar() {
           className="sm:min-w-[220px]"
         />
 
-        {showOrderDateFilter && (
-          <DateRangePicker
-            label="Дата заказа"
-            value={merchFilters.orderDateRange}
-            onChange={(orderDateRange) => update("orderDateRange", orderDateRange)}
-            className="sm:min-w-[220px]"
-          />
-        )}
+        <DateRangePicker
+          label="Дата заказа"
+          value={merchFilters.orderDateRange}
+          onChange={(orderDateRange) => update("orderDateRange", orderDateRange)}
+          className="sm:min-w-[220px]"
+        />
 
         <Select
           label="Группировка"
@@ -121,9 +134,6 @@ export function MerchFilterBar() {
           ))}
         </Select>
 
-        <Button variant="ghost" onClick={resetMerchFilters} className="mb-0.5 hidden w-full sm:w-auto lg:inline-flex">
-          Сбросить
-        </Button>
       </div>
     </ResponsiveFilterBar>
   );

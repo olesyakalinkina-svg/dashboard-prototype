@@ -1,7 +1,6 @@
 "use client";
 
 import { useFilters } from "@/context/FilterContext";
-import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import {
   ARENA_OPTIONS,
@@ -115,10 +114,6 @@ export function SubscriptionsFilterBar() {
             </option>
           ))}
         </Select>
-
-        <Button variant="ghost" onClick={resetSubscriptionFilters} className="mb-0.5 hidden w-full sm:w-auto lg:inline-flex">
-          Сбросить
-        </Button>
       </div>
     </ResponsiveFilterBar>
   );

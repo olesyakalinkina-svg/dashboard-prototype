@@ -110,12 +110,28 @@ type LeagueSchedule = {
   getTournamentStage: (index: number, total: number) => Match["tournamentStage"];
 };
 
+const KHL_MATCH_CLASS_BY_OPPONENT: Record<string, MatchClass> = {
+  Шанхай: "class_2",
+  Торпедо: "class_3",
+  Сочи: "class_3",
+  Амур: "class_3",
+  Сибирь: "class_2",
+  Спартак: "class_2",
+  "Динамо М": "class_1",
+  "Салават Юлаев": "class_2",
+  Металлург: "class_1",
+  Трактор: "class_1",
+  Локомотив: "class_1",
+  "Ак Барс": "class_1",
+  Авангард: "class_1",
+  ЦСКА: "class_2",
+  СКА: "class_1",
+};
+
 function getKhlTournamentStage(index: number): Match["tournamentStage"] {
   if (index >= 9 && index <= 12) return "playoff";
   return "regular";
 }
-
-const DERBY_OPPONENTS = new Set(["СКА", "ЦСКА", "Спартак", "Динамо М"]);
 
 const CURRENT_SEASON_SCHEDULES: LeagueSchedule[] = [
   {
@@ -343,14 +359,11 @@ const rand = seededRandom(42);
 
 function getMatchClass(
   opponent: string,
-  tournamentStage: Match["tournamentStage"],
+  _tournamentStage: Match["tournamentStage"],
   league: League,
 ): MatchClass {
-  if (DERBY_OPPONENTS.has(opponent)) return "derby";
-  if (tournamentStage === "playoff" || opponent === "Шанхай") return "special";
-  if (league === "KHL" && rand() < 0.12) return "special";
-  if (league !== "KHL" && rand() < 0.08) return "special";
-  return "regular";
+  if (league !== "KHL") return "class_3";
+  return KHL_MATCH_CLASS_BY_OPPONENT[opponent] ?? "class_2";
 }
 
 function randomInt(min: number, max: number): number {

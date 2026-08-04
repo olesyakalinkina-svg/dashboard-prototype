@@ -4,8 +4,10 @@ import {
   createContext,
   useCallback,
   useContext,
+  useDeferredValue,
   useMemo,
   useState,
+  startTransition,
   type ReactNode,
 } from "react";
 import { subDays } from "date-fns";
@@ -14,7 +16,9 @@ import {
   computeMatchSalesTable,
   computeMerchMatchSalesTable,
   computeMerchProductCategoryRevenue,
+  computeMerchProductCategoryTrend,
   computeMerchSalesChannelRevenue,
+  computeMerchSalesChannelTrend,
   computeMerchSkuSalesTable,
   computeMerchTotals,
   computeMatchRevenueForTab,
@@ -95,7 +99,9 @@ type FilterContextValue = {
   orderSourceSales: ReturnType<typeof computeOrderSourceSales>;
   merchMatchSales: ReturnType<typeof computeMerchMatchSalesTable>;
   merchSalesChannelRevenue: ReturnType<typeof computeMerchSalesChannelRevenue>;
+  merchSalesChannelTrend: ReturnType<typeof computeMerchSalesChannelTrend>;
   merchProductCategoryRevenue: ReturnType<typeof computeMerchProductCategoryRevenue>;
+  merchProductCategoryTrend: ReturnType<typeof computeMerchProductCategoryTrend>;
   merchSkuSales: ReturnType<typeof computeMerchSkuSalesTable>;
   merchTotals: ReturnType<typeof computeMerchTotals>;
   merchTransactions: ReturnType<typeof getTabTransactions>;
@@ -168,62 +174,121 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     useState<MerchFilters>(DEFAULT_MERCH_FILTERS);
   const [subscriptionFilters, setSubscriptionFiltersState] =
     useState<SubscriptionFilters>(DEFAULT_SUBSCRIPTION_FILTERS);
-  const [activeTab, setActiveTab] = useState<DashboardTab>("tickets");
+  const [activeTab, setActiveTabState] = useState<DashboardTab>("tickets");
   const [lastUpdated, setLastUpdated] = useState(new Date());
 
   const setDateRange = useCallback((dateRange: DateRangePreset) => {
-    setFilters((prev) => ({ ...prev, dateRange }));
+    startTransition(() => {
+      setFilters((prev) => ({ ...prev, dateRange }));
+    });
   }, []);
 
   const setMatchId = useCallback((matchId: string | "all") => {
-    setFilters((prev) => ({ ...prev, matchId }));
+    startTransition(() => {
+      setFilters((prev) => ({ ...prev, matchId }));
+    });
   }, []);
 
   const setTicketFilters = useCallback((patch: Partial<TicketFilters>) => {
-    setTicketFiltersState((prev) => ({ ...prev, ...patch }));
+    startTransition(() => {
+      setTicketFiltersState((prev) => ({ ...prev, ...patch }));
+    });
   }, []);
 
   const setMerchFilters = useCallback((patch: Partial<MerchFilters>) => {
-    setMerchFiltersState((prev) => ({ ...prev, ...patch }));
+    startTransition(() => {
+      setMerchFiltersState((prev) => ({ ...prev, ...patch }));
+    });
   }, []);
 
   const setSubscriptionFilters = useCallback((patch: Partial<SubscriptionFilters>) => {
-    setSubscriptionFiltersState((prev) => ({ ...prev, ...patch }));
+    startTransition(() => {
+      setSubscriptionFiltersState((prev) => ({ ...prev, ...patch }));
+    });
   }, []);
 
   const resetFilters = useCallback(() => {
-    setFilters(defaultFilters);
+    startTransition(() => {
+      setFilters(defaultFilters);
+    });
   }, []);
 
   const resetTicketFilters = useCallback(() => {
-    setFilters(defaultFilters);
-    setTicketFiltersState(DEFAULT_TICKET_FILTERS);
+    startTransition(() => {
+      setFilters(defaultFilters);
+      setTicketFiltersState(DEFAULT_TICKET_FILTERS);
+    });
   }, []);
 
   const resetMerchFilters = useCallback(() => {
-    setFilters(defaultFilters);
-    setMerchFiltersState(DEFAULT_MERCH_FILTERS);
+    startTransition(() => {
+      setFilters(defaultFilters);
+      setMerchFiltersState(DEFAULT_MERCH_FILTERS);
+    });
   }, []);
 
   const resetSubscriptionFilters = useCallback(() => {
-    setFilters(defaultFilters);
-    setSubscriptionFiltersState(DEFAULT_SUBSCRIPTION_FILTERS);
+    startTransition(() => {
+      setFilters(defaultFilters);
+      setSubscriptionFiltersState(DEFAULT_SUBSCRIPTION_FILTERS);
+    });
+  }, []);
+
+  const setActiveTab = useCallback((tab: DashboardTab) => {
+    startTransition(() => {
+      setActiveTabState(tab);
+    });
   }, []);
 
   const refresh = useCallback(() => {
     setLastUpdated(new Date());
   }, []);
 
+  const ticketMatchOptions = useMemo(
+    () =>
+      buildMatchFilterOptions(
+        filterMatchesByTicketFilters({ ...ticketFilters, matchId: [] }),
+      ),
+    [
+      ticketFilters.season,
+      ticketFilters.league,
+      ticketFilters.tournamentStage,
+      ticketFilters.matchClass,
+      ticketFilters.arena,
+      ticketFilters.eventCompleted,
+    ],
+  );
+
+  const merchMatchOptions = useMemo(
+    () =>
+      buildMatchFilterOptions(
+        filterMatchesByMerchFilters({ ...merchFilters, matchId: [] }),
+      ),
+    [
+      merchFilters.season,
+      merchFilters.league,
+      merchFilters.tournamentStage,
+      merchFilters.matchClass,
+    ],
+  );
+
+  const deferredTicketMatchIds = useDeferredValue(ticketFilters.matchId);
+  const deferredMerchMatchIds = useDeferredValue(merchFilters.matchId);
+
+  const ticketFiltersForData = useMemo(
+    () => ({ ...ticketFilters, matchId: deferredTicketMatchIds }),
+    [ticketFilters, deferredTicketMatchIds],
+  );
+
+  const merchFiltersForData = useMemo(
+    () => ({ ...merchFilters, matchId: deferredMerchMatchIds }),
+    [merchFilters, deferredMerchMatchIds],
+  );
+
   const value = useMemo<FilterContextValue>(() => {
     return runWithFilterCache(() => {
       const cutoff = subDays(MOCK_TODAY, filters.dateRange);
       const availableMatches = matches.filter((m) => m.date >= cutoff);
-      const ticketMatchOptions = buildMatchFilterOptions(
-        filterMatchesByTicketFilters({ ...ticketFilters, matchId: "all" }),
-      );
-      const merchMatchOptions = buildMatchFilterOptions(
-        filterMatchesByMerchFilters({ ...merchFilters, matchId: "all" }),
-      );
       const shared = {
         filters,
         ticketFilters,
@@ -250,30 +315,32 @@ export function FilterProvider({ children }: { children: ReactNode }) {
       if (activeTab === "tickets") {
         return {
           ...shared,
-          ticketsKpis: computeTicketsKpis(filters, ticketFilters),
+          ticketsKpis: computeTicketsKpis(filters, ticketFiltersForData),
           merchKpis: EMPTY_MERCH_KPIS,
           subscriptionsKpis: EMPTY_SUBSCRIPTIONS_KPIS,
           weeklyTrend: [],
-          ticketsTrend: computeTicketsTrend(filters, ticketFilters),
-          ticketsPlanFactTrend: computeTicketsPlanFactTrend(filters, ticketFilters),
+          ticketsTrend: computeTicketsTrend(filters, ticketFiltersForData),
+          ticketsPlanFactTrend: computeTicketsPlanFactTrend(filters, ticketFiltersForData),
           ticketsMatchCumulativeSeries: computeTicketsMatchCumulativeSeries(
             filters,
-            ticketFilters,
+            ticketFiltersForData,
           ),
           subscriptionsPlanFactTrend: [],
-          matchRevenue: computeMatchRevenueForTab(filters, "tickets", ticketFilters),
-          sectorSales: computeSectorSales(filters, ticketFilters),
-          channelMix: computeChannelMix(filters, "tickets", ticketFilters),
+          matchRevenue: computeMatchRevenueForTab(filters, "tickets", ticketFiltersForData),
+          sectorSales: computeSectorSales(filters, ticketFiltersForData),
+          channelMix: computeChannelMix(filters, "tickets", ticketFiltersForData),
           topProducts: [],
           subscriptionTariffStats: [],
-          ticketTransactions: getTabTransactions(filters, "tickets", ticketFilters),
-          matchSales: computeMatchSalesTable(filters, ticketFilters),
-          ticketTypeSales: computeTicketTypeSales(filters, ticketFilters),
-          priceZoneSales: computePriceZoneSales(filters, ticketFilters),
-          orderSourceSales: computeOrderSourceSales(filters, ticketFilters),
+          ticketTransactions: getTabTransactions(filters, "tickets", ticketFiltersForData),
+          matchSales: computeMatchSalesTable(filters, ticketFiltersForData),
+          ticketTypeSales: computeTicketTypeSales(filters, ticketFiltersForData),
+          priceZoneSales: computePriceZoneSales(filters, ticketFiltersForData),
+          orderSourceSales: computeOrderSourceSales(filters, ticketFiltersForData),
           merchMatchSales: [],
           merchSalesChannelRevenue: [],
+          merchSalesChannelTrend: [],
           merchProductCategoryRevenue: [],
+          merchProductCategoryTrend: [],
           merchSkuSales: [],
           merchTotals: EMPTY_MERCH_TOTALS,
           merchTransactions: [],
@@ -284,35 +351,43 @@ export function FilterProvider({ children }: { children: ReactNode }) {
         return {
           ...shared,
           ticketsKpis: EMPTY_TICKETS_KPIS,
-          merchKpis: computeMerchKpis(filters, merchFilters),
+          merchKpis: computeMerchKpis(filters, merchFiltersForData),
           subscriptionsKpis: EMPTY_SUBSCRIPTIONS_KPIS,
-          weeklyTrend: computeWeeklyTrend(filters, "merch", merchFilters),
+          weeklyTrend: computeWeeklyTrend(filters, "merch", merchFiltersForData),
           ticketsTrend: [],
           ticketsPlanFactTrend: [],
           ticketsMatchCumulativeSeries: [],
           subscriptionsPlanFactTrend: [],
-          matchRevenue: computeMatchRevenueForTab(filters, "merch", merchFilters),
+          matchRevenue: computeMatchRevenueForTab(filters, "merch", merchFiltersForData),
           sectorSales: [],
-          channelMix: computeChannelMix(filters, "merch", merchFilters),
-          topProducts: computeTopProducts(filters, merchFilters),
+          channelMix: computeChannelMix(filters, "merch", merchFiltersForData),
+          topProducts: computeTopProducts(filters, merchFiltersForData),
           subscriptionTariffStats: [],
           ticketTransactions: [],
           matchSales: [],
           ticketTypeSales: [],
           priceZoneSales: [],
           orderSourceSales: [],
-          merchMatchSales: computeMerchMatchSalesTable(filters, merchFilters),
+          merchMatchSales: computeMerchMatchSalesTable(filters, merchFiltersForData),
           merchSalesChannelRevenue: computeMerchSalesChannelRevenue(
             filters,
-            merchFilters,
+            merchFiltersForData,
+          ),
+          merchSalesChannelTrend: computeMerchSalesChannelTrend(
+            filters,
+            merchFiltersForData,
           ),
           merchProductCategoryRevenue: computeMerchProductCategoryRevenue(
             filters,
-            merchFilters,
+            merchFiltersForData,
           ),
-          merchSkuSales: computeMerchSkuSalesTable(filters, merchFilters),
-          merchTotals: computeMerchTotals(filters, merchFilters),
-          merchTransactions: getTabTransactions(filters, "merch", merchFilters),
+          merchProductCategoryTrend: computeMerchProductCategoryTrend(
+            filters,
+            merchFiltersForData,
+          ),
+          merchSkuSales: computeMerchSkuSalesTable(filters, merchFiltersForData),
+          merchTotals: computeMerchTotals(filters, merchFiltersForData),
+          merchTransactions: getTabTransactions(filters, "merch", merchFiltersForData),
         };
       }
 
@@ -344,7 +419,9 @@ export function FilterProvider({ children }: { children: ReactNode }) {
         orderSourceSales: [],
         merchMatchSales: [],
         merchSalesChannelRevenue: [],
+        merchSalesChannelTrend: [],
         merchProductCategoryRevenue: [],
+        merchProductCategoryTrend: [],
         merchSkuSales: [],
         merchTotals: EMPTY_MERCH_TOTALS,
         merchTransactions: [],
@@ -355,6 +432,10 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     ticketFilters,
     merchFilters,
     subscriptionFilters,
+    ticketFiltersForData,
+    merchFiltersForData,
+    ticketMatchOptions,
+    merchMatchOptions,
     activeTab,
     lastUpdated,
     setDateRange,

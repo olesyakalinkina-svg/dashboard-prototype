@@ -1,7 +1,8 @@
 "use client";
 
 import { useFilters } from "@/context/FilterContext";
-import { Button } from "@/components/ui/Button";
+import { DateRangePicker } from "@/components/ui/DateRangePicker";
+import { MultiSelect } from "@/components/ui/MultiSelect";
 import { Select } from "@/components/ui/Select";
 import {
   ARENA_OPTIONS,
@@ -14,6 +15,7 @@ import {
   TICKET_TYPE_OPTIONS,
   TIME_GROUPING_OPTIONS,
   TOURNAMENT_STAGE_OPTIONS,
+  NO_MATCHES_FILTER_VALUE,
 } from "@/lib/ticket-filter-options";
 import type {
   League,
@@ -143,18 +145,18 @@ export function TicketsFilterBar() {
           ))}
         </Select>
 
-        <Select
+        <MultiSelect
           label="Матч"
+          options={ticketMatchOptions}
           value={ticketFilters.matchId}
-          onChange={(e) => update("matchId", e.target.value)}
+          onChange={(matchId) => update("matchId", matchId)}
+          selectAllLabel="Все матчи"
+          allSelectedLabel="Все матчи"
+          emptyMeansAll
+          applyOnClose
+          noneValue={NO_MATCHES_FILTER_VALUE}
           className="sm:min-w-[220px]"
-        >
-          {ticketMatchOptions.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </Select>
+        />
       </FilterGroup>
 
       <FilterGroup title="Фильтры билетов">
@@ -195,6 +197,15 @@ export function TicketsFilterBar() {
           ))}
         </Select>
 
+        <DateRangePicker
+          label="Дата покупки"
+          value={ticketFilters.transactionDateRange}
+          onChange={(transactionDateRange) =>
+            update("transactionDateRange", transactionDateRange)
+          }
+          className="sm:min-w-[220px]"
+        />
+
         <Select
           label="Группировка"
           value={ticketFilters.timeGrouping}
@@ -206,10 +217,6 @@ export function TicketsFilterBar() {
             </option>
           ))}
         </Select>
-
-        <Button variant="ghost" onClick={resetTicketFilters} className="mb-0.5 hidden w-full sm:w-auto lg:inline-flex">
-          Сбросить
-        </Button>
       </FilterGroup>
       </div>
     </ResponsiveFilterBar>

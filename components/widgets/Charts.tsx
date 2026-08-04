@@ -16,11 +16,13 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import clsx from "clsx";
 import { Card, CardContent } from "@/components/ui/Card";
 import { InlineBarCell } from "@/components/ui/InlineBarCell";
-import { formatCurrency, formatNumber, formatPercent } from "@/lib/format";
+import { Select } from "@/components/ui/Select";
+import { ALL_PRICE_ZONES } from "@/lib/ticket-filter-options";
+import { formatCurrency, formatNumber } from "@/lib/format";
 import { ChartWidget } from "@/components/widgets/ChartWidget";
 import type {
   ChannelMixPoint,
@@ -83,7 +85,70 @@ const ORDER_SOURCE_COLORS: Record<OrderSource, string> = {
   yandex_afisha: "#FF7043",
 };
 
-const PRICE_ZONE_BAR_GRADIENT = `linear-gradient(to right, #93c5fd, ${COLORS.primary})`;
+const PRICE_ZONE_COLOR_MIN = "#dbeafe";
+const PRICE_ZONE_COLOR_MAX = COLORS.primary;
+
+function parseHexColor(hex: string): [number, number, number] {
+  const value = Number.parseInt(hex.replace("#", ""), 16);
+  return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+}
+
+function formatHexColor([r, g, b]: [number, number, number]): string {
+  const toHex = (channel: number) =>
+    Math.round(Math.min(255, Math.max(0, channel)))
+      .toString(16)
+      .padStart(2, "0");
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function mixHexColors(from: string, to: string, ratio: number): string {
+  const [r1, g1, b1] = parseHexColor(from);
+  const [r2, g2, b2] = parseHexColor(to);
+  return formatHexColor([
+    r1 + (r2 - r1) * ratio,
+    g1 + (g2 - g1) * ratio,
+    b1 + (b2 - b1) * ratio,
+  ]);
+}
+
+function getPriceZoneBarColor(
+  tickets: number,
+  minTickets: number,
+  maxTickets: number,
+): string {
+  const ratio =
+    maxTickets > minTickets
+      ? (tickets - minTickets) / (maxTickets - minTickets)
+      : 1;
+  return mixHexColors(PRICE_ZONE_COLOR_MIN, PRICE_ZONE_COLOR_MAX, ratio);
+}
+
+type PriceZoneSortMode = "desc" | "asc" | "alpha";
+
+const PRICE_ZONE_SORT_OPTIONS: { value: PriceZoneSortMode; label: string }[] = [
+  { value: "desc", label: "По убыванию" },
+  { value: "asc", label: "По возрастанию" },
+  { value: "alpha", label: "По алфавиту" },
+];
+
+function sortPriceZoneRows(
+  data: PriceZoneSalesPoint[],
+  mode: PriceZoneSortMode,
+): PriceZoneSalesPoint[] {
+  const rows = [...data];
+  if (mode === "asc") {
+    return rows.sort((a, b) => a.tickets - b.tickets);
+  }
+  if (mode === "alpha") {
+    const zoneOrder = new Map(ALL_PRICE_ZONES.map((zone, index) => [zone, index]));
+    return rows.sort(
+      (a, b) =>
+        (zoneOrder.get(a.zone) ?? 0) - (zoneOrder.get(b.zone) ?? 0) ||
+        a.label.localeCompare(b.label, "ru"),
+    );
+  }
+  return rows.sort((a, b) => b.tickets - a.tickets);
+}
 
 function ChartTooltip({
   active,
@@ -148,6 +213,7 @@ export function MerchRevenueTrendChart({
                 name="Выручка"
                 fill={color}
                 radius={[4, 4, 0, 0]}
+                isAnimationActive={false}
               >
                 <LabelList
                   dataKey="value"
@@ -222,7 +288,7 @@ export function MatchBarChart({
           <Tooltip
             formatter={(value: number) => formatCurrency(value)}
           />
-          <Bar dataKey="value" name="Выручка" fill={color} radius={[4, 4, 0, 0]} />
+          <Bar dataKey="value" name="Выручка" fill={color} radius={[4, 4, 0, 0]} isAnimationActive={false} />
         </BarChart>
       </ResponsiveContainer>
     </ChartWidget>
@@ -257,43 +323,99 @@ export function SectorPieChart({ data }: { data: SectorPoint[] }) {
   );
 }
 
+type ShareInlineRow = {
+  key: string;
+  label: string;
+  value: number;
+  share: number;
+  color: string;
+};
+
+function ShareBreakdownInlineRows({
+  rows,
+  labelClassName = "w-28",
+}: {
+  rows: ShareInlineRow[];
+  labelClassName?: string;
+}) {
+  return (
+    <div className="flex h-full flex-col justify-center gap-2 overflow-y-auto py-1">
+      {rows.map((item) => (
+        <div key={item.key} className="flex items-center gap-2">
+          <span
+            className={clsx(
+              "shrink-0 truncate text-xs font-medium text-[var(--foreground)]",
+              labelClassName,
+            )}
+            title={item.label}
+          >
+            {item.label}
+          </span>
+          <div className="min-w-0 flex-1">
+            <InlineBarCell
+              value={item.value}
+              max={100}
+              share={item.share}
+              formatted={formatCurrency(item.value)}
+              trailingFormatted={`${item.share.toFixed(1)}%`}
+              barStyle={{ backgroundColor: item.color }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function getShareBreakdownChartHeight(itemCount: number, compact = true): number {
+  const rowHeight = compact ? 32 : 36;
+  return Math.max(compact ? 140 : 160, itemCount * rowHeight + 56);
+}
+
 export function getMerchChartsRowHeight(
   topProducts: TopProductPoint[],
-  channels: MerchSalesChannelPoint[],
+  channels?: MerchSalesChannelPoint[],
   categories?: MerchProductCategoryPoint[],
 ): number {
   const topProductsHeight = Math.max(300, topProducts.length * 36 + 48);
-  const channelsHeight = Math.max(300, channels.length * 48 + 72);
-  const categoriesHeight = categories
-    ? Math.max(300, categories.length * 48 + 72)
-    : 0;
+  const channelsHeight = getShareBreakdownChartHeight(channels?.length ?? 0);
+  const categoriesHeight = getShareBreakdownChartHeight(categories?.length ?? 0);
   return Math.max(topProductsHeight, channelsHeight, categoriesHeight);
 }
 
 export function MerchSalesChannelsChart({
   data,
   className,
-  height,
-  fillHeight = false,
+  compact = true,
 }: {
   data: MerchSalesChannelPoint[];
   className?: string;
-  height?: number;
-  fillHeight?: boolean;
+  compact?: boolean;
 }) {
-  const total = useMemo(
-    () => data.reduce((sum, item) => sum + item.value, 0),
+  const sorted = useMemo(
+    () => [...data].sort((a, b) => b.value - a.value),
     [data],
   );
-  const chartHeight = height ?? Math.max(300, data.length * 48 + 72);
+  const chartHeight = getShareBreakdownChartHeight(sorted.length, compact);
+  const rows = useMemo<ShareInlineRow[]>(
+    () =>
+      sorted.map((item) => ({
+        key: item.channelKey,
+        label: item.channel,
+        value: item.value,
+        share: item.share,
+        color: MERCH_CHANNEL_COLORS[item.channelKey],
+      })),
+    [sorted],
+  );
 
-  if (data.length === 0) {
+  if (rows.length === 0) {
     return (
       <ChartWidget
         title="Выручка по каналам продаж"
         height={chartHeight}
         className={className}
-        fillHeight={fillHeight}
+        compact={compact}
       >
         <div className="flex h-full items-center justify-center text-sm text-[var(--muted)]">
           Нет данных по выбранным каналам
@@ -307,67 +429,9 @@ export function MerchSalesChannelsChart({
       title="Выручка по каналам продаж"
       height={chartHeight}
       className={className}
-      fillHeight={fillHeight}
+      compact={compact}
     >
-      <div className="flex h-full flex-col gap-5 lg:flex-row">
-        <div className="h-[220px] min-w-0 flex-1 lg:h-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={data}
-                dataKey="value"
-                nameKey="channel"
-                cx="50%"
-                cy="50%"
-                innerRadius={54}
-                outerRadius={92}
-                paddingAngle={2}
-              >
-                {data.map((item) => (
-                  <Cell
-                    key={item.channelKey}
-                    fill={MERCH_CHANNEL_COLORS[item.channelKey]}
-                  />
-                ))}
-              </Pie>
-              <Tooltip formatter={(value: number) => formatCurrency(value)} />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col justify-center gap-3">
-          {data.map((item) => (
-            <div key={item.channelKey} className="space-y-1">
-              <div className="flex items-center justify-between gap-3 text-xs">
-                <span className="inline-flex items-center gap-2 font-medium text-[var(--foreground)]">
-                  <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{
-                      backgroundColor: MERCH_CHANNEL_COLORS[item.channelKey],
-                    }}
-                  />
-                  <span className="truncate">{item.channel}</span>
-                </span>
-                <span className="whitespace-nowrap text-[var(--muted)]">
-                  {item.share.toFixed(1)}%
-                </span>
-              </div>
-              <div className="relative h-6 overflow-hidden rounded-sm bg-[#f0f0f2]">
-                <div
-                  className="absolute left-0 top-0 h-full rounded-sm"
-                  style={{
-                    width: `${total > 0 ? (item.value / total) * 100 : 0}%`,
-                    minWidth: item.value > 0 ? "2.75rem" : undefined,
-                    backgroundColor: MERCH_CHANNEL_COLORS[item.channelKey],
-                  }}
-                />
-                <span className="relative z-10 flex h-full items-center px-2 text-xs font-medium tabular-nums text-[var(--foreground)]">
-                  {formatCurrency(item.value)}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      <ShareBreakdownInlineRows rows={rows} labelClassName="w-36" />
     </ChartWidget>
   );
 }
@@ -375,27 +439,36 @@ export function MerchSalesChannelsChart({
 export function MerchProductCategoriesChart({
   data,
   className,
-  height,
-  fillHeight = false,
+  compact = true,
 }: {
   data: MerchProductCategoryPoint[];
   className?: string;
-  height?: number;
-  fillHeight?: boolean;
+  compact?: boolean;
 }) {
-  const total = useMemo(
-    () => data.reduce((sum, item) => sum + item.value, 0),
+  const sorted = useMemo(
+    () => [...data].sort((a, b) => b.value - a.value),
     [data],
   );
-  const chartHeight = height ?? Math.max(300, data.length * 48 + 72);
+  const chartHeight = getShareBreakdownChartHeight(sorted.length, compact);
+  const rows = useMemo<ShareInlineRow[]>(
+    () =>
+      sorted.map((item) => ({
+        key: item.categoryKey,
+        label: item.category,
+        value: item.value,
+        share: item.share,
+        color: MERCH_CATEGORY_COLORS[item.categoryKey],
+      })),
+    [sorted],
+  );
 
-  if (data.length === 0) {
+  if (rows.length === 0) {
     return (
       <ChartWidget
         title="Выручка по товарным категориям"
         height={chartHeight}
         className={className}
-        fillHeight={fillHeight}
+        compact={compact}
       >
         <div className="flex h-full items-center justify-center text-sm text-[var(--muted)]">
           Нет данных по выбранным фильтрам
@@ -409,70 +482,9 @@ export function MerchProductCategoriesChart({
       title="Выручка по товарным категориям"
       height={chartHeight}
       className={className}
-      fillHeight={fillHeight}
+      compact={compact}
     >
-      <div className="flex h-full flex-col gap-5 lg:flex-row">
-        <div className="h-[220px] min-w-0 flex-1 lg:h-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={data}
-                dataKey="value"
-                nameKey="category"
-                cx="50%"
-                cy="50%"
-                innerRadius={54}
-                outerRadius={92}
-                paddingAngle={2}
-              >
-                {data.map((item) => (
-                  <Cell
-                    key={item.categoryKey}
-                    fill={MERCH_CATEGORY_COLORS[item.categoryKey]}
-                  />
-                ))}
-              </Pie>
-              <Tooltip formatter={(value: number) => formatCurrency(value)} />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col justify-center gap-3">
-          {data.map((item) => (
-            <div key={item.categoryKey} className="space-y-1">
-              <div className="flex items-center justify-between gap-3 text-xs">
-                <span className="inline-flex items-center gap-2 font-medium text-[var(--foreground)]">
-                  <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{
-                      backgroundColor: MERCH_CATEGORY_COLORS[item.categoryKey],
-                    }}
-                  />
-                  <span className="truncate">{item.category}</span>
-                </span>
-                <span className="whitespace-nowrap text-[var(--muted)]">
-                  {item.share.toFixed(1)}%
-                </span>
-              </div>
-              <div className="relative h-6 overflow-hidden rounded-sm bg-[#f0f0f2]">
-                <div
-                  className="absolute left-0 top-0 h-full rounded-sm"
-                  style={{
-                    width: `${total > 0 ? (item.value / total) * 100 : 0}%`,
-                    minWidth: item.value > 0 ? "2.75rem" : undefined,
-                    backgroundColor: MERCH_CATEGORY_COLORS[item.categoryKey],
-                  }}
-                />
-                <span className="relative z-10 flex h-full items-center justify-between gap-2 px-2 text-xs font-medium tabular-nums text-[var(--foreground)]">
-                  <span>{formatCurrency(item.value)}</span>
-                  <span className="text-[var(--muted)]">
-                    {formatNumber(item.units)} шт.
-                  </span>
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      <ShareBreakdownInlineRows rows={rows} labelClassName="w-36" />
     </ChartWidget>
   );
 }
@@ -506,7 +518,7 @@ export function ChannelMixChart({
             tick={{ fontSize: compact ? 9 : 10, fill: "#8B8B8E" }}
           />
           <Tooltip formatter={(value: number) => formatCurrency(value)} />
-          <Bar dataKey="value" name="Выручка" fill={COLORS.secondary} radius={[0, 4, 4, 0]} />
+          <Bar dataKey="value" name="Выручка" fill={COLORS.secondary} radius={[0, 4, 4, 0]} isAnimationActive={false} />
         </BarChart>
       </ResponsiveContainer>
     </ChartWidget>
@@ -548,7 +560,7 @@ export function TopProductsChart({
             tick={{ fontSize: 9, fill: "#8B8B8E" }}
           />
           <Tooltip formatter={(value: number) => formatCurrency(value)} />
-          <Bar dataKey="revenue" name="Выручка" fill={COLORS.secondary} radius={[0, 4, 4, 0]} />
+          <Bar dataKey="revenue" name="Выручка" fill={COLORS.secondary} radius={[0, 4, 4, 0]} isAnimationActive={false} />
         </BarChart>
       </ResponsiveContainer>
     </ChartWidget>
@@ -637,65 +649,34 @@ function TicketBreakdownEmpty({ message }: { message: string }) {
   );
 }
 
-export function getTicketsBreakdownRowHeight(): number {
-  const pieChartHeight = 260;
-  const priceZoneHeight = Math.max(260, 14 * 28 + 48);
-  return Math.max(pieChartHeight * 2 + 16, priceZoneHeight);
+export function getTicketsBreakdownRowHeight(
+  ticketTypeCount = 2,
+  orderSourceCount = 3,
+  priceZoneCount = 14,
+): number {
+  const ticketTypeHeight = Math.max(140, ticketTypeCount * 36 + 56);
+  const orderSourceHeight = Math.max(140, orderSourceCount * 36 + 56);
+  const leftColumnHeight = ticketTypeHeight + orderSourceHeight + 16;
+  const priceZoneHeight = Math.max(260, priceZoneCount * 28 + 48);
+  return Math.max(leftColumnHeight, priceZoneHeight);
 }
 
-function BreakdownPieTooltip({
-  active,
-  payload,
-}: {
-  active?: boolean;
-  payload?: {
-    payload: TicketTypeSalesPoint | OrderSourceSalesPoint;
-  }[];
-}) {
-  if (!active || !payload?.length) return null;
-  const item = payload[0].payload;
-  return (
-    <div className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-xs shadow-sm">
-      <p className="mb-1 font-medium text-[var(--foreground)]">{item.label}</p>
-      <p className="text-[var(--foreground)]">
-        Выручка: {formatCurrency(item.revenue)}
-      </p>
-      <p className="text-[var(--muted)]">
-        План: {formatCurrency(item.planRevenue)}
-      </p>
-      <p className="text-[var(--muted)]">
-        Билеты: {formatNumber(item.tickets)} / {formatNumber(item.planTickets)} шт
-      </p>
-      <p
-        className={clsx(
-          "font-medium",
-          item.fulfillmentPct >= 100
-            ? "text-emerald-600"
-            : item.fulfillmentPct >= 85
-              ? "text-[var(--foreground)]"
-              : "text-amber-600",
-        )}
-      >
-        Выполнение: {formatPercent(item.fulfillmentPct)}
-      </p>
-    </div>
-  );
+function getOrderSourceChartHeight(itemCount: number, compact: boolean): number {
+  return getShareBreakdownChartHeight(itemCount, compact);
 }
 
 export function TicketTypeSalesChart({
   data,
   compact = true,
-  refreshKey,
 }: {
   data: TicketTypeSalesPoint[];
   compact?: boolean;
-  refreshKey?: string;
 }) {
   const sorted = useMemo(
     () => [...data].sort((a, b) => b.revenue - a.revenue),
     [data],
   );
-  const chartHeight = compact ? 260 : 280;
+  const chartHeight = getOrderSourceChartHeight(sorted.length, compact);
 
   if (sorted.length === 0) {
     return (
@@ -703,7 +684,6 @@ export function TicketTypeSalesChart({
         title="Тип билета"
         height={chartHeight}
         compact={compact}
-        refreshKey={refreshKey}
       >
         <TicketBreakdownEmpty message="Нет данных по типам билетов" />
       </ChartWidget>
@@ -715,73 +695,30 @@ export function TicketTypeSalesChart({
       title="Тип билета"
       height={chartHeight}
       compact={compact}
-      refreshKey={refreshKey}
     >
-      <div className="flex h-full flex-col gap-4 sm:flex-row">
-        <div className="h-[180px] min-w-0 flex-1 sm:h-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={sorted}
-                dataKey="revenue"
-                nameKey="label"
-                cx="50%"
-                cy="50%"
-                innerRadius={48}
-                outerRadius={78}
-                paddingAngle={2}
-              >
-                {sorted.map((item) => (
-                  <Cell key={item.type} fill={TICKET_TYPE_COLORS[item.type]} />
-                ))}
-              </Pie>
-              <Tooltip content={<BreakdownPieTooltip />} />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col justify-center gap-2.5">
-          {sorted.map((item) => (
-            <div key={item.type} className="space-y-1">
-              <div className="flex items-center justify-between gap-2 text-xs">
-                <span className="inline-flex items-center gap-2 font-medium text-[var(--foreground)]">
-                  <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: TICKET_TYPE_COLORS[item.type] }}
-                  />
-                  {item.label}
-                </span>
-                <span className="whitespace-nowrap text-[var(--muted)]">
-                  {item.share.toFixed(1)}%
-                </span>
-              </div>
-              <div className="relative h-6 overflow-hidden rounded-sm bg-[#f0f0f2]">
-                <div
-                  className="absolute left-0 top-0 h-full rounded-sm"
-                  style={{
-                    width: `${item.share}%`,
-                    minWidth: item.revenue > 0 ? "2.75rem" : undefined,
-                    backgroundColor: TICKET_TYPE_COLORS[item.type],
-                  }}
-                />
-                <span className="relative z-10 flex h-full items-center px-2 text-xs font-medium tabular-nums text-[var(--foreground)]">
-                  {formatCurrency(item.revenue)} · {formatNumber(item.tickets)} шт
-                </span>
-              </div>
-              <span
-                className={clsx(
-                  "block text-[10px] tabular-nums",
-                  item.fulfillmentPct >= 100
-                    ? "text-emerald-600"
-                    : item.fulfillmentPct >= 85
-                      ? "text-[var(--muted)]"
-                      : "text-amber-600",
-                )}
-              >
-                {formatPercent(item.fulfillmentPct)} плана
-              </span>
+      <div className="flex h-full flex-col justify-center gap-2 overflow-y-auto py-1">
+        {sorted.map((item) => (
+          <div key={item.type} className="flex items-center gap-2">
+            <span
+              className="w-20 shrink-0 truncate text-xs font-medium text-[var(--foreground)]"
+              title={item.label}
+            >
+              {item.label}
+            </span>
+            <div className="min-w-0 flex-1">
+              <InlineBarCell
+                value={item.revenue}
+                max={100}
+                share={item.share}
+                formatted={formatCurrency(item.revenue)}
+                trailingFormatted={`${item.share.toFixed(1)}%`}
+                barStyle={{
+                  backgroundColor: TICKET_TYPE_COLORS[item.type],
+                }}
+              />
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
     </ChartWidget>
   );
@@ -790,24 +727,30 @@ export function TicketTypeSalesChart({
 export function PriceZoneSalesChart({
   data,
   compact = true,
-  refreshKey,
   fillHeight = false,
 }: {
   data: PriceZoneSalesPoint[];
   compact?: boolean;
-  refreshKey?: string;
   fillHeight?: boolean;
 }) {
+  const [sortMode, setSortMode] = useState<PriceZoneSortMode>("desc");
   const sorted = useMemo(
-    () => [...data].sort((a, b) => b.tickets - a.tickets),
-    [data],
+    () => sortPriceZoneRows(data, sortMode),
+    [data, sortMode],
   );
   const maxTickets = useMemo(
     () => Math.max(...sorted.map((d) => d.tickets), 0),
     [sorted],
   );
+  const minTickets = useMemo(
+    () => Math.min(...sorted.map((d) => d.tickets)),
+    [sorted],
+  );
   const rowHeight = compact ? 28 : 32;
-  const chartHeight = Math.max(compact ? 260 : 280, sorted.length * rowHeight + 48);
+  const chartHeight = Math.max(
+    compact ? 290 : 310,
+    sorted.length * rowHeight + 80,
+  );
 
   if (sorted.length === 0) {
     return (
@@ -816,7 +759,6 @@ export function PriceZoneSalesChart({
         height={chartHeight}
         compact={compact}
         fillHeight={fillHeight}
-        refreshKey={refreshKey}
       >
         <TicketBreakdownEmpty message="Нет данных по ценовым зонам" />
       </ChartWidget>
@@ -829,27 +771,46 @@ export function PriceZoneSalesChart({
       height={chartHeight}
       compact={compact}
       fillHeight={fillHeight}
-      refreshKey={refreshKey}
     >
-      <div className="flex h-full flex-col justify-center gap-1.5 overflow-y-auto py-1">
-        {sorted.map((item) => (
-          <div key={item.zone} className="flex items-center gap-2">
-            <span
-              className="w-8 shrink-0 text-xs font-medium text-[var(--foreground)]"
-              title={item.label}
-            >
-              {item.label}
-            </span>
-            <div className="min-w-0 flex-1">
-              <InlineBarCell
-                value={item.tickets}
-                max={maxTickets}
-                formatted={`${formatNumber(item.tickets)} шт · ${formatCurrency(item.revenue)}`}
-                barStyle={{ background: PRICE_ZONE_BAR_GRADIENT }}
-              />
+      <div className="flex h-full flex-col gap-2 py-1">
+        <Select
+          label="Сортировка"
+          value={sortMode}
+          onChange={(e) => setSortMode(e.target.value as PriceZoneSortMode)}
+          className="h-8 max-w-[180px] text-xs"
+        >
+          {PRICE_ZONE_SORT_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </Select>
+        <div className="flex min-h-0 flex-1 flex-col justify-center gap-1.5 overflow-y-auto">
+          {sorted.map((item) => (
+            <div key={item.zone} className="flex items-center gap-2">
+              <span
+                className="w-8 shrink-0 text-xs font-medium text-[var(--foreground)]"
+                title={item.label}
+              >
+                {item.label}
+              </span>
+              <div className="min-w-0 flex-1">
+                <InlineBarCell
+                  value={item.tickets}
+                  max={maxTickets}
+                  formatted={`${formatNumber(item.tickets)} шт · ${formatCurrency(item.revenue)}`}
+                  barStyle={{
+                    backgroundColor: getPriceZoneBarColor(
+                      item.tickets,
+                      minTickets,
+                      maxTickets,
+                    ),
+                  }}
+                />
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </ChartWidget>
   );
@@ -858,17 +819,15 @@ export function PriceZoneSalesChart({
 export function OrderSourceSalesChart({
   data,
   compact = true,
-  refreshKey,
 }: {
   data: OrderSourceSalesPoint[];
   compact?: boolean;
-  refreshKey?: string;
 }) {
   const sorted = useMemo(
     () => [...data].sort((a, b) => b.revenue - a.revenue),
     [data],
   );
-  const chartHeight = compact ? 260 : 280;
+  const chartHeight = getOrderSourceChartHeight(sorted.length, compact);
 
   if (sorted.length === 0) {
     return (
@@ -876,7 +835,6 @@ export function OrderSourceSalesChart({
         title="Источник заказа"
         height={chartHeight}
         compact={compact}
-        refreshKey={refreshKey}
       >
         <TicketBreakdownEmpty message="Нет данных по источникам заказа" />
       </ChartWidget>
@@ -888,78 +846,30 @@ export function OrderSourceSalesChart({
       title="Источник заказа"
       height={chartHeight}
       compact={compact}
-      refreshKey={refreshKey}
     >
-      <div className="flex h-full flex-col gap-4 sm:flex-row">
-        <div className="h-[180px] min-w-0 flex-1 sm:h-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={sorted}
-                dataKey="revenue"
-                nameKey="label"
-                cx="50%"
-                cy="50%"
-                innerRadius={48}
-                outerRadius={78}
-                paddingAngle={2}
-              >
-                {sorted.map((item) => (
-                  <Cell
-                    key={item.source}
-                    fill={ORDER_SOURCE_COLORS[item.source]}
-                  />
-                ))}
-              </Pie>
-              <Tooltip content={<BreakdownPieTooltip />} />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col justify-center gap-2.5">
-          {sorted.map((item) => (
-            <div key={item.source} className="space-y-1">
-              <div className="flex items-center justify-between gap-2 text-xs">
-                <span className="inline-flex items-center gap-2 font-medium text-[var(--foreground)]">
-                  <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{
-                      backgroundColor: ORDER_SOURCE_COLORS[item.source],
-                    }}
-                  />
-                  <span className="truncate">{item.label}</span>
-                </span>
-                <span className="whitespace-nowrap text-[var(--muted)]">
-                  {item.share.toFixed(1)}%
-                </span>
-              </div>
-              <div className="relative h-6 overflow-hidden rounded-sm bg-[#f0f0f2]">
-                <div
-                  className="absolute left-0 top-0 h-full rounded-sm"
-                  style={{
-                    width: `${item.share}%`,
-                    minWidth: item.revenue > 0 ? "2.75rem" : undefined,
-                    backgroundColor: ORDER_SOURCE_COLORS[item.source],
-                  }}
-                />
-                <span className="relative z-10 flex h-full items-center px-2 text-xs font-medium tabular-nums text-[var(--foreground)]">
-                  {formatCurrency(item.revenue)} · {formatNumber(item.tickets)} шт
-                </span>
-              </div>
-              <span
-                className={clsx(
-                  "block text-[10px] tabular-nums",
-                  item.fulfillmentPct >= 100
-                    ? "text-emerald-600"
-                    : item.fulfillmentPct >= 85
-                      ? "text-[var(--muted)]"
-                      : "text-amber-600",
-                )}
-              >
-                {formatPercent(item.fulfillmentPct)} плана
-              </span>
+      <div className="flex h-full flex-col justify-center gap-2 overflow-y-auto py-1">
+        {sorted.map((item) => (
+          <div key={item.source} className="flex items-center gap-2">
+            <span
+              className="w-28 shrink-0 truncate text-xs font-medium text-[var(--foreground)]"
+              title={item.label}
+            >
+              {item.label}
+            </span>
+            <div className="min-w-0 flex-1">
+              <InlineBarCell
+                value={item.revenue}
+                max={100}
+                share={item.share}
+                formatted={formatCurrency(item.revenue)}
+                trailingFormatted={`${item.share.toFixed(1)}%`}
+                barStyle={{
+                  backgroundColor: ORDER_SOURCE_COLORS[item.source],
+                }}
+              />
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
     </ChartWidget>
   );

@@ -3,10 +3,57 @@
 import clsx from "clsx";
 import type { CSSProperties } from "react";
 
+export function ShareBreakdownBar({
+  share,
+  planShare,
+  color,
+  className,
+}: {
+  share: number;
+  planShare?: number;
+  color: string;
+  className?: string;
+}) {
+  const widthPct = Math.min(100, Math.max(0, share));
+
+  return (
+    <div
+      className={clsx(
+        "relative h-2.5 w-full overflow-hidden rounded-full bg-[#f0f0f2]",
+        className,
+      )}
+      title={
+        planShare !== undefined
+          ? `Доля: ${share.toFixed(1)}% · План: ${planShare.toFixed(1)}%`
+          : `Доля: ${share.toFixed(1)}%`
+      }
+    >
+      {widthPct > 0 && (
+        <div
+          className="absolute left-0 top-0 h-full rounded-full"
+          style={{
+            width: `${widthPct}%`,
+            backgroundColor: color,
+          }}
+        />
+      )}
+      {planShare !== undefined && planShare > 0 && (
+        <div
+          className="absolute top-0 z-10 h-full w-0.5 -translate-x-1/2 rounded-full bg-[#6b6b70]"
+          style={{ left: `${Math.min(100, planShare)}%` }}
+          aria-hidden
+        />
+      )}
+    </div>
+  );
+}
+
 export function InlineBarCell({
   value,
   max,
   formatted,
+  trailingFormatted,
+  share,
   barClassName = "",
   barStyle,
   planValue,
@@ -15,12 +62,19 @@ export function InlineBarCell({
   value: number;
   max: number;
   formatted: string;
+  trailingFormatted?: string;
+  share?: number;
   barClassName?: string;
   barStyle?: CSSProperties;
   planValue?: number;
   planFormatted?: string;
 }) {
-  const widthPct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  const widthPct =
+    share !== undefined
+      ? Math.min(100, Math.max(0, share))
+      : max > 0
+        ? Math.min(100, (value / max) * 100)
+        : 0;
   const planWidthPct =
     planValue !== undefined && max > 0
       ? Math.min(100, (planValue / max) * 100)
@@ -42,14 +96,20 @@ export function InlineBarCell({
           className={clsx("absolute left-0 top-0 h-full rounded-sm", barClassName)}
           style={{
             width: `${widthPct}%`,
-            minWidth: "2.75rem",
+            minWidth: share === undefined && widthPct > 0 ? "2.75rem" : undefined,
             ...barStyle,
           }}
         />
       )}
-      <span className="relative z-10 flex h-full items-center whitespace-nowrap px-2 text-xs font-medium tabular-nums text-[var(--foreground)]">
-        {formatted}
-        {planValue !== undefined && planFormatted && (
+      <span
+        className={clsx(
+          "relative z-10 flex h-full items-center whitespace-nowrap px-2 text-xs font-medium tabular-nums text-[var(--foreground)]",
+          trailingFormatted && "justify-between gap-2",
+        )}
+      >
+        <span>{formatted}</span>
+        {trailingFormatted && <span>{trailingFormatted}</span>}
+        {planValue !== undefined && planFormatted && !trailingFormatted && (
           <span className="ml-1.5 font-normal text-[var(--muted)]">
             / {planFormatted}
           </span>

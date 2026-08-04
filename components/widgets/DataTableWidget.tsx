@@ -170,7 +170,10 @@ export function MatchSalesTable({
 }) {
   const maxValues = useMemo(
     () => ({
-      revenue: Math.max(...data.map((row) => row.revenue), 0),
+      revenue: Math.max(
+        ...data.map((row) => Math.max(row.revenue, row.planRevenue)),
+        0,
+      ),
       avgPrice: Math.max(...data.map((row) => row.avgPrice), 0),
       ticketsSold: Math.max(...data.map((row) => row.ticketsSold), 0),
       loyaltyDiscountPct: Math.max(
@@ -200,11 +203,13 @@ export function MatchSalesTable({
       {
         accessorKey: "revenue",
         header: "Выручка",
-        cell: ({ getValue }) => (
+        cell: ({ row }) => (
           <InlineBarCell
-            value={getValue<number>()}
+            value={row.original.revenue}
+            planValue={row.original.planRevenue}
             max={maxValues.revenue}
-            formatted={formatCurrency(getValue<number>())}
+            formatted={formatCurrency(row.original.revenue)}
+            planFormatted={formatCurrency(row.original.planRevenue)}
             barClassName="bg-red-400"
           />
         ),
@@ -237,6 +242,22 @@ export function MatchSalesTable({
         accessorKey: "freeTickets",
         header: "Бесплатно",
         cell: ({ getValue }) => `${formatNumber(getValue<number>())} шт`,
+      },
+      {
+        accessorKey: "issuedTickets",
+        header: "Оформлено",
+        cell: ({ row }) => {
+          const { issuedTickets, capacity } = row.original;
+          const fillPct = capacity > 0 ? (issuedTickets / capacity) * 100 : 0;
+          return (
+            <InlineBarCell
+              value={issuedTickets}
+              max={capacity}
+              formatted={`${formatNumber(issuedTickets)} шт (${formatPercent(fillPct)})`}
+              barClassName="bg-emerald-500"
+            />
+          );
+        },
       },
       {
         accessorKey: "loyaltyDiscountPct",

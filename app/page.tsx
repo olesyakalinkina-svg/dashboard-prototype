@@ -80,6 +80,30 @@ const ChannelMixChart = dynamic(
   },
 );
 
+const MerchSalesChannelsTrendWidget = dynamic(
+  () =>
+    import("@/components/widgets/MerchSalesChannelsTrendWidget").then((mod) => ({
+      default: mod.MerchSalesChannelsTrendWidget,
+    })),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton height={360} />,
+  },
+);
+
+const MerchProductCategoriesTrendWidget = dynamic(
+  () =>
+    import("@/components/widgets/MerchProductCategoriesTrendWidget").then(
+      (mod) => ({
+        default: mod.MerchProductCategoriesTrendWidget,
+      }),
+    ),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton height={360} />,
+  },
+);
+
 const MerchSalesChannelsChart = dynamic(
   () =>
     import("@/components/widgets/Charts").then((mod) => ({
@@ -134,7 +158,9 @@ function DashboardContent() {
     orderSourceSales,
     merchMatchSales,
     merchSalesChannelRevenue,
+    merchSalesChannelTrend,
     merchProductCategoryRevenue,
+    merchProductCategoryTrend,
     merchSkuSales,
   } = useFilters();
 
@@ -165,10 +191,7 @@ function DashboardContent() {
         {activeTab === "subscriptions" && (
           <>
             <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[1.6fr_1fr]">
-              <SubscriptionsSalesWidget
-                data={subscriptionsPlanFactTrend}
-                refreshKey={filters.dateRange.toString()}
-              />
+              <SubscriptionsSalesWidget data={subscriptionsPlanFactTrend} />
               <div className="flex min-w-0 flex-col gap-4">
                 <SubscriptionPlansChart data={subscriptionTariffStats} compact />
                 <ChannelMixChart
@@ -188,21 +211,12 @@ function DashboardContent() {
               <TicketsSalesWidget
                 series={ticketsMatchCumulativeSeries}
                 ticketFilters={ticketFilters}
-                refreshKey={`${ticketFilters.timeGrouping}-${ticketsMatchCumulativeSeries.length}`}
               />
             </div>
             <TicketsBreakdownWidget
               ticketTypeSales={ticketTypeSales}
               priceZoneSales={priceZoneSales}
               orderSourceSales={orderSourceSales}
-              refreshKey={[
-                ticketFilters.season,
-                ticketFilters.league,
-                ticketFilters.matchId,
-                ticketFilters.ticketType,
-                ticketFilters.priceZone,
-                ticketFilters.orderSource,
-              ].join("-")}
             />
           </>
         )}
@@ -213,21 +227,22 @@ function DashboardContent() {
               <MerchMatchSalesTable data={merchMatchSales} />
               <MerchSkuSalesTable data={merchSkuSales} />
             </div>
+            <MerchSalesChannelsTrendWidget
+              data={merchSalesChannelTrend}
+              channels={merchFilters.salesChannels}
+              timeGrouping={merchFilters.timeGrouping}
+            />
+            <MerchProductCategoriesTrendWidget
+              data={merchProductCategoryTrend}
+              timeGrouping={merchFilters.timeGrouping}
+            />
             <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
-              <MerchSalesChannelsChart
-                data={merchSalesChannelRevenue}
-                height={merchChartsHeight}
-                fillHeight
-              />
-              <TopProductsChart
-                data={topProducts}
-                height={merchChartsHeight}
-                fillHeight
-              />
+              <MerchSalesChannelsChart data={merchSalesChannelRevenue} />
+              <MerchProductCategoriesChart data={merchProductCategoryRevenue} />
             </div>
             <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
-              <MerchProductCategoriesChart
-                data={merchProductCategoryRevenue}
+              <TopProductsChart
+                data={topProducts}
                 height={merchChartsHeight}
                 fillHeight
                 className="xl:col-span-2"

@@ -2,7 +2,7 @@
 
 import clsx from "clsx";
 import { MoreHorizontal } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 
 type ChartWidgetProps = {
@@ -21,16 +21,7 @@ export function ChartWidget({
   height = 280,
   compact = false,
   fillHeight = false,
-  refreshKey,
-}: ChartWidgetProps & { refreshKey?: string }) {
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    setLoading(true);
-    const timer = setTimeout(() => setLoading(false), 300);
-    return () => clearTimeout(timer);
-  }, [title, refreshKey]);
-
+}: ChartWidgetProps) {
   return (
     <Card
       className={clsx(
@@ -53,22 +44,12 @@ export function ChartWidget({
           compact ? "px-3 pb-3" : undefined,
         )}
       >
-        {loading ? (
-          <div
-            className={clsx(
-              "animate-pulse rounded-md bg-[var(--background)]",
-              fillHeight && "flex-1",
-            )}
-            style={fillHeight ? { minHeight: height } : { height }}
-          />
-        ) : (
-          <div
-            className={fillHeight ? "min-h-0 flex-1" : undefined}
-            style={fillHeight ? { minHeight: height } : { height }}
-          >
-            {children}
-          </div>
-        )}
+        <div
+          className={fillHeight ? "min-h-0 flex-1" : undefined}
+          style={fillHeight ? { minHeight: height } : { height }}
+        >
+          {children}
+        </div>
       </CardContent>
     </Card>
   );

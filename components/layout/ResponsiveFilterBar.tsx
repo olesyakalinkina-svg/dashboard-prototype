@@ -11,6 +11,10 @@ type ResponsiveFilterBarProps = {
   onReset?: () => void;
 };
 
+const stickyFilterBarClassName = clsx(
+  "sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--card)] shadow-sm backdrop-blur-sm",
+);
+
 export function ResponsiveFilterBar({
   children,
   onReset,
@@ -55,7 +59,12 @@ export function ResponsiveFilterBar({
 
   return (
     <>
-      <div className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-[var(--border)] bg-white px-4 py-3 shadow-sm lg:hidden">
+      <div
+        className={clsx(
+          stickyFilterBarClassName,
+          "flex items-center justify-between gap-3 px-4 py-3 lg:hidden",
+        )}
+      >
         <Button
           variant="secondary"
           onClick={() => setOpen(true)}
@@ -74,8 +83,20 @@ export function ResponsiveFilterBar({
       </div>
 
       {showInlineFilters && (
-        <div className="hidden border-b border-[var(--border)] bg-white px-4 py-3 shadow-sm sm:space-y-4 sm:px-6 sm:py-4 lg:sticky lg:top-0 lg:z-10 lg:block">
-          {children}
+        <div
+          className={clsx(
+            stickyFilterBarClassName,
+            "hidden px-4 py-3 sm:px-6 sm:py-4 lg:block",
+          )}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">{children}</div>
+            {onReset && (
+              <Button variant="ghost" onClick={onReset} className="shrink-0">
+                Сбросить
+              </Button>
+            )}
+          </div>
         </div>
       )}
 
@@ -97,7 +118,7 @@ export function ResponsiveFilterBar({
             id="mobile-filter-panel"
             className="relative flex max-h-[min(90vh,720px)] flex-col rounded-t-2xl border border-[var(--border)] bg-white shadow-xl"
           >
-            <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+            <div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--card)] px-4 py-3">
               <h2
                 id="mobile-filter-title"
                 className="text-base font-semibold text-[var(--foreground)]"
