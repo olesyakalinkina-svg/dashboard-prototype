@@ -88,20 +88,6 @@ const MERCH_CATEGORY_COLORS: Record<MerchProductCategory, string> = {
 
 
 
-const TIME_GROUPING_SUBTITLES: Record<TimeGrouping, string> = {
-
-  day: "по дням",
-
-  week: "по неделям",
-
-  month: "по месяцам",
-
-  quarter: "по кварталам",
-
-};
-
-
-
 function CategoryTrendTooltip({
 
   active,
@@ -251,12 +237,6 @@ export function MerchProductCategoriesTrendWidget({
         <div className="min-w-0">
 
           <CardTitle>График продаж по товарным категориям</CardTitle>
-
-          <p className="text-[11px] font-normal text-[var(--muted)]">
-
-            Выручка {TIME_GROUPING_SUBTITLES[timeGrouping]} в разрезе категорий
-
-          </p>
 
           <ChartZoomHint visible={!isZoomed} />
 

@@ -42,6 +42,7 @@ import { ALL_PRICE_ZONES } from "@/lib/ticket-filter-options";
 import {
   formatCurrency,
   formatNumber,
+  formatPercent,
   formatShortMonthYear,
 } from "@/lib/format";
 import { ChartWidget } from "@/components/widgets/ChartWidget";
@@ -935,8 +936,8 @@ export function TicketTypeSalesChart({
     () => [...data].sort((a, b) => b.revenue - a.revenue),
     [data],
   );
-  const maxRevenue = useMemo(
-    () => Math.max(...sorted.map((item) => item.revenue), 0),
+  const totalRevenue = useMemo(
+    () => sorted.reduce((sum, item) => sum + item.revenue, 0),
     [sorted],
   );
   const chartHeight = getOrderSourceChartHeight(sorted.length, compact);
@@ -960,26 +961,33 @@ export function TicketTypeSalesChart({
       compact={compact}
     >
       <div className="flex h-full flex-col justify-center gap-2 overflow-y-auto py-1">
-        {sorted.map((item) => (
-          <div key={item.type} className="flex items-center gap-2">
-            <span
-              className="w-20 shrink-0 truncate text-xs font-medium text-[var(--foreground)]"
-              title={item.label}
-            >
-              {item.label}
-            </span>
-            <div className="min-w-0 flex-1">
-              <InlineBarCell
-                value={item.revenue}
-                max={maxRevenue}
-                formatted={formatCurrency(item.revenue)}
-                barStyle={{
-                  backgroundColor: TICKET_TYPE_COLORS[item.type],
-                }}
-              />
+        {sorted.map((item) => {
+          const share =
+            totalRevenue > 0 ? (item.revenue / totalRevenue) * 100 : 0;
+
+          return (
+            <div key={item.type} className="flex items-center gap-2">
+              <span
+                className="w-20 shrink-0 truncate text-xs font-medium text-[var(--foreground)]"
+                title={item.label}
+              >
+                {item.label}
+              </span>
+              <div className="min-w-0 flex-1">
+                <InlineBarCell
+                  value={item.revenue}
+                  max={100}
+                  share={share}
+                  formatted={formatCurrency(item.revenue)}
+                  trailingFormatted={formatPercent(share)}
+                  barStyle={{
+                    backgroundColor: TICKET_TYPE_COLORS[item.type],
+                  }}
+                />
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </ChartWidget>
   );
@@ -1088,8 +1096,8 @@ export function OrderSourceSalesChart({
     () => [...data].sort((a, b) => b.revenue - a.revenue),
     [data],
   );
-  const maxRevenue = useMemo(
-    () => Math.max(...sorted.map((item) => item.revenue), 0),
+  const totalRevenue = useMemo(
+    () => sorted.reduce((sum, item) => sum + item.revenue, 0),
     [sorted],
   );
   const chartHeight = getOrderSourceChartHeight(sorted.length, compact);
@@ -1113,26 +1121,33 @@ export function OrderSourceSalesChart({
       compact={compact}
     >
       <div className="flex h-full flex-col justify-center gap-2 overflow-y-auto py-1">
-        {sorted.map((item) => (
-          <div key={item.source} className="flex items-center gap-2">
-            <span
-              className="w-20 shrink-0 truncate text-xs font-medium text-[var(--foreground)] sm:w-28"
-              title={item.label}
-            >
-              {item.label}
-            </span>
-            <div className="min-w-0 flex-1">
-              <InlineBarCell
-                value={item.revenue}
-                max={maxRevenue}
-                formatted={formatCurrency(item.revenue)}
-                barStyle={{
-                  backgroundColor: ORDER_SOURCE_COLORS[item.source],
-                }}
-              />
+        {sorted.map((item) => {
+          const share =
+            totalRevenue > 0 ? (item.revenue / totalRevenue) * 100 : 0;
+
+          return (
+            <div key={item.source} className="flex items-center gap-2">
+              <span
+                className="w-20 shrink-0 truncate text-xs font-medium text-[var(--foreground)] sm:w-28"
+                title={item.label}
+              >
+                {item.label}
+              </span>
+              <div className="min-w-0 flex-1">
+                <InlineBarCell
+                  value={item.revenue}
+                  max={100}
+                  share={share}
+                  formatted={formatCurrency(item.revenue)}
+                  trailingFormatted={formatPercent(share)}
+                  barStyle={{
+                    backgroundColor: ORDER_SOURCE_COLORS[item.source],
+                  }}
+                />
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </ChartWidget>
   );

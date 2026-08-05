@@ -106,6 +106,17 @@ export type MerchSkuSalesRow = {
   actualToListPricePct: number;
 };
 
+export type TicketSalesTempo =
+  | "steady"
+  | "front_loaded"
+  | "back_loaded"
+  | "slow_start";
+
+export type TicketSalesProfile = {
+  fulfillmentFactor?: number;
+  tempo?: TicketSalesTempo;
+};
+
 export type Match = {
   id: string;
   date: Date;
@@ -120,6 +131,8 @@ export type Match = {
   eventCompleted: boolean;
   /** Days before match when ticket sales open (10–16). */
   ticketSalesWindowDays: number;
+  /** Optional overrides for chart demo scenarios in mock data. */
+  ticketSalesProfile?: TicketSalesProfile;
 };
 
 export type Promotion = {
@@ -267,6 +280,41 @@ export type TicketMatchCumulativeSeries = {
   planTickets: number;
   currentDaysBeforeMatch: number | null;
   points: TicketMatchCumulativePoint[];
+};
+
+export type TicketsSeasonMatchQuickFilter =
+  | "all"
+  | "on_sale"
+  | "completed"
+  | "met_plan"
+  | "missed_plan";
+
+export type TicketsSeasonMatchStatus = "behind" | "on_track" | "ahead";
+
+export type TicketsSeasonMatchSeriesView = {
+  matchId: string;
+  opponent: string;
+  matchDate: string;
+  matchDateKey: number;
+  legendLabel: string;
+  color: string;
+  league: League;
+  season: string;
+  planRevenue: number;
+  eventCompleted: boolean;
+  hasFactSales: boolean;
+  isOnSale: boolean;
+  salesStartDateKey: number;
+  currentFact: number;
+  completionPct: number;
+  deviationPct: number;
+  status: TicketsSeasonMatchStatus;
+};
+
+export type TicketsSeasonMatchChartRow = {
+  dateKey: number;
+  periodLabel: string;
+  [seriesKey: string]: string | number | null;
 };
 
 export type TopProductPoint = {

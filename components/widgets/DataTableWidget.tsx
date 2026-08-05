@@ -381,7 +381,7 @@ export function MatchSalesTable({
         {tableContent}
       </div>
     ) : (
-      <Card className="min-w-0">
+      <Card className="flex h-full min-w-0 flex-col">
         <CardHeader>
           <CardTitle>Продажи</CardTitle>
           <div className="relative w-full sm:w-auto">{searchInput}</div>

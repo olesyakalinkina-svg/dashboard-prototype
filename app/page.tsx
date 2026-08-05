@@ -14,17 +14,6 @@ import {
   MatchSalesTable,
 } from "@/components/widgets/DataTableWidget";
 
-const TicketsSalesWidget = dynamic(
-  () =>
-    import("@/components/widgets/TicketsSalesWidget").then((mod) => ({
-      default: mod.TicketsSalesWidget,
-    })),
-  {
-    ssr: false,
-    loading: () => <ChartSkeleton height={420} />,
-  },
-);
-
 const TicketsPlanFactWidget = dynamic(
   () =>
     import("@/components/widgets/TicketsPlanFactWidget").then((mod) => ({
@@ -44,6 +33,19 @@ const TicketsSalesChannelsTrendWidget = dynamic(
   {
     ssr: false,
     loading: () => <ChartSkeleton height={360} />,
+  },
+);
+
+const TicketsSeasonMatchDynamicsWidget = dynamic(
+  () =>
+    import("@/components/widgets/TicketsSeasonMatchDynamicsWidget").then(
+      (mod) => ({
+        default: mod.TicketsSeasonMatchDynamicsWidget,
+      }),
+    ),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton height={420} />,
   },
 );
 
@@ -245,9 +247,9 @@ function DashboardContent() {
               <TicketsPlanFactWidget data={ticketsPlanFactTrend} />
               <TicketsSalesChannelsTrendWidget data={ticketsSalesChannelTrend} />
             </div>
-            <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-2">
+            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
               <MatchSalesTable data={matchSales} />
-              <TicketsSalesWidget
+              <TicketsSeasonMatchDynamicsWidget
                 series={ticketsMatchCumulativeSeries}
                 ticketFilters={ticketFilters}
               />

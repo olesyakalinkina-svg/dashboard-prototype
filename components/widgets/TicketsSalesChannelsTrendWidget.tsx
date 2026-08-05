@@ -159,7 +159,10 @@ export function TicketsSalesChannelsTrendWidget({
                 {...chartHandlers}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E5E7" />
-                <XAxis {...getMerchTrendXAxisProps(timeGrouping)} />
+                <XAxis
+                  {...getMerchTrendXAxisProps(timeGrouping)}
+                  tick={{ fontSize: 11, fill: "#8B8B8E" }}
+                />
                 <YAxis
                   domain={yDomain}
                   tick={{ fontSize: 11, fill: "#8B8B8E" }}

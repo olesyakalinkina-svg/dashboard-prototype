@@ -126,7 +126,10 @@ export function TicketsPlanFactWidget({
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={displayData} {...chartHandlers}>
               <CartesianGrid strokeDasharray="3 3" stroke="#E5E5E7" />
-              <XAxis {...getMerchTrendXAxisProps(timeGrouping)} />
+              <XAxis
+                {...getMerchTrendXAxisProps(timeGrouping)}
+                tick={{ fontSize: 11, fill: "#8B8B8E" }}
+              />
               <YAxis
                 domain={yDomain}
                 width={48}

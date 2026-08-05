@@ -74,20 +74,6 @@ import type {
 
 
 
-const TIME_GROUPING_SUBTITLES: Record<TimeGrouping, string> = {
-
-  day: "по дням",
-
-  week: "по неделям",
-
-  month: "по месяцам",
-
-  quarter: "по кварталам",
-
-};
-
-
-
 function ChannelTrendTooltip({
 
   active,
@@ -239,12 +225,6 @@ export function MerchSalesChannelsTrendWidget({
         <div className="min-w-0">
 
           <CardTitle>График продаж по каналам продаж</CardTitle>
-
-          <p className="text-[11px] font-normal text-[var(--muted)]">
-
-            Выручка {TIME_GROUPING_SUBTITLES[timeGrouping]} в разрезе каналов
-
-          </p>
 
           <ChartZoomHint visible={!isZoomed} />
 

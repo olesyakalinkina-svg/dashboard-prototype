@@ -13,6 +13,8 @@ import type {
   SubscriptionPlan,
   TicketType,
   Transaction,
+  TicketSalesProfile,
+  TicketSalesTempo,
 } from "@/types/dashboard";
 import { ALL_PRICE_ZONES } from "@/lib/ticket-filter-options";
 import {
@@ -592,7 +594,75 @@ function generateMatches(): Match[] {
   applyTournamentStages(allMatches);
   alignCompletedMatchSalesWindows(allMatches);
   alignNearestUpcomingMatchSalesWindows(allMatches);
+  applyTicketChartDemoProfiles(allMatches);
   return allMatches;
+}
+
+function buildTicketSalesDailyWeights(
+  saleDayCount: number,
+  tempo?: TicketSalesTempo,
+): number[] {
+  if (!tempo || tempo === "steady") {
+    return Array.from({ length: saleDayCount }, () => 0.8 + rand() * 0.4);
+  }
+
+  return Array.from({ length: saleDayCount }, (_, index) => {
+    const t = saleDayCount <= 1 ? 0.5 : index / (saleDayCount - 1);
+    switch (tempo) {
+      case "front_loaded":
+        return 1.35 - t * 0.75;
+      case "back_loaded":
+        return 0.55 + t * 0.85;
+      case "slow_start":
+        return t < 0.45 ? 0.35 + t * 0.5 : 1.15;
+      default:
+        return 0.8 + rand() * 0.4;
+    }
+  });
+}
+
+/**
+ * Tunes a handful of matches so the season match dynamics chart has clear demo
+ * scenarios: shared sales starts, ahead/behind/on-track fulfillment, and
+ * different sales tempos.
+ */
+function applyTicketChartDemoProfiles(matches: Match[]): void {
+  const completedKhl = matches
+    .filter(
+      (match) =>
+        match.league === "KHL" &&
+        match.season === "2025/26" &&
+        match.eventCompleted,
+    )
+    .sort((left, right) => left.date.getTime() - right.date.getTime())
+    .slice(0, COMPLETED_MATCH_OVERLAP_COUNT);
+
+  const completedProfiles: TicketSalesProfile[] = [
+    { fulfillmentFactor: 1.06, tempo: "front_loaded" },
+    { fulfillmentFactor: 0.88, tempo: "slow_start" },
+    { fulfillmentFactor: 0.97, tempo: "back_loaded" },
+  ];
+
+  completedKhl.forEach((match, index) => {
+    match.ticketSalesProfile = completedProfiles[index];
+  });
+
+  const upcomingKhl = matches
+    .filter((match) => match.league === "KHL" && !match.eventCompleted)
+    .sort((left, right) => left.date.getTime() - right.date.getTime());
+
+  if (upcomingKhl[0]) {
+    upcomingKhl[0].ticketSalesProfile = {
+      fulfillmentFactor: 0.93,
+      tempo: "steady",
+    };
+  }
+  if (upcomingKhl[1]) {
+    upcomingKhl[1].ticketSalesProfile = {
+      fulfillmentFactor: 1.03,
+      tempo: "front_loaded",
+    };
+  }
 }
 
 function pickOrderSource(): OrderSource {
@@ -806,7 +876,9 @@ function generateMatchTicketSales(
   const planProfile = getMatchTicketPlanProfile(match);
   const planTickets = Math.round(match.capacity * planProfile.fillRate);
   const planRevenue = getMatchPlanRevenue(match);
-  const fulfillmentFactor = 0.9 + rand() * 0.08;
+  const profile = match.ticketSalesProfile;
+  const fulfillmentFactor =
+    profile?.fulfillmentFactor ?? 0.9 + rand() * 0.08;
   const opponentFactor = getOpponentSalesFactor(match.opponent, match.matchClass);
   const targetRevenue = Math.round(
     planRevenue * fulfillmentFactor * opponentFactor * (0.97 + rand() * 0.05),
@@ -818,10 +890,7 @@ function generateMatchTicketSales(
 
   const salesWindowDays = getMatchTicketSalesWindowDays(match);
   const saleDayCount = salesWindowDays + 1;
-  const dailyWeights = Array.from(
-    { length: saleDayCount },
-    () => 0.8 + rand() * 0.4,
-  );
+  const dailyWeights = buildTicketSalesDailyWeights(saleDayCount, profile?.tempo);
   const weightSum = dailyWeights.reduce((sum, weight) => sum + weight, 0);
 
   const txs: Transaction[] = [];
