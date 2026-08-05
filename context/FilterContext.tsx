@@ -5,12 +5,12 @@ import {
   useCallback,
   useContext,
   useDeferredValue,
+  useEffect,
   useMemo,
   useState,
   startTransition,
   type ReactNode,
 } from "react";
-import { subDays } from "date-fns";
 import {
   computeChannelMix,
   computeMatchSalesTable,
@@ -19,13 +19,11 @@ import {
   computeMerchProductCategoryTrend,
   computeMerchSalesChannelRevenue,
   computeMerchSalesChannelTrend,
+  computeMerchSalesSegmentTrend,
   computeMerchSkuSalesTable,
-  computeMerchTotals,
-  computeMatchRevenueForTab,
   computeMerchKpis,
   computeOrderSourceSales,
   computePriceZoneSales,
-  computeSectorSales,
   computeSubscriptionTariffStats,
   computeSubscriptionsKpis,
   computeSubscriptionsPlanFactTrend,
@@ -33,14 +31,11 @@ import {
   computeTicketsKpis,
   computeTicketsMatchCumulativeSeries,
   computeTicketsPlanFactTrend,
-  computeTicketsTrend,
+  computeTicketsSalesChannelTrend,
   computeTopProducts,
-  computeWeeklyTrend,
   filterMatchesByMerchFilters,
   filterMatchesByTicketFilters,
-  getTabTransactions,
   runWithFilterCache,
-  type MerchTotals,
 } from "@/lib/filters";
 import {
   buildMatchFilterOptions,
@@ -48,26 +43,43 @@ import {
 } from "@/lib/ticket-filter-options";
 import { DEFAULT_MERCH_FILTERS } from "@/lib/merch-filter-options";
 import { DEFAULT_SUBSCRIPTION_FILTERS } from "@/lib/subscription-filter-options";
-import { matches, MOCK_TODAY } from "@/lib/mock/hockey";
 import type {
+  ChannelMixPoint,
   DashboardFilters,
   DashboardTab,
   DateRangePreset,
+  MatchSalesRow,
   MerchFilters,
   MerchKpiData,
+  MerchMatchSalesRow,
+  MerchProductCategoryPoint,
+  MerchProductCategoryTrendPoint,
+  MerchSalesChannelPoint,
+  MerchSalesChannelTrendPoint,
+  MerchSalesSegmentTrendPoint,
+  MerchSkuSalesRow,
+  OrderSourceSalesPoint,
+  PlanFactTrendPoint,
+  SubscriptionsPlanFactTrendPoint,
+  PriceZoneSalesPoint,
   SubscriptionFilters,
+  SubscriptionPlanStat,
   SubscriptionsKpiData,
   TicketFilters,
+  TicketMatchCumulativeSeries,
+  TicketsSalesChannelTrendPoint,
+  TicketTypeSalesPoint,
   TicketsKpiData,
+  TopProductPoint,
 } from "@/types/dashboard";
 
-type FilterContextValue = {
+type FilterStateContextValue = {
   filters: DashboardFilters;
   ticketFilters: TicketFilters;
   merchFilters: MerchFilters;
   subscriptionFilters: SubscriptionFilters;
   activeTab: DashboardTab;
-  lastUpdated: Date;
+  lastUpdated: Date | null;
   setDateRange: (range: DateRangePreset) => void;
   setMatchId: (matchId: string | "all") => void;
   setTicketFilters: (patch: Partial<TicketFilters>) => void;
@@ -79,36 +91,35 @@ type FilterContextValue = {
   resetMerchFilters: () => void;
   resetSubscriptionFilters: () => void;
   refresh: () => void;
-  ticketsKpis: ReturnType<typeof computeTicketsKpis>;
-  merchKpis: ReturnType<typeof computeMerchKpis>;
-  subscriptionsKpis: ReturnType<typeof computeSubscriptionsKpis>;
-  weeklyTrend: ReturnType<typeof computeWeeklyTrend>;
-  ticketsTrend: ReturnType<typeof computeTicketsTrend>;
-  ticketsPlanFactTrend: ReturnType<typeof computeTicketsPlanFactTrend>;
-  ticketsMatchCumulativeSeries: ReturnType<typeof computeTicketsMatchCumulativeSeries>;
-  subscriptionsPlanFactTrend: ReturnType<typeof computeSubscriptionsPlanFactTrend>;
-  matchRevenue: ReturnType<typeof computeMatchRevenueForTab>;
-  sectorSales: ReturnType<typeof computeSectorSales>;
-  channelMix: ReturnType<typeof computeChannelMix>;
-  topProducts: ReturnType<typeof computeTopProducts>;
-  subscriptionTariffStats: ReturnType<typeof computeSubscriptionTariffStats>;
-  ticketTransactions: ReturnType<typeof getTabTransactions>;
-  matchSales: ReturnType<typeof computeMatchSalesTable>;
-  ticketTypeSales: ReturnType<typeof computeTicketTypeSales>;
-  priceZoneSales: ReturnType<typeof computePriceZoneSales>;
-  orderSourceSales: ReturnType<typeof computeOrderSourceSales>;
-  merchMatchSales: ReturnType<typeof computeMerchMatchSalesTable>;
-  merchSalesChannelRevenue: ReturnType<typeof computeMerchSalesChannelRevenue>;
-  merchSalesChannelTrend: ReturnType<typeof computeMerchSalesChannelTrend>;
-  merchProductCategoryRevenue: ReturnType<typeof computeMerchProductCategoryRevenue>;
-  merchProductCategoryTrend: ReturnType<typeof computeMerchProductCategoryTrend>;
-  merchSkuSales: ReturnType<typeof computeMerchSkuSalesTable>;
-  merchTotals: ReturnType<typeof computeMerchTotals>;
-  merchTransactions: ReturnType<typeof getTabTransactions>;
-  availableMatches: typeof matches;
   ticketMatchOptions: ReturnType<typeof buildMatchFilterOptions>;
   merchMatchOptions: ReturnType<typeof buildMatchFilterOptions>;
 };
+
+type FilterDataContextValue = {
+  ticketsKpis: TicketsKpiData;
+  merchKpis: MerchKpiData;
+  subscriptionsKpis: SubscriptionsKpiData;
+  ticketsMatchCumulativeSeries: TicketMatchCumulativeSeries[];
+  ticketsPlanFactTrend: PlanFactTrendPoint[];
+  ticketsSalesChannelTrend: TicketsSalesChannelTrendPoint[];
+  subscriptionsPlanFactTrend: SubscriptionsPlanFactTrendPoint[];
+  channelMix: ChannelMixPoint[];
+  topProducts: TopProductPoint[];
+  subscriptionTariffStats: SubscriptionPlanStat[];
+  matchSales: MatchSalesRow[];
+  ticketTypeSales: TicketTypeSalesPoint[];
+  priceZoneSales: PriceZoneSalesPoint[];
+  orderSourceSales: OrderSourceSalesPoint[];
+  merchMatchSales: MerchMatchSalesRow[];
+  merchSalesChannelRevenue: MerchSalesChannelPoint[];
+  merchSalesChannelTrend: MerchSalesChannelTrendPoint[];
+  merchSalesSegmentTrend: MerchSalesSegmentTrendPoint[];
+  merchProductCategoryRevenue: MerchProductCategoryPoint[];
+  merchProductCategoryTrend: MerchProductCategoryTrendPoint[];
+  merchSkuSales: MerchSkuSalesRow[];
+};
+
+export type FilterContextValue = FilterStateContextValue & FilterDataContextValue;
 
 const defaultFilters: DashboardFilters = {
   dateRange: 30,
@@ -155,16 +166,124 @@ const EMPTY_SUBSCRIPTIONS_KPIS: SubscriptionsKpiData = {
   soldSparkline: [],
 };
 
-const EMPTY_MERCH_TOTALS: MerchTotals = {
-  revenue: 0,
-  receipts: 0,
-  units: 0,
-  cost: 0,
-  returnsValue: 0,
-  grossSales: 0,
-};
+const FilterStateContext = createContext<FilterStateContextValue | null>(null);
+const FilterDataContext = createContext<FilterDataContextValue | null>(null);
 
-const FilterContext = createContext<FilterContextValue | null>(null);
+function computeFilterData(
+  filters: DashboardFilters,
+  ticketFiltersForData: TicketFilters,
+  merchFiltersForData: MerchFilters,
+  subscriptionFilters: SubscriptionFilters,
+  activeTab: DashboardTab,
+): FilterDataContextValue {
+  return runWithFilterCache(() => {
+    if (activeTab === "tickets") {
+      return {
+        ticketsKpis: computeTicketsKpis(filters, ticketFiltersForData),
+        merchKpis: EMPTY_MERCH_KPIS,
+        subscriptionsKpis: EMPTY_SUBSCRIPTIONS_KPIS,
+        ticketsMatchCumulativeSeries: computeTicketsMatchCumulativeSeries(
+          filters,
+          ticketFiltersForData,
+        ),
+        ticketsPlanFactTrend: computeTicketsPlanFactTrend(
+          filters,
+          ticketFiltersForData,
+        ),
+        ticketsSalesChannelTrend: computeTicketsSalesChannelTrend(
+          filters,
+          ticketFiltersForData,
+        ),
+        subscriptionsPlanFactTrend: [],
+        channelMix: [],
+        topProducts: [],
+        subscriptionTariffStats: [],
+        matchSales: computeMatchSalesTable(filters, ticketFiltersForData),
+        ticketTypeSales: computeTicketTypeSales(filters, ticketFiltersForData),
+        priceZoneSales: computePriceZoneSales(filters, ticketFiltersForData),
+        orderSourceSales: computeOrderSourceSales(filters, ticketFiltersForData),
+        merchMatchSales: [],
+        merchSalesChannelRevenue: [],
+        merchSalesChannelTrend: [],
+        merchSalesSegmentTrend: [],
+        merchProductCategoryRevenue: [],
+        merchProductCategoryTrend: [],
+        merchSkuSales: [],
+      };
+    }
+
+    if (activeTab === "merch") {
+      return {
+        ticketsKpis: EMPTY_TICKETS_KPIS,
+        merchKpis: computeMerchKpis(filters, merchFiltersForData),
+        subscriptionsKpis: EMPTY_SUBSCRIPTIONS_KPIS,
+        ticketsMatchCumulativeSeries: [],
+        ticketsPlanFactTrend: [],
+        ticketsSalesChannelTrend: [],
+        subscriptionsPlanFactTrend: [],
+        channelMix: [],
+        topProducts: computeTopProducts(filters, merchFiltersForData),
+        subscriptionTariffStats: [],
+        matchSales: [],
+        ticketTypeSales: [],
+        priceZoneSales: [],
+        orderSourceSales: [],
+        merchMatchSales: computeMerchMatchSalesTable(filters, merchFiltersForData),
+        merchSalesChannelRevenue: computeMerchSalesChannelRevenue(
+          filters,
+          merchFiltersForData,
+        ),
+        merchSalesChannelTrend: computeMerchSalesChannelTrend(
+          filters,
+          merchFiltersForData,
+        ),
+        merchSalesSegmentTrend: computeMerchSalesSegmentTrend(
+          filters,
+          merchFiltersForData,
+        ),
+        merchProductCategoryRevenue: computeMerchProductCategoryRevenue(
+          filters,
+          merchFiltersForData,
+        ),
+        merchProductCategoryTrend: computeMerchProductCategoryTrend(
+          filters,
+          merchFiltersForData,
+        ),
+        merchSkuSales: computeMerchSkuSalesTable(filters, merchFiltersForData),
+      };
+    }
+
+    return {
+      ticketsKpis: EMPTY_TICKETS_KPIS,
+      merchKpis: EMPTY_MERCH_KPIS,
+      subscriptionsKpis: computeSubscriptionsKpis(filters, subscriptionFilters),
+      ticketsMatchCumulativeSeries: [],
+      ticketsPlanFactTrend: [],
+      ticketsSalesChannelTrend: [],
+      subscriptionsPlanFactTrend: computeSubscriptionsPlanFactTrend(
+        filters,
+        subscriptionFilters,
+      ),
+      channelMix: computeChannelMix(filters, "subscriptions", subscriptionFilters),
+      topProducts: [],
+      subscriptionTariffStats: computeSubscriptionTariffStats(
+        filters,
+        subscriptionFilters,
+      ),
+      matchSales: [],
+      ticketTypeSales: [],
+      priceZoneSales: [],
+      orderSourceSales: [],
+      merchMatchSales: [],
+      merchSalesChannelRevenue: [],
+      merchSalesChannelTrend: [],
+      merchSalesSegmentTrend: [],
+      merchProductCategoryRevenue: [],
+      merchProductCategoryTrend: [],
+      merchSkuSales: [],
+    };
+  });
+}
 
 export function FilterProvider({ children }: { children: ReactNode }) {
   const [filters, setFilters] = useState<DashboardFilters>(defaultFilters);
@@ -175,7 +294,11 @@ export function FilterProvider({ children }: { children: ReactNode }) {
   const [subscriptionFilters, setSubscriptionFiltersState] =
     useState<SubscriptionFilters>(DEFAULT_SUBSCRIPTION_FILTERS);
   const [activeTab, setActiveTabState] = useState<DashboardTab>("tickets");
-  const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  useEffect(() => {
+    setLastUpdated(new Date());
+  }, []);
 
   const setDateRange = useCallback((dateRange: DateRangePreset) => {
     startTransition(() => {
@@ -285,180 +408,94 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     [merchFilters, deferredMerchMatchIds],
   );
 
-  const value = useMemo<FilterContextValue>(() => {
-    return runWithFilterCache(() => {
-      const cutoff = subDays(MOCK_TODAY, filters.dateRange);
-      const availableMatches = matches.filter((m) => m.date >= cutoff);
-      const shared = {
+  const stateValue = useMemo<FilterStateContextValue>(
+    () => ({
+      filters,
+      ticketFilters,
+      merchFilters,
+      subscriptionFilters,
+      activeTab,
+      lastUpdated,
+      setDateRange,
+      setMatchId,
+      setTicketFilters,
+      setMerchFilters,
+      setSubscriptionFilters,
+      setActiveTab,
+      resetFilters,
+      resetTicketFilters,
+      resetMerchFilters,
+      resetSubscriptionFilters,
+      refresh,
+      ticketMatchOptions,
+      merchMatchOptions,
+    }),
+    [
+      filters,
+      ticketFilters,
+      merchFilters,
+      subscriptionFilters,
+      activeTab,
+      lastUpdated,
+      setDateRange,
+      setMatchId,
+      setTicketFilters,
+      setMerchFilters,
+      setSubscriptionFilters,
+      setActiveTab,
+      resetFilters,
+      resetTicketFilters,
+      resetMerchFilters,
+      resetSubscriptionFilters,
+      refresh,
+      ticketMatchOptions,
+      merchMatchOptions,
+    ],
+  );
+
+  const dataValue = useMemo(
+    () =>
+      computeFilterData(
         filters,
-        ticketFilters,
-        merchFilters,
+        ticketFiltersForData,
+        merchFiltersForData,
         subscriptionFilters,
         activeTab,
-        lastUpdated,
-        setDateRange,
-        setMatchId,
-        setTicketFilters,
-        setMerchFilters,
-        setSubscriptionFilters,
-        setActiveTab,
-        resetFilters,
-        resetTicketFilters,
-        resetMerchFilters,
-        resetSubscriptionFilters,
-        refresh,
-        availableMatches,
-        ticketMatchOptions,
-        merchMatchOptions,
-      };
-
-      if (activeTab === "tickets") {
-        return {
-          ...shared,
-          ticketsKpis: computeTicketsKpis(filters, ticketFiltersForData),
-          merchKpis: EMPTY_MERCH_KPIS,
-          subscriptionsKpis: EMPTY_SUBSCRIPTIONS_KPIS,
-          weeklyTrend: [],
-          ticketsTrend: computeTicketsTrend(filters, ticketFiltersForData),
-          ticketsPlanFactTrend: computeTicketsPlanFactTrend(filters, ticketFiltersForData),
-          ticketsMatchCumulativeSeries: computeTicketsMatchCumulativeSeries(
-            filters,
-            ticketFiltersForData,
-          ),
-          subscriptionsPlanFactTrend: [],
-          matchRevenue: computeMatchRevenueForTab(filters, "tickets", ticketFiltersForData),
-          sectorSales: computeSectorSales(filters, ticketFiltersForData),
-          channelMix: computeChannelMix(filters, "tickets", ticketFiltersForData),
-          topProducts: [],
-          subscriptionTariffStats: [],
-          ticketTransactions: getTabTransactions(filters, "tickets", ticketFiltersForData),
-          matchSales: computeMatchSalesTable(filters, ticketFiltersForData),
-          ticketTypeSales: computeTicketTypeSales(filters, ticketFiltersForData),
-          priceZoneSales: computePriceZoneSales(filters, ticketFiltersForData),
-          orderSourceSales: computeOrderSourceSales(filters, ticketFiltersForData),
-          merchMatchSales: [],
-          merchSalesChannelRevenue: [],
-          merchSalesChannelTrend: [],
-          merchProductCategoryRevenue: [],
-          merchProductCategoryTrend: [],
-          merchSkuSales: [],
-          merchTotals: EMPTY_MERCH_TOTALS,
-          merchTransactions: [],
-        };
-      }
-
-      if (activeTab === "merch") {
-        return {
-          ...shared,
-          ticketsKpis: EMPTY_TICKETS_KPIS,
-          merchKpis: computeMerchKpis(filters, merchFiltersForData),
-          subscriptionsKpis: EMPTY_SUBSCRIPTIONS_KPIS,
-          weeklyTrend: computeWeeklyTrend(filters, "merch", merchFiltersForData),
-          ticketsTrend: [],
-          ticketsPlanFactTrend: [],
-          ticketsMatchCumulativeSeries: [],
-          subscriptionsPlanFactTrend: [],
-          matchRevenue: computeMatchRevenueForTab(filters, "merch", merchFiltersForData),
-          sectorSales: [],
-          channelMix: computeChannelMix(filters, "merch", merchFiltersForData),
-          topProducts: computeTopProducts(filters, merchFiltersForData),
-          subscriptionTariffStats: [],
-          ticketTransactions: [],
-          matchSales: [],
-          ticketTypeSales: [],
-          priceZoneSales: [],
-          orderSourceSales: [],
-          merchMatchSales: computeMerchMatchSalesTable(filters, merchFiltersForData),
-          merchSalesChannelRevenue: computeMerchSalesChannelRevenue(
-            filters,
-            merchFiltersForData,
-          ),
-          merchSalesChannelTrend: computeMerchSalesChannelTrend(
-            filters,
-            merchFiltersForData,
-          ),
-          merchProductCategoryRevenue: computeMerchProductCategoryRevenue(
-            filters,
-            merchFiltersForData,
-          ),
-          merchProductCategoryTrend: computeMerchProductCategoryTrend(
-            filters,
-            merchFiltersForData,
-          ),
-          merchSkuSales: computeMerchSkuSalesTable(filters, merchFiltersForData),
-          merchTotals: computeMerchTotals(filters, merchFiltersForData),
-          merchTransactions: getTabTransactions(filters, "merch", merchFiltersForData),
-        };
-      }
-
-      return {
-        ...shared,
-        ticketsKpis: EMPTY_TICKETS_KPIS,
-        merchKpis: EMPTY_MERCH_KPIS,
-        subscriptionsKpis: computeSubscriptionsKpis(filters, subscriptionFilters),
-        weeklyTrend: computeWeeklyTrend(filters, "subscriptions", subscriptionFilters),
-        ticketsTrend: [],
-        ticketsPlanFactTrend: [],
-        ticketsMatchCumulativeSeries: [],
-        subscriptionsPlanFactTrend: computeSubscriptionsPlanFactTrend(
-          filters,
-          subscriptionFilters,
-        ),
-        matchRevenue: [],
-        sectorSales: [],
-        channelMix: computeChannelMix(filters, "subscriptions", subscriptionFilters),
-        topProducts: [],
-        subscriptionTariffStats: computeSubscriptionTariffStats(
-          filters,
-          subscriptionFilters,
-        ),
-        ticketTransactions: [],
-        matchSales: [],
-        ticketTypeSales: [],
-        priceZoneSales: [],
-        orderSourceSales: [],
-        merchMatchSales: [],
-        merchSalesChannelRevenue: [],
-        merchSalesChannelTrend: [],
-        merchProductCategoryRevenue: [],
-        merchProductCategoryTrend: [],
-        merchSkuSales: [],
-        merchTotals: EMPTY_MERCH_TOTALS,
-        merchTransactions: [],
-      };
-    });
-  }, [
-    filters,
-    ticketFilters,
-    merchFilters,
-    subscriptionFilters,
-    ticketFiltersForData,
-    merchFiltersForData,
-    ticketMatchOptions,
-    merchMatchOptions,
-    activeTab,
-    lastUpdated,
-    setDateRange,
-    setMatchId,
-    setTicketFilters,
-    setMerchFilters,
-    setSubscriptionFilters,
-    resetFilters,
-    resetTicketFilters,
-    resetMerchFilters,
-    resetSubscriptionFilters,
-    refresh,
-  ]);
+      ),
+    [
+      filters,
+      ticketFiltersForData,
+      merchFiltersForData,
+      subscriptionFilters,
+      activeTab,
+    ],
+  );
 
   return (
-    <FilterContext.Provider value={value}>{children}</FilterContext.Provider>
+    <FilterStateContext.Provider value={stateValue}>
+      <FilterDataContext.Provider value={dataValue}>
+        {children}
+      </FilterDataContext.Provider>
+    </FilterStateContext.Provider>
   );
 }
 
-export function useFilters() {
-  const ctx = useContext(FilterContext);
+export function useFilterState() {
+  const ctx = useContext(FilterStateContext);
   if (!ctx) {
-    throw new Error("useFilters must be used within FilterProvider");
+    throw new Error("useFilterState must be used within FilterProvider");
   }
   return ctx;
+}
+
+export function useFilterData() {
+  const ctx = useContext(FilterDataContext);
+  if (!ctx) {
+    throw new Error("useFilterData must be used within FilterProvider");
+  }
+  return ctx;
+}
+
+export function useFilters(): FilterContextValue {
+  return { ...useFilterState(), ...useFilterData() };
 }

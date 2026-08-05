@@ -12,12 +12,13 @@ export const SUBSCRIPTION_CHANNEL_LABELS: Record<
 };
 
 export const DEFAULT_SUBSCRIPTION_FILTERS: SubscriptionFilters = {
-  season: "all",
+  season: "2025/26",
   league: "all",
   tournamentStage: "all",
   arena: "all",
   ticketType: "all",
   priceZone: "all",
+  timeGrouping: "month",
 };
 
 export {

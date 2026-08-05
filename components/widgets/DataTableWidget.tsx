@@ -78,16 +78,16 @@ function DataTable<T>({
   });
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
         <CardTitle>{title}</CardTitle>
-        <div className="relative">
+        <div className="relative w-full sm:w-auto">
           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
           <input
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
             placeholder={searchPlaceholder}
-            className="h-8 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] sm:w-48"
+            className="h-9 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] sm:h-8 sm:w-48"
           />
         </div>
       </CardHeader>
@@ -140,7 +140,7 @@ function DataTable<T>({
             <button
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
-              className="rounded border border-[var(--border)] px-2 py-1 disabled:opacity-40"
+              className="rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40"
             >
               Назад
             </button>
@@ -150,7 +150,7 @@ function DataTable<T>({
             <button
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
-              className="rounded border border-[var(--border)] px-2 py-1 disabled:opacity-40"
+              className="rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40"
             >
               Вперёд
             </button>
@@ -294,15 +294,15 @@ export function MatchSalesTable({
   });
 
   const searchInput = (
-    <div className="relative">
-      <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
-      <input
-        value={globalFilter}
-        onChange={(e) => setGlobalFilter(e.target.value)}
-        placeholder="Поиск по мероприятию..."
-        className="h-8 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] sm:w-48"
-      />
-    </div>
+        <div className="relative w-full sm:w-auto">
+          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+          <input
+            value={globalFilter}
+            onChange={(e) => setGlobalFilter(e.target.value)}
+            placeholder="Поиск по мероприятию..."
+            className="h-9 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] sm:h-8 sm:w-48"
+          />
+        </div>
   );
 
   const tableContent = (
@@ -381,10 +381,10 @@ export function MatchSalesTable({
         {tableContent}
       </div>
     ) : (
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
           <CardTitle>Продажи</CardTitle>
-          {searchInput}
+          <div className="relative w-full sm:w-auto">{searchInput}</div>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           {tableContent}
@@ -442,13 +442,13 @@ function MerchSalesTable<T>({
     <Card className="flex h-full min-w-0 flex-col">
       <CardHeader>
         <CardTitle>{title}</CardTitle>
-        <div className="relative">
+        <div className="relative w-full sm:w-auto">
           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
           <input
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
             placeholder={searchPlaceholder}
-            className="h-8 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] sm:w-48"
+            className="h-9 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] sm:h-8 sm:w-48"
           />
         </div>
       </CardHeader>
@@ -502,7 +502,7 @@ function MerchSalesTable<T>({
             <button
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
-              className="rounded border border-[var(--border)] px-2 py-1 disabled:opacity-40"
+              className="rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40"
             >
               Назад
             </button>
@@ -512,7 +512,7 @@ function MerchSalesTable<T>({
             <button
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
-              className="rounded border border-[var(--border)] px-2 py-1 disabled:opacity-40"
+              className="rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40"
             >
               Вперёд
             </button>
@@ -733,6 +733,21 @@ export function MerchSkuSalesTable({ data }: { data: MerchSkuSalesRow[] }) {
             barClassName="bg-emerald-400"
           />
         ),
+      },
+      {
+        accessorKey: "actualToListPricePct",
+        header: "К рекоменд. цене",
+        cell: ({ getValue }) => {
+          const value = getValue<number>();
+          return (
+            <InlineBarCell
+              value={value}
+              max={100}
+              formatted={formatPercent(value)}
+              barClassName="bg-[var(--accent)]"
+            />
+          );
+        },
       },
     ],
     [maxValues],

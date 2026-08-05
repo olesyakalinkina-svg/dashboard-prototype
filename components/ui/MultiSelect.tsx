@@ -113,10 +113,12 @@ export function MultiSelect({
   const rootRef = useRef<HTMLDivElement>(null);
   const valueRef = useRef(value);
   const draftValueRef = useRef(draftValue);
+  const openRef = useRef(open);
   const activeValue = applyOnClose && open ? draftValue : value;
 
   valueRef.current = value;
   draftValueRef.current = draftValue;
+  openRef.current = open;
 
   const optionValues = useMemo(
     () => options.map((opt) => opt.value),
@@ -153,13 +155,13 @@ export function MultiSelect({
   }, [value, open]);
 
   const closeDropdown = useCallback(() => {
-    setOpen((wasOpen) => {
-      if (!wasOpen) return false;
-      if (applyOnClose && !arraysEqual(draftValueRef.current, valueRef.current)) {
-        onChange(draftValueRef.current);
-      }
-      return false;
-    });
+    if (!openRef.current) return;
+
+    setOpen(false);
+
+    if (applyOnClose && !arraysEqual(draftValueRef.current, valueRef.current)) {
+      onChange(draftValueRef.current);
+    }
   }, [applyOnClose, onChange]);
 
   useEffect(() => {
@@ -240,7 +242,7 @@ export function MultiSelect({
         />
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-20 mt-1 max-h-64 w-full min-w-[260px] overflow-y-auto rounded-md border border-[var(--border)] bg-white py-1 shadow-lg">
+        <div className="absolute left-0 top-full z-20 mt-1 max-h-64 w-full max-w-[min(100vw-2rem,320px)] overflow-y-auto rounded-md border border-[var(--border)] bg-white py-1 shadow-lg">
           <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--background)]">
             <input
               type="checkbox"

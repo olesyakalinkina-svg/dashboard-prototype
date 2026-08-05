@@ -1,5 +1,6 @@
 import {
   addDays,
+  addMonths,
   differenceInCalendarDays,
   endOfDay,
   format,
@@ -13,6 +14,12 @@ import {
 } from "date-fns";
 import { ru } from "date-fns/locale";
 import {
+  TICKET_SALES_WINDOW_MAX_DAYS,
+  getMatchTicketSalesWindowDays,
+} from "@/lib/ticket-sales-window";
+import {
+  getFirstPlayoffMatchDate,
+  getPlayoffSubscriptionSalesWindow,
   matchById,
   matches,
   MOCK_TODAY,
@@ -36,7 +43,18 @@ import {
   getMerchProductCategory,
   MERCH_PRODUCT_CATEGORY_LABELS,
   MERCH_SALES_POINT_LABELS,
+  ALL_MERCH_SALES_SEGMENTS,
+  getEffectiveMerchTimeGrouping,
+  MERCH_SALES_SEGMENT_LABELS,
 } from "@/lib/merch-filter-options";
+import { getMerchListAmount } from "@/lib/merch-catalog";
+import {
+  getMatchPlanRevenue,
+  getMatchPlanTickets,
+  LEGACY_TICKET_PLAN_AVG_PRICE,
+  TICKET_PLAN_AVG_PRICE,
+} from "@/lib/ticket-plan";
+import { isDateInTournamentStage } from "@/lib/season-dates";
 import { SUBSCRIPTION_CHANNEL_LABELS } from "@/lib/subscription-filter-options";
 import type {
   ChannelMixPoint,
@@ -47,8 +65,10 @@ import type {
   Subscription,
   SubscriptionPlanStat,
   SubscriptionsKpiData,
+  SubscriptionsSeasonComparison,
   TournamentStage,
   MatchSalesRow,
+  Match,
   MerchFilters,
   MerchMatchSalesRow,
   MerchProductCategory,
@@ -56,7 +76,10 @@ import type {
   MerchProductCategoryTrendPoint,
   MerchSalesChannelPoint,
   MerchSalesChannelTrendPoint,
+  TicketsSalesChannelTrendPoint,
   MerchSalesPoint,
+  MerchSalesSegment,
+  MerchSalesSegmentTrendPoint,
   MerchSkuSalesRow,
   OrderSource,
   OrderSourceSalesPoint,
@@ -65,12 +88,14 @@ import type {
   TicketFilters,
   TicketType,
   TicketTypeSalesPoint,
+  TimeGrouping,
   MerchSeasonComparison,
   TicketsKpiData,
   TicketsSeasonComparison,
   TopProductPoint,
   Transaction,
   PlanFactTrendPoint,
+  SubscriptionsPlanFactTrendPoint,
   TicketMatchCumulativeSeries,
   WeeklyPoint,
 } from "@/types/dashboard";
@@ -78,12 +103,19 @@ import type {
 type FilterPassCache = {
   ticket: Map<string, Transaction[]>;
   merch: Map<string, Transaction[]>;
+  ticketPrevious: Map<string, Transaction[]>;
+  ticketToday: Map<string, Transaction[]>;
 };
 
 let filterPassCache: FilterPassCache | null = null;
 
 export function runWithFilterCache<T>(fn: () => T): T {
-  filterPassCache = { ticket: new Map(), merch: new Map() };
+  filterPassCache = {
+    ticket: new Map(),
+    merch: new Map(),
+    ticketPrevious: new Map(),
+    ticketToday: new Map(),
+  };
   try {
     return fn();
   } finally {
@@ -154,10 +186,107 @@ function getDateCutoff(days: number): Date {
   return startOfDay(subDays(MOCK_TODAY, days));
 }
 
-function getSubscriptionsPeriodDays(): number {
-  return (
-    differenceInCalendarDays(SUBSCRIPTIONS_PERIOD_END, SUBSCRIPTIONS_PERIOD_START) +
-    1
+type SubscriptionDateRange = { start: Date; end: Date };
+
+const CURRENT_SEASON = "2025/26";
+
+function getRegularSubscriptionPeriod(): SubscriptionDateRange {
+  return {
+    start: startOfDay(SUBSCRIPTIONS_PERIOD_START),
+    end: endOfDay(SUBSCRIPTIONS_PERIOD_END),
+  };
+}
+
+function getPlayoffSubscriptionPeriod(season: string): SubscriptionDateRange | null {
+  const firstPlayoffMatch = getFirstPlayoffMatchDate(matches, season);
+  if (!firstPlayoffMatch) return null;
+
+  const window = getPlayoffSubscriptionSalesWindow(firstPlayoffMatch);
+  return {
+    start: startOfDay(window.start),
+    end: endOfDay(window.end),
+  };
+}
+
+function getSubscriptionsDisplayPeriod(
+  subscriptionFilters?: SubscriptionFilters,
+): SubscriptionDateRange {
+  if (subscriptionFilters?.tournamentStage === "playoff") {
+    const season =
+      subscriptionFilters.season !== "all"
+        ? subscriptionFilters.season
+        : CURRENT_SEASON;
+    const playoffPeriod = getPlayoffSubscriptionPeriod(season);
+    if (playoffPeriod) return playoffPeriod;
+  }
+
+  return getRegularSubscriptionPeriod();
+}
+
+function getSubscriptionsTrendDisplayPeriod(
+  subscriptionFilters?: SubscriptionFilters,
+): SubscriptionDateRange {
+  const regular = getRegularSubscriptionPeriod();
+  let start = regular.start;
+  let end = regular.end;
+
+  const seasons =
+    subscriptionFilters?.season && subscriptionFilters.season !== "all"
+      ? [subscriptionFilters.season]
+      : Array.from(new Set(subscriptions.map((sub) => sub.season)));
+
+  for (const season of seasons) {
+    const playoffPeriod = getPlayoffSubscriptionPeriod(season);
+    if (!playoffPeriod) continue;
+    if (playoffPeriod.start < start) start = playoffPeriod.start;
+    if (playoffPeriod.end > end) end = playoffPeriod.end;
+  }
+
+  return { start, end };
+}
+
+function getSubscriptionsPeriodDays(
+  subscriptionFilters?: SubscriptionFilters,
+): number {
+  const { start, end } = getSubscriptionsDisplayPeriod(subscriptionFilters);
+  return differenceInCalendarDays(end, start) + 1;
+}
+
+function isDateInSubscriptionPeriod(
+  date: Date,
+  range: SubscriptionDateRange,
+): boolean {
+  return date >= range.start && date <= range.end;
+}
+
+function subscriptionMatchesSalesWindow(
+  sub: Subscription,
+  subscriptionFilters?: SubscriptionFilters,
+): boolean {
+  if (subscriptionFilters?.tournamentStage === "playoff") {
+    const season =
+      subscriptionFilters.season !== "all" ? subscriptionFilters.season : sub.season;
+    const playoffPeriod = getPlayoffSubscriptionPeriod(season);
+    if (!playoffPeriod) return false;
+    return isDateInSubscriptionPeriod(sub.purchasedAt, playoffPeriod);
+  }
+
+  if (subscriptionFilters?.tournamentStage === "regular") {
+    return isDateInSubscriptionPeriod(
+      sub.purchasedAt,
+      getRegularSubscriptionPeriod(),
+    );
+  }
+
+  if (sub.tournamentStage === "playoff") {
+    const playoffPeriod = getPlayoffSubscriptionPeriod(sub.season);
+    if (!playoffPeriod) return false;
+    return isDateInSubscriptionPeriod(sub.purchasedAt, playoffPeriod);
+  }
+
+  return isDateInSubscriptionPeriod(
+    sub.purchasedAt,
+    getRegularSubscriptionPeriod(),
   );
 }
 
@@ -172,16 +301,17 @@ function buildSubscriptionsSparkline<T>(
   items: T[],
   getDate: (item: T) => Date,
   getValue: (slice: T[]) => number,
+  subscriptionFilters?: SubscriptionFilters,
 ): number[] {
-  const days = getSubscriptionsPeriodDays();
-  const periodStart = startOfDay(SUBSCRIPTIONS_PERIOD_START);
-  const periodEnd = endOfDay(SUBSCRIPTIONS_PERIOD_END);
+  const { start: periodStart, end: periodEnd } =
+    getSubscriptionsDisplayPeriod(subscriptionFilters);
+  const days = getSubscriptionsPeriodDays(subscriptionFilters);
   const points: number[] = [];
   const step = Math.max(1, Math.floor(days / 7));
 
   for (let i = days - 1; i >= 0; i -= step) {
-    const from = startOfDay(subDays(SUBSCRIPTIONS_PERIOD_END, i + step));
-    const to = endOfDay(subDays(SUBSCRIPTIONS_PERIOD_END, i));
+    const from = startOfDay(subDays(periodEnd, i + step));
+    const to = endOfDay(subDays(periodEnd, i));
     const effectiveFrom = from < periodStart ? periodStart : from;
     const effectiveTo = to > periodEnd ? periodEnd : to;
     const slice = items.filter((item) => {
@@ -195,7 +325,6 @@ function buildSubscriptionsSparkline<T>(
 }
 
 function getTicketsSeasonCutoff(season: TicketFilters["season"] = "all"): Date {
-  const TICKET_SALES_WINDOW_DAYS = 21;
   const seasonMatches = matches.filter((match) =>
     season === "all" ? true : match.season === season,
   );
@@ -209,12 +338,42 @@ function getTicketsSeasonCutoff(season: TicketFilters["season"] = "all"): Date {
     seasonMatches[0].date,
   );
 
-  return startOfDay(subDays(earliestMatchDate, TICKET_SALES_WINDOW_DAYS));
+  return startOfDay(subDays(earliestMatchDate, TICKET_SALES_WINDOW_MAX_DAYS));
 }
 
 function pctChange(current: number, previous: number): number {
   if (previous === 0) return current > 0 ? 100 : 0;
   return ((current - previous) / previous) * 100;
+}
+
+function getMatchTournamentStage(match: Match): TournamentStage {
+  return match.matchClass === "playoff" ? "playoff" : "regular";
+}
+
+function matchesTournamentStage(
+  match: Match,
+  stage: TournamentStage | "all",
+): boolean {
+  if (stage === "all") return true;
+  return getMatchTournamentStage(match) === stage;
+}
+
+function passesMerchTournamentStage(
+  tx: Transaction,
+  merchFilters: MerchFilters,
+): boolean {
+  if (merchFilters.tournamentStage === "all") return true;
+
+  if (tx.matchId) {
+    const match = matchById.get(tx.matchId);
+    return Boolean(match && matchesTournamentStage(match, merchFilters.tournamentStage));
+  }
+
+  return isDateInTournamentStage(
+    tx.date,
+    merchFilters.season,
+    merchFilters.tournamentStage,
+  );
 }
 
 function buildSparkline<T>(
@@ -223,18 +382,61 @@ function buildSparkline<T>(
   getDate: (item: T) => Date,
   getValue: (slice: T[]) => number,
 ): number[] {
-  const points: number[] = [];
   const step = Math.max(1, Math.floor(days / 7));
+  const buckets: T[][] = [];
+  const bounds: { from: number; to: number }[] = [];
+
   for (let i = days - 1; i >= 0; i -= step) {
-    const from = startOfDay(subDays(MOCK_TODAY, i + step));
-    const to = endOfDay(subDays(MOCK_TODAY, i));
-    const slice = items.filter((item) => {
-      const d = getDate(item);
-      return d >= from && d <= to;
+    buckets.push([]);
+    bounds.push({
+      from: startOfDay(subDays(MOCK_TODAY, i + step)).getTime(),
+      to: endOfDay(subDays(MOCK_TODAY, i)).getTime(),
     });
-    points.push(getValue(slice));
   }
-  return points;
+
+  for (const item of items) {
+    const timestamp = getDate(item).getTime();
+    for (let bucketIndex = 0; bucketIndex < bounds.length; bucketIndex += 1) {
+      const { from, to } = bounds[bucketIndex];
+      if (timestamp >= from && timestamp <= to) {
+        buckets[bucketIndex].push(item);
+        break;
+      }
+    }
+  }
+
+  return buckets.map(getValue);
+}
+
+function buildTransactionSparkline(
+  txs: Transaction[],
+  days: number,
+  getValue: (tx: Transaction) => number,
+): number[] {
+  const step = Math.max(1, Math.floor(days / 7));
+  const sums: number[] = [];
+  const bounds: { from: number; to: number }[] = [];
+
+  for (let i = days - 1; i >= 0; i -= step) {
+    sums.push(0);
+    bounds.push({
+      from: startOfDay(subDays(MOCK_TODAY, i + step)).getTime(),
+      to: endOfDay(subDays(MOCK_TODAY, i)).getTime(),
+    });
+  }
+
+  for (const tx of txs) {
+    const timestamp = tx.date.getTime();
+    for (let bucketIndex = 0; bucketIndex < bounds.length; bucketIndex += 1) {
+      const { from, to } = bounds[bucketIndex];
+      if (timestamp >= from && timestamp <= to) {
+        sums[bucketIndex] += getValue(tx);
+        break;
+      }
+    }
+  }
+
+  return sums;
 }
 
 function passesMatchIdFilter(
@@ -268,7 +470,7 @@ export function filterMatchesByMerchFilters(
     }
     if (
       merchFilters.tournamentStage !== "all" &&
-      match.tournamentStage !== merchFilters.tournamentStage
+      !matchesTournamentStage(match, merchFilters.tournamentStage)
     ) {
       return false;
     }
@@ -300,6 +502,79 @@ const MERCH_MATCH_TABLE_EXCLUDED_POINTS = new Set<MerchSalesPoint>([
   "mall_raduga",
   "mall_continent",
 ]);
+
+const MATCHDAY_ARENA_POINTS = new Set<MerchSalesPoint>([
+  "flagship",
+  "arena_north",
+  "arena_south",
+]);
+
+const OFFLINE_MERCH_POINTS = new Set<MerchSalesPoint>([
+  "flagship",
+  "arena_north",
+  "arena_south",
+  "mall_raduga",
+  "mall_continent",
+]);
+
+function buildArenaMatchDayTimestamps(merchFilters: MerchFilters): Set<number> {
+  const timestamps = new Set<number>();
+  for (const match of filterMatchesByMerchFilters(merchFilters)) {
+    if (match.eventCompleted) {
+      timestamps.add(startOfDay(match.date).getTime());
+    }
+  }
+  return timestamps;
+}
+
+function buildMatchDateById(merchFilters: MerchFilters): Map<string, Date> {
+  const map = new Map<string, Date>();
+  for (const match of filterMatchesByMerchFilters(merchFilters)) {
+    map.set(match.id, match.date);
+  }
+  return map;
+}
+
+function isMerchTransactionOnMatchDay(
+  tx: Transaction,
+  matchDatesById: Map<string, Date>,
+  arenaMatchDayTimestamps: Set<number>,
+): boolean {
+  if (tx.matchId) {
+    const matchDate = matchDatesById.get(tx.matchId);
+    if (matchDate && isSameDay(tx.date, matchDate)) {
+      return true;
+    }
+  }
+  return arenaMatchDayTimestamps.has(startOfDay(tx.date).getTime());
+}
+
+function classifyMerchSalesSegment(
+  tx: Transaction,
+  matchDatesById: Map<string, Date>,
+  arenaMatchDayTimestamps: Set<number>,
+): MerchSalesSegment | null {
+  if (!tx.merchSalesPoint) return null;
+
+  const point = tx.merchSalesPoint;
+
+  if (point === "online_store") {
+    return "online";
+  }
+
+  if (
+    MATCHDAY_ARENA_POINTS.has(point) &&
+    isMerchTransactionOnMatchDay(tx, matchDatesById, arenaMatchDayTimestamps)
+  ) {
+    return "matchday";
+  }
+
+  if (OFFLINE_MERCH_POINTS.has(point)) {
+    return "offline";
+  }
+
+  return null;
+}
 
 type MerchAggregateMetrics = {
   revenue: number;
@@ -408,10 +683,11 @@ function filterMerchTransactionsImpl(
       return false;
     }
     if (!tx.matchId) {
-      // Off-match sales (online store, mall kiosks) are not tied to a match.
-      return merchFilters.matchId.length === 0;
+      if (merchFilters.matchId.length > 0) return false;
+      return passesMerchTournamentStage(tx, merchFilters);
     }
-    return allowedMatchIds.has(tx.matchId);
+    if (!allowedMatchIds.has(tx.matchId)) return false;
+    return passesMerchTournamentStage(tx, merchFilters);
   });
 }
 
@@ -435,7 +711,7 @@ export function filterMatchesByTicketFilters(
     }
     if (
       ticketFilters.tournamentStage !== "all" &&
-      match.tournamentStage !== ticketFilters.tournamentStage
+      !matchesTournamentStage(match, ticketFilters.tournamentStage)
     ) {
       return false;
     }
@@ -464,9 +740,17 @@ export function filterMatchesByTicketFilters(
 function isTicketTransactionAllowed(
   tx: Transaction,
   allowedMatchIds: Set<string>,
+  ticketFilters?: TicketFilters,
 ): boolean {
   if (tx.stream !== "tickets" || !tx.matchId) return false;
-  return allowedMatchIds.has(tx.matchId);
+  if (!allowedMatchIds.has(tx.matchId)) return false;
+  if (ticketFilters?.tournamentStage && ticketFilters.tournamentStage !== "all") {
+    const match = matchById.get(tx.matchId);
+    if (!match || !matchesTournamentStage(match, ticketFilters.tournamentStage)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export function filterTicketTransactions(
@@ -525,11 +809,8 @@ export function filterSubscriptions(
   _filters: DashboardFilters,
   subscriptionFilters?: SubscriptionFilters,
 ): Subscription[] {
-  const periodStart = startOfDay(SUBSCRIPTIONS_PERIOD_START);
-  const periodEnd = endOfDay(SUBSCRIPTIONS_PERIOD_END);
-
   return subscriptions.filter((sub) => {
-    if (sub.purchasedAt < periodStart || sub.purchasedAt > periodEnd) return false;
+    if (!subscriptionMatchesSalesWindow(sub, subscriptionFilters)) return false;
     if (!subscriptionFilters) return true;
     if (
       subscriptionFilters.season !== "all" &&
@@ -618,8 +899,11 @@ function passesTicketFilters(
   ticketFilters: TicketFilters,
   allowedMatchIds: Set<string>,
 ): boolean {
-  if (!isTicketTransactionAllowed(tx, allowedMatchIds)) return false;
-  if (ticketFilters.ticketType !== "all" && tx.ticketType !== ticketFilters.ticketType) {
+  if (!isTicketTransactionAllowed(tx, allowedMatchIds, ticketFilters)) return false;
+  if (
+    ticketFilters.ticketType !== "all" &&
+    tx.ticketType !== ticketFilters.ticketType
+  ) {
     return false;
   }
   if (ticketFilters.priceZone !== "all" && tx.priceZone !== ticketFilters.priceZone) {
@@ -634,7 +918,38 @@ function passesTicketFilters(
   return true;
 }
 
+function ticketTodayCacheKey(ticketFilters: TicketFilters): string {
+  return [
+    ticketFilters.season,
+    ticketFilters.league,
+    ticketFilters.tournamentStage,
+    ticketFilters.matchClass,
+    ticketFilters.arena,
+    ticketFilters.eventCompleted,
+    ticketFilters.matchId.join(","),
+    ticketFilters.ticketType,
+    ticketFilters.priceZone,
+    ticketFilters.orderSource,
+    ticketFilters.transactionDateRange.from ?? "",
+    ticketFilters.transactionDateRange.to ?? "",
+  ].join("|");
+}
+
 export function filterTicketTransactionsToday(
+  ticketFilters: TicketFilters,
+): Transaction[] {
+  if (filterPassCache) {
+    const key = ticketTodayCacheKey(ticketFilters);
+    const cached = filterPassCache.ticketToday.get(key);
+    if (cached) return cached;
+    const result = filterTicketTransactionsTodayImpl(ticketFilters);
+    filterPassCache.ticketToday.set(key, result);
+    return result;
+  }
+  return filterTicketTransactionsTodayImpl(ticketFilters);
+}
+
+function filterTicketTransactionsTodayImpl(
   ticketFilters: TicketFilters,
 ): Transaction[] {
   const allowedMatches = filterMatchesByTicketFilters(ticketFilters);
@@ -648,6 +963,21 @@ export function filterTicketTransactionsToday(
 }
 
 function previousPeriodTicketTransactions(
+  filters: DashboardFilters,
+  ticketFilters: TicketFilters,
+): Transaction[] {
+  if (filterPassCache) {
+    const key = `${ticketFilterCacheKey(filters, ticketFilters)}|previous`;
+    const cached = filterPassCache.ticketPrevious.get(key);
+    if (cached) return cached;
+    const result = previousPeriodTicketTransactionsImpl(filters, ticketFilters);
+    filterPassCache.ticketPrevious.set(key, result);
+    return result;
+  }
+  return previousPeriodTicketTransactionsImpl(filters, ticketFilters);
+}
+
+function previousPeriodTicketTransactionsImpl(
   filters: DashboardFilters,
   ticketFilters: TicketFilters,
 ): Transaction[] {
@@ -680,8 +1010,9 @@ function previousPeriodTransactions(
 function previousPeriodSubscriptions(
   subscriptionFilters?: SubscriptionFilters,
 ): Subscription[] {
-  const periodDays = getSubscriptionsPeriodDays();
-  const prevEnd = endOfDay(subDays(startOfDay(SUBSCRIPTIONS_PERIOD_START), 1));
+  const { start: periodStart } = getSubscriptionsDisplayPeriod(subscriptionFilters);
+  const periodDays = getSubscriptionsPeriodDays(subscriptionFilters);
+  const prevEnd = endOfDay(subDays(periodStart, 1));
   const prevStart = startOfDay(subDays(prevEnd, periodDays - 1));
 
   return subscriptions.filter((sub) => {
@@ -762,17 +1093,15 @@ export function computeTicketsKpis(
     planCompletionPct: metrics.planCompletionPct,
     revenueToday: sumAmount(todayTxs),
     ticketsToday: countTickets(todayTxs),
-    revenueSparkline: buildSparkline(
+    revenueSparkline: buildTransactionSparkline(
       current,
       filters.dateRange,
-      (tx) => tx.date,
-      sumAmount,
+      (tx) => tx.amount,
     ),
-    ticketsSparkline: buildSparkline(
+    ticketsSparkline: buildTransactionSparkline(
       current,
       filters.dateRange,
-      (tx) => tx.date,
-      countTickets,
+      (tx) => tx.quantity,
     ),
     seasonComparison,
   };
@@ -935,46 +1264,92 @@ export function computeMerchKpis(
   };
 }
 
+type SubscriptionsKpiMetrics = {
+  revenue: number;
+  sold: number;
+  avgUtilization: number;
+  activeCount: number;
+};
+
+function computeSubscriptionsKpiMetrics(
+  filters: DashboardFilters,
+  subscriptionFilters?: SubscriptionFilters,
+): SubscriptionsKpiMetrics {
+  const current = filterSubscriptions(filters, subscriptionFilters);
+  const revenue = current.reduce((s, sub) => s + sub.price, 0);
+  const sold = current.length;
+  const totalMatches = current.reduce((s, sub) => s + sub.matchesTotal, 0);
+  const usedMatches = current.reduce((s, sub) => s + sub.matchesUsed, 0);
+  const avgUtilization =
+    totalMatches > 0 ? (usedMatches / totalMatches) * 100 : 0;
+  const displayPeriod = getSubscriptionsDisplayPeriod(subscriptionFilters);
+  const activeCount = current.filter((sub) =>
+    isSubscriptionActive(sub, displayPeriod.end),
+  ).length;
+
+  return { revenue, sold, avgUtilization, activeCount };
+}
+
+function buildSubscriptionsSeasonComparison(
+  filters: DashboardFilters,
+  current: SubscriptionsKpiMetrics,
+  subscriptionFilters: SubscriptionFilters,
+): SubscriptionsSeasonComparison | undefined {
+  if (subscriptionFilters.season === "all") {
+    return undefined;
+  }
+
+  const previousSeason = getPreviousSeason(subscriptionFilters.season);
+  if (!previousSeason) return undefined;
+
+  const prevFilters: SubscriptionFilters = {
+    ...subscriptionFilters,
+    season: previousSeason,
+  };
+  const prevMetrics = computeSubscriptionsKpiMetrics(filters, prevFilters);
+
+  return {
+    previousSeason,
+    revenueChange: pctChange(current.revenue, prevMetrics.revenue),
+    soldChange: pctChange(current.sold, prevMetrics.sold),
+  };
+}
+
 export function computeSubscriptionsKpis(
   filters: DashboardFilters,
   subscriptionFilters?: SubscriptionFilters,
 ): SubscriptionsKpiData {
   const current = filterSubscriptions(filters, subscriptionFilters);
   const previous = previousPeriodSubscriptions(subscriptionFilters);
+  const metrics = computeSubscriptionsKpiMetrics(filters, subscriptionFilters);
 
-  const revenue = current.reduce((s, sub) => s + sub.price, 0);
   const prevRevenue = previous.reduce((s, sub) => s + sub.price, 0);
-  const sold = current.length;
   const prevSold = previous.length;
-
-  const totalMatches = current.reduce((s, sub) => s + sub.matchesTotal, 0);
-  const usedMatches = current.reduce((s, sub) => s + sub.matchesUsed, 0);
-  const avgUtilization = totalMatches > 0 ? (usedMatches / totalMatches) * 100 : 0;
-  const activeCount = current.filter((sub) =>
-    isSubscriptionActive(sub, SUBSCRIPTIONS_PERIOD_END),
-  ).length;
+  const seasonComparison = subscriptionFilters
+    ? buildSubscriptionsSeasonComparison(filters, metrics, subscriptionFilters)
+    : undefined;
 
   return {
-    revenue,
-    revenueChange: pctChange(revenue, prevRevenue),
-    sold,
-    soldChange: pctChange(sold, prevSold),
-    avgUtilization,
-    activeCount,
+    ...metrics,
+    revenueChange: pctChange(metrics.revenue, prevRevenue),
+    soldChange: pctChange(metrics.sold, prevSold),
+    seasonComparison,
     revenueSparkline: buildSubscriptionsSparkline(
       current,
       (sub) => sub.purchasedAt,
       (slice) => slice.reduce((s, sub) => s + sub.price, 0),
+      subscriptionFilters,
     ),
     soldSparkline: buildSubscriptionsSparkline(
       current,
       (sub) => sub.purchasedAt,
       (slice) => slice.length,
+      subscriptionFilters,
     ),
   };
 }
 
-function periodKeyAndSort(
+export function periodKeyAndSort(
   date: Date,
   grouping: TicketFilters["timeGrouping"],
 ): { period: string; sortKey: number } {
@@ -1007,31 +1382,16 @@ function periodKeyAndSort(
   };
 }
 
-const TICKET_PLAN_FILL_RATE = 0.82;
-const TICKET_PLAN_AVG_PRICE = 1750;
-const TICKET_SALES_WINDOW_DAYS = 21;
 const SUBSCRIPTION_PLAN_EXECUTION_RATE = 0.94;
 
-function getMatchTicketPlanProfile(match: {
-  league: League;
-}): { fillRate: number; avgPrice: number } {
-  switch (match.league) {
-    case "VHL":
-      return { fillRate: TICKET_PLAN_FILL_RATE, avgPrice: 1100 };
-    case "MHL":
-      return { fillRate: TICKET_PLAN_FILL_RATE, avgPrice: 700 };
-    default:
-      return { fillRate: TICKET_PLAN_FILL_RATE, avgPrice: TICKET_PLAN_AVG_PRICE };
-  }
-}
-
 function matchHasEligibleTicketSaleDay(
-  matchDate: Date,
+  match: { date: Date; ticketSalesWindowDays?: number },
   cutoff: Date,
   now: Date,
 ): boolean {
-  for (let offset = TICKET_SALES_WINDOW_DAYS; offset >= 1; offset -= 1) {
-    const saleDay = subDays(matchDate, offset);
+  const salesWindowDays = getMatchTicketSalesWindowDays(match);
+  for (let offset = salesWindowDays; offset >= 1; offset -= 1) {
+    const saleDay = subDays(match.date, offset);
     if (saleDay >= cutoff && saleDay <= now) {
       return true;
     }
@@ -1045,43 +1405,48 @@ function sumEligibleTicketCapacity(ticketFilters: TicketFilters): number {
   const allowedMatches = filterMatchesByTicketFilters(ticketFilters);
 
   return allowedMatches.reduce((total, match) => {
-    if (!matchHasEligibleTicketSaleDay(match.date, cutoff, now)) {
+    if (!matchHasEligibleTicketSaleDay(match, cutoff, now)) {
       return total;
     }
     return total + match.capacity;
   }, 0);
 }
 
-function getSubscriptionPeriodWeeks(): Date[] {
-  const weeks: Date[] = [];
-  let current = startOfWeek(SUBSCRIPTIONS_PERIOD_START, { locale: ru });
-  const periodEnd = endOfDay(SUBSCRIPTIONS_PERIOD_END);
+function getSubscriptionPeriodBuckets(
+  subscriptionFilters: SubscriptionFilters | undefined,
+  grouping: TimeGrouping,
+  periodOverride?: SubscriptionDateRange,
+): Date[] {
+  const { start: periodStart, end: periodEnd } =
+    periodOverride ?? getSubscriptionsDisplayPeriod(subscriptionFilters);
+  const buckets: Date[] = [];
 
+  if (grouping === "day") {
+    let current = startOfDay(periodStart);
+    while (current <= periodEnd) {
+      buckets.push(current);
+      current = addDays(current, 1);
+    }
+    return buckets;
+  }
+
+  if (grouping === "month") {
+    let current = startOfMonth(periodStart);
+    while (current <= periodEnd) {
+      buckets.push(current);
+      current = addMonths(current, 1);
+    }
+    return buckets;
+  }
+
+  let current = startOfWeek(periodStart, { locale: ru });
   while (current <= periodEnd) {
-    weeks.push(current);
+    buckets.push(current);
     current = addDays(current, 7);
   }
 
-  return weeks;
+  return buckets;
 }
-
-// Mirrors lib/mock/hockey-generator.ts ZONE_PRICES — used to derive zone plan mix.
-const ZONE_PLAN_PRICES: Record<(typeof ALL_PRICE_ZONES)[number], number> = {
-  A: 2500,
-  B1: 2200,
-  B2: 2100,
-  B3: 2000,
-  B4: 1900,
-  C1: 1600,
-  C2: 1500,
-  C3: 1400,
-  C4: 1300,
-  D1: 1100,
-  D2: 1000,
-  D3: 900,
-  D4: 800,
-  VIP: 8500,
-};
 
 // Arena vs parking split — aligned with ticketPlanScale and mock generator (~12% parking).
 const TICKET_TYPE_PLAN_SHARE: Record<TicketType, number> = {
@@ -1089,39 +1454,18 @@ const TICKET_TYPE_PLAN_SHARE: Record<TicketType, number> = {
   parking: 0.12,
 };
 
-// Channel mix from mock pickOrderSource(): 40% site, 25% box office, 35% Yandex Afisha.
-const ORDER_SOURCE_PLAN_SHARE: Record<OrderSource, number> = {
-  official_site: 0.4,
-  box_office: 0.25,
-  yandex_afisha: 0.35,
-};
-
 function ticketPlanScale(ticketFilters: TicketFilters): number {
   let scale = 1;
-  if (ticketFilters.ticketType === "parking") scale *= 0.12;
-  else if (ticketFilters.ticketType === "arena") scale *= 0.88;
+  if (ticketFilters.ticketType !== "all") {
+    scale *= TICKET_TYPE_PLAN_SHARE[ticketFilters.ticketType];
+  }
   if (ticketFilters.priceZone !== "all") scale *= 1 / ALL_PRICE_ZONES.length;
   if (ticketFilters.orderSource !== "all") scale *= 1 / 3;
   return scale;
 }
 
-function getNormalizedZonePlanShares(): Record<(typeof ALL_PRICE_ZONES)[number], number> {
-  const rawWeights = ALL_PRICE_ZONES.map(
-    (zone) => 1 / ZONE_PLAN_PRICES[zone],
-  );
-  const total = rawWeights.reduce((sum, weight) => sum + weight, 0);
-  return Object.fromEntries(
-    ALL_PRICE_ZONES.map((zone, index) => [
-      zone,
-      rawWeights[index] / total,
-    ]),
-  ) as Record<(typeof ALL_PRICE_ZONES)[number], number>;
-}
-
-const NORMALIZED_ZONE_PLAN_SHARES = getNormalizedZonePlanShares();
-
-function planFulfillmentPct(fact: number, plan: number): number {
-  return plan > 0 ? (fact / plan) * 100 : 0;
+function getMatchSaleDayCount(salesWindowDays: number): number {
+  return salesWindowDays + 1;
 }
 
 function sumTicketPlanMetrics(
@@ -1136,15 +1480,14 @@ function sumTicketPlanMetrics(
   let totalTickets = 0;
 
   for (const match of allowedMatches) {
-    const planProfile = getMatchTicketPlanProfile(match);
-    const matchPlanTickets = Math.round(
-      match.capacity * planProfile.fillRate * scale,
-    );
-    const matchPlanRevenue = Math.round(matchPlanTickets * planProfile.avgPrice);
-    const dailyPlanTickets = matchPlanTickets / TICKET_SALES_WINDOW_DAYS;
-    const dailyPlanRevenue = matchPlanRevenue / TICKET_SALES_WINDOW_DAYS;
+    const salesWindowDays = getMatchTicketSalesWindowDays(match);
+    const saleDayCount = getMatchSaleDayCount(salesWindowDays);
+    const matchPlanTickets = Math.round(getMatchPlanTickets(match) * scale);
+    const matchPlanRevenue = Math.round(getMatchPlanRevenue(match) * scale);
+    const dailyPlanTickets = matchPlanTickets / saleDayCount;
+    const dailyPlanRevenue = matchPlanRevenue / saleDayCount;
 
-    for (let offset = TICKET_SALES_WINDOW_DAYS; offset >= 1; offset -= 1) {
+    for (let offset = salesWindowDays; offset >= 0; offset -= 1) {
       const saleDay = subDays(match.date, offset);
       if (saleDay < cutoff || saleDay > now) continue;
       totalRevenue += dailyPlanRevenue;
@@ -1163,13 +1506,6 @@ function sumTicketPlanRevenue(
   ticketFilters: TicketFilters,
 ): number {
   return sumTicketPlanMetrics(filters, ticketFilters).revenue;
-}
-
-function getMatchLevelPlanTotals(
-  filters: DashboardFilters,
-  ticketFilters: TicketFilters,
-): { revenue: number; tickets: number } {
-  return sumTicketPlanMetrics(filters, matchLevelTicketFilters(ticketFilters));
 }
 
 function addPlanFactValue(
@@ -1197,14 +1533,40 @@ export function computeTicketsTrend(
 export function computeSubscriptionsPlanFactTrend(
   filters: DashboardFilters,
   subscriptionFilters?: SubscriptionFilters,
-): PlanFactTrendPoint[] {
-  const grouping = "week" as const;
+): SubscriptionsPlanFactTrendPoint[] {
+  const grouping = subscriptionFilters?.timeGrouping ?? "month";
+  const trendFilters = subscriptionFilters
+    ? { ...subscriptionFilters, tournamentStage: "all" as const }
+    : undefined;
   const factRevenueMap = new Map<string, { sortKey: number; value: number }>();
+  const regularFactRevenueMap = new Map<
+    string,
+    { sortKey: number; value: number }
+  >();
+  const playoffFactRevenueMap = new Map<
+    string,
+    { sortKey: number; value: number }
+  >();
   const factCountMap = new Map<string, { sortKey: number; value: number }>();
 
-  for (const sub of filterSubscriptions(filters, subscriptionFilters)) {
+  for (const sub of filterSubscriptions(filters, trendFilters)) {
     addPlanFactValue(factRevenueMap, sub.purchasedAt, grouping, sub.price);
     addPlanFactValue(factCountMap, sub.purchasedAt, grouping, 1);
+    if (sub.tournamentStage === "playoff") {
+      addPlanFactValue(
+        playoffFactRevenueMap,
+        sub.purchasedAt,
+        grouping,
+        sub.price,
+      );
+    } else {
+      addPlanFactValue(
+        regularFactRevenueMap,
+        sub.purchasedAt,
+        grouping,
+        sub.price,
+      );
+    }
   }
 
   const totalFactRevenue = Array.from(factRevenueMap.values()).reduce(
@@ -1222,14 +1584,19 @@ export function computeSubscriptionsPlanFactTrend(
     totalFactCount / SUBSCRIPTION_PLAN_EXECUTION_RATE,
   );
 
-  const weekDates = getSubscriptionPeriodWeeks();
-  const factWeights = weekDates.map((weekDate) => {
-    const { period } = periodKeyAndSort(weekDate, grouping);
+  const trendPeriod = getSubscriptionsTrendDisplayPeriod(subscriptionFilters);
+  const bucketDates = getSubscriptionPeriodBuckets(
+    subscriptionFilters,
+    grouping,
+    trendPeriod,
+  );
+  const factWeights = bucketDates.map((bucketDate) => {
+    const { period } = periodKeyAndSort(bucketDate, grouping);
     return factRevenueMap.get(period)?.value ?? 0;
   });
   const hasFactDistribution = factWeights.some((weight) => weight > 0);
-  const launchWeights = weekDates.map((_, index) => {
-    const progress = index / Math.max(weekDates.length - 1, 1);
+  const launchWeights = bucketDates.map((_, index) => {
+    const progress = index / Math.max(bucketDates.length - 1, 1);
     return 0.7 + 0.3 * Math.sin(progress * Math.PI);
   });
   const weights = hasFactDistribution
@@ -1242,8 +1609,8 @@ export function computeSubscriptionsPlanFactTrend(
   const planRevenueMap = new Map<string, { sortKey: number; value: number }>();
   const planCountMap = new Map<string, { sortKey: number; value: number }>();
 
-  for (let index = 0; index < weekDates.length; index += 1) {
-    const { period, sortKey } = periodKeyAndSort(weekDates[index], grouping);
+  for (let index = 0; index < bucketDates.length; index += 1) {
+    const { period, sortKey } = periodKeyAndSort(bucketDates[index], grouping);
     planRevenueMap.set(period, {
       sortKey,
       value: Math.round((weights[index] / weightSum) * totalPlanRevenue),
@@ -1256,6 +1623,8 @@ export function computeSubscriptionsPlanFactTrend(
 
   const periods = new Set([
     ...factRevenueMap.keys(),
+    ...regularFactRevenueMap.keys(),
+    ...playoffFactRevenueMap.keys(),
     ...factCountMap.keys(),
     ...planRevenueMap.keys(),
     ...planCountMap.keys(),
@@ -1266,12 +1635,20 @@ export function computeSubscriptionsPlanFactTrend(
       period,
       sortKey:
         factRevenueMap.get(period)?.sortKey ??
+        regularFactRevenueMap.get(period)?.sortKey ??
+        playoffFactRevenueMap.get(period)?.sortKey ??
         planRevenueMap.get(period)?.sortKey ??
         factCountMap.get(period)?.sortKey ??
         planCountMap.get(period)?.sortKey ??
         0,
       planRevenue: Math.round(planRevenueMap.get(period)?.value ?? 0),
       factRevenue: Math.round(factRevenueMap.get(period)?.value ?? 0),
+      regularFactRevenue: Math.round(
+        regularFactRevenueMap.get(period)?.value ?? 0,
+      ),
+      playoffFactRevenue: Math.round(
+        playoffFactRevenueMap.get(period)?.value ?? 0,
+      ),
       planTickets: Math.round(planCountMap.get(period)?.value ?? 0),
       factTickets: Math.round(factCountMap.get(period)?.value ?? 0),
     }))
@@ -1308,13 +1685,14 @@ export function computeTicketsPlanFactTrend(
   const scale = ticketPlanScale(ticketFilters);
 
   for (const match of allowedMatches) {
-    const planProfile = getMatchTicketPlanProfile(match);
-    const matchPlanTickets = Math.round(match.capacity * planProfile.fillRate * scale);
-    const matchPlanRevenue = Math.round(matchPlanTickets * planProfile.avgPrice);
-    const dailyPlanTickets = matchPlanTickets / TICKET_SALES_WINDOW_DAYS;
-    const dailyPlanRevenue = matchPlanRevenue / TICKET_SALES_WINDOW_DAYS;
+    const salesWindowDays = getMatchTicketSalesWindowDays(match);
+    const saleDayCount = getMatchSaleDayCount(salesWindowDays);
+    const matchPlanTickets = Math.round(getMatchPlanTickets(match) * scale);
+    const matchPlanRevenue = Math.round(getMatchPlanRevenue(match) * scale);
+    const dailyPlanTickets = matchPlanTickets / saleDayCount;
+    const dailyPlanRevenue = matchPlanRevenue / saleDayCount;
 
-    for (let offset = TICKET_SALES_WINDOW_DAYS; offset >= 1; offset -= 1) {
+    for (let offset = salesWindowDays; offset >= 0; offset -= 1) {
       const saleDay = subDays(match.date, offset);
       if (saleDay < cutoff || saleDay > now) continue;
 
@@ -1413,20 +1791,19 @@ export function computeTicketsMatchCumulativeSeries(
 
   for (const match of chartMatches) {
     const matchTxs = txsByMatchId.get(match.id) ?? [];
-    const planProfile = getMatchTicketPlanProfile(match);
-    const matchPlanTickets = Math.round(
-      match.capacity * planProfile.fillRate * scale,
-    );
-    const matchPlanRevenue = Math.round(matchPlanTickets * planProfile.avgPrice);
-    const dailyPlanTickets = matchPlanTickets / TICKET_SALES_WINDOW_DAYS;
-    const dailyPlanRevenue = matchPlanRevenue / TICKET_SALES_WINDOW_DAYS;
+    const salesWindowDays = getMatchTicketSalesWindowDays(match);
+    const saleDayCount = getMatchSaleDayCount(salesWindowDays);
+    const matchPlanTickets = Math.round(getMatchPlanTickets(match) * scale);
+    const matchPlanRevenue = Math.round(getMatchPlanRevenue(match) * scale);
+    const dailyPlanTickets = matchPlanTickets / saleDayCount;
+    const dailyPlanRevenue = matchPlanRevenue / saleDayCount;
 
     const matchDay = startOfDay(match.date);
     const daysUntilMatch = differenceInCalendarDays(matchDay, today);
 
     let currentDaysBeforeMatch: number | null = null;
     if (!match.eventCompleted) {
-      if (daysUntilMatch >= 0 && daysUntilMatch <= TICKET_SALES_WINDOW_DAYS) {
+      if (daysUntilMatch >= 0 && daysUntilMatch <= salesWindowDays) {
         currentDaysBeforeMatch = daysUntilMatch;
       }
     }
@@ -1435,7 +1812,7 @@ export function computeTicketsMatchCumulativeSeries(
     for (const tx of matchTxs) {
       const txDay = startOfDay(tx.date);
       const daysBefore = differenceInCalendarDays(matchDay, txDay);
-      if (daysBefore < 0 || daysBefore > TICKET_SALES_WINDOW_DAYS) continue;
+      if (daysBefore < 0 || daysBefore > salesWindowDays) continue;
       const entry = factByDay.get(daysBefore) ?? { revenue: 0, tickets: 0 };
       entry.revenue += tx.amount;
       if (tx.amount > 0) {
@@ -1451,7 +1828,7 @@ export function computeTicketsMatchCumulativeSeries(
     const points: TicketMatchCumulativeSeries["points"] = [];
 
     for (
-      let daysBeforeMatch = TICKET_SALES_WINDOW_DAYS;
+      let daysBeforeMatch = salesWindowDays;
       daysBeforeMatch >= 0;
       daysBeforeMatch -= 1
     ) {
@@ -1493,6 +1870,10 @@ export function computeTicketsMatchCumulativeSeries(
       });
     }
 
+    const hasFactSales = points.some(
+      (point) => (point.revenue ?? 0) > 0 || (point.tickets ?? 0) > 0,
+    );
+
     const colorIndex = leagueColorIndex[match.league];
     const color = getMatchLineColor(
       match.league,
@@ -1509,6 +1890,7 @@ export function computeTicketsMatchCumulativeSeries(
       season: match.season,
       matchDateKey: matchDay.getTime(),
       eventCompleted: match.eventCompleted,
+      hasFactSales,
       planRevenue: matchPlanRevenue,
       planTickets: matchPlanTickets,
       currentDaysBeforeMatch,
@@ -1643,15 +2025,11 @@ export function computeTicketTypeSales(
   ticketFilters: TicketFilters,
 ): TicketTypeSalesPoint[] {
   const txs = filterTicketTransactions(filters, ticketFilters);
-  const planTotals = getMatchLevelPlanTotals(filters, ticketFilters);
 
   const rows = TICKET_TYPES.map((type) => {
     const typeTxs = txs.filter((tx) => tx.ticketType === type);
     const revenue = sumAmount(typeTxs);
     const tickets = countTickets(typeTxs);
-    const typeShare = TICKET_TYPE_PLAN_SHARE[type];
-    const planRevenue = Math.round(planTotals.revenue * typeShare);
-    const planTickets = Math.round(planTotals.tickets * typeShare);
 
     return {
       type,
@@ -1659,11 +2037,8 @@ export function computeTicketTypeSales(
       tickets,
       revenue,
       share: 0,
-      planRevenue,
-      planTickets,
-      fulfillmentPct: planFulfillmentPct(revenue, planRevenue),
     };
-  }).filter((row) => row.tickets > 0 || row.revenue > 0 || row.planRevenue > 0);
+  }).filter((row) => row.tickets > 0 || row.revenue > 0);
 
   const totalRevenue = rows.reduce((sum, row) => sum + row.revenue, 0);
   return rows.map((row) => ({
@@ -1680,28 +2055,19 @@ export function computePriceZoneSales(
   const arenaTxs = txs.filter(
     (tx) => tx.ticketType !== "parking" && tx.priceZone,
   );
-  const planTotals = getMatchLevelPlanTotals(filters, ticketFilters);
-  const arenaPlanRevenue = planTotals.revenue * TICKET_TYPE_PLAN_SHARE.arena;
-  const arenaPlanTickets = planTotals.tickets * TICKET_TYPE_PLAN_SHARE.arena;
 
   return ALL_PRICE_ZONES.map((zone) => {
     const zoneTxs = arenaTxs.filter((tx) => tx.priceZone === zone);
     const revenue = sumAmount(zoneTxs);
     const tickets = countTickets(zoneTxs);
-    const zoneShare = NORMALIZED_ZONE_PLAN_SHARES[zone];
-    const planRevenue = Math.round(arenaPlanRevenue * zoneShare);
-    const planTickets = Math.round(arenaPlanTickets * zoneShare);
 
     return {
       zone,
       label: zone,
       tickets,
       revenue,
-      planRevenue,
-      planTickets,
-      fulfillmentPct: planFulfillmentPct(revenue, planRevenue),
     };
-  }).filter((row) => row.tickets > 0 || row.planRevenue > 0);
+  }).filter((row) => row.tickets > 0);
 }
 
 export function computeOrderSourceSales(
@@ -1709,15 +2075,11 @@ export function computeOrderSourceSales(
   ticketFilters: TicketFilters,
 ): OrderSourceSalesPoint[] {
   const txs = filterTicketTransactions(filters, ticketFilters);
-  const planTotals = getMatchLevelPlanTotals(filters, ticketFilters);
 
   const rows = ORDER_SOURCES.map((source) => {
     const sourceTxs = txs.filter((tx) => tx.orderSource === source);
     const revenue = sumAmount(sourceTxs);
     const tickets = countTickets(sourceTxs);
-    const sourceShare = ORDER_SOURCE_PLAN_SHARE[source];
-    const planRevenue = Math.round(planTotals.revenue * sourceShare);
-    const planTickets = Math.round(planTotals.tickets * sourceShare);
 
     return {
       source,
@@ -1725,11 +2087,8 @@ export function computeOrderSourceSales(
       tickets,
       revenue,
       share: 0,
-      planRevenue,
-      planTickets,
-      fulfillmentPct: planFulfillmentPct(revenue, planRevenue),
     };
-  }).filter((row) => row.tickets > 0 || row.revenue > 0 || row.planRevenue > 0);
+  }).filter((row) => row.tickets > 0 || row.revenue > 0);
 
   const totalRevenue = rows.reduce((sum, row) => sum + row.revenue, 0);
   return rows.map((row) => ({
@@ -1738,11 +2097,64 @@ export function computeOrderSourceSales(
   }));
 }
 
+export function computeTicketsSalesChannelTrend(
+  filters: DashboardFilters,
+  ticketFilters: TicketFilters,
+): TicketsSalesChannelTrendPoint[] {
+  const txs = filterTicketTransactions(filters, ticketFilters);
+  const timeGrouping = ticketFilters.timeGrouping;
+  const activeSources =
+    ticketFilters.orderSource !== "all"
+      ? [ticketFilters.orderSource]
+      : ORDER_SOURCES;
+
+  const periodMap = new Map<
+    string,
+    { sortKey: number; channels: Map<OrderSource, number> }
+  >();
+
+  for (const tx of txs) {
+    if (!tx.orderSource) continue;
+    if (!activeSources.includes(tx.orderSource)) continue;
+
+    const { period, sortKey } = periodKeyAndSort(tx.date, timeGrouping);
+    const entry =
+      periodMap.get(period) ??
+      ({
+        sortKey,
+        channels: new Map(
+          activeSources.map((source) => [source, 0] as const),
+        ),
+      } as { sortKey: number; channels: Map<OrderSource, number> });
+
+    const delta = tx.isReturn ? -tx.amount : tx.amount;
+    entry.channels.set(
+      tx.orderSource,
+      (entry.channels.get(tx.orderSource) ?? 0) + delta,
+    );
+    periodMap.set(period, entry);
+  }
+
+  return Array.from(periodMap.entries())
+    .map(([period, { sortKey, channels }]) => ({
+      period,
+      sortKey,
+      channels: Object.fromEntries(
+        activeSources.map((source) => [
+          source,
+          Math.max(0, channels.get(source) ?? 0),
+        ]),
+      ) as Record<OrderSource, number>,
+    }))
+    .sort((a, b) => a.sortKey - b.sortKey);
+}
+
 export function computeMerchSalesChannelTrend(
   filters: DashboardFilters,
   merchFilters: MerchFilters,
 ): MerchSalesChannelTrendPoint[] {
   const txs = getFilteredMerchTransactions(filters, merchFilters);
+  const timeGrouping = getEffectiveMerchTimeGrouping(merchFilters);
   const activeChannels =
     merchFilters.salesChannels.length > 0
       ? merchFilters.salesChannels
@@ -1759,7 +2171,7 @@ export function computeMerchSalesChannelTrend(
 
     const { period, sortKey } = periodKeyAndSort(
       tx.date,
-      merchFilters.timeGrouping,
+      timeGrouping,
     );
     const entry =
       periodMap.get(period) ??
@@ -1828,11 +2240,69 @@ export function computeMerchSalesChannelRevenue(
   }));
 }
 
+export function computeMerchSalesSegmentTrend(
+  filters: DashboardFilters,
+  merchFilters: MerchFilters,
+): MerchSalesSegmentTrendPoint[] {
+  const txs = getFilteredMerchTransactions(filters, merchFilters);
+  const timeGrouping = getEffectiveMerchTimeGrouping(merchFilters);
+  const matchDatesById = buildMatchDateById(merchFilters);
+  const arenaMatchDayTimestamps = buildArenaMatchDayTimestamps(merchFilters);
+
+  const periodMap = new Map<
+    string,
+    { sortKey: number; segments: Map<MerchSalesSegment, number> }
+  >();
+
+  for (const tx of txs) {
+    const segment = classifyMerchSalesSegment(
+      tx,
+      matchDatesById,
+      arenaMatchDayTimestamps,
+    );
+    if (!segment) continue;
+
+    const { period, sortKey } = periodKeyAndSort(
+      tx.date,
+      timeGrouping,
+    );
+    const entry =
+      periodMap.get(period) ??
+      ({
+        sortKey,
+        segments: new Map(
+          ALL_MERCH_SALES_SEGMENTS.map((s) => [s, 0] as const),
+        ),
+      } as { sortKey: number; segments: Map<MerchSalesSegment, number> });
+
+    const delta = tx.isReturn ? -tx.amount : tx.amount;
+    entry.segments.set(
+      segment,
+      (entry.segments.get(segment) ?? 0) + delta,
+    );
+    periodMap.set(period, entry);
+  }
+
+  return Array.from(periodMap.entries())
+    .map(([period, { sortKey, segments }]) => ({
+      period,
+      sortKey,
+      segments: Object.fromEntries(
+        ALL_MERCH_SALES_SEGMENTS.map((segment) => [
+          segment,
+          Math.max(0, segments.get(segment) ?? 0),
+        ]),
+      ) as Record<MerchSalesSegment, number>,
+    }))
+    .sort((a, b) => a.sortKey - b.sortKey);
+}
+
 export function computeMerchProductCategoryTrend(
   filters: DashboardFilters,
   merchFilters: MerchFilters,
 ): MerchProductCategoryTrendPoint[] {
   const txs = getFilteredMerchTransactions(filters, merchFilters);
+  const timeGrouping = getEffectiveMerchTimeGrouping(merchFilters);
   const activeCategories = ALL_MERCH_PRODUCT_CATEGORIES;
 
   const periodMap = new Map<
@@ -1846,7 +2316,7 @@ export function computeMerchProductCategoryTrend(
 
     const { period, sortKey } = periodKeyAndSort(
       tx.date,
-      merchFilters.timeGrouping,
+      timeGrouping,
     );
     const entry =
       periodMap.get(period) ??
@@ -2125,11 +2595,7 @@ export function computeMatchSalesTable(
     }
 
     const gross = agg.revenue + agg.loyaltyDiscount;
-    const planProfile = getMatchTicketPlanProfile(match);
-    const matchPlanTickets = Math.round(
-      match.capacity * planProfile.fillRate * scale,
-    );
-    const planRevenue = Math.round(matchPlanTickets * planProfile.avgPrice);
+    const planRevenue = Math.round(getMatchPlanRevenue(match) * scale);
 
     rows.push({
       matchId: match.id,
@@ -2219,7 +2685,10 @@ export function computeMerchSkuSalesTable(
 ): MerchSkuSalesRow[] {
   const txs = getFilteredMerchTransactions(filters, merchFilters);
 
-  type SkuAgg = MerchAggregateMetrics & { receiptsWithProduct: number };
+  type SkuAgg = MerchAggregateMetrics & {
+    receiptsWithProduct: number;
+    listRevenue: number;
+  };
 
   const aggByProduct = new Map<string, SkuAgg>();
 
@@ -2228,14 +2697,19 @@ export function computeMerchSkuSalesTable(
     const agg = aggByProduct.get(productName) ?? {
       ...createMerchMetrics(),
       receiptsWithProduct: 0,
+      listRevenue: 0,
     };
+
+    const listAmount = getMerchListAmount(tx);
 
     if (tx.isReturn) {
       applyMerchTransaction(agg, tx);
       agg.receiptsWithProduct = Math.max(0, agg.receiptsWithProduct - 1);
+      agg.listRevenue -= listAmount;
     } else {
       applyMerchTransaction(agg, tx);
       agg.receiptsWithProduct += 1;
+      agg.listRevenue += listAmount;
     }
 
     aggByProduct.set(productName, agg);
@@ -2249,6 +2723,8 @@ export function computeMerchSkuSalesTable(
       receiptsWithProduct: agg.receiptsWithProduct,
       marginPct:
         agg.revenue > 0 ? ((agg.revenue - agg.cost) / agg.revenue) * 100 : 0,
+      actualToListPricePct:
+        agg.listRevenue > 0 ? (agg.revenue / agg.listRevenue) * 100 : 100,
     }))
     .filter((row) => row.units > 0)
     .sort((a, b) => b.units - a.units);

@@ -18,18 +18,43 @@ import {
 } from "recharts";
 import { useMemo, useState } from "react";
 import clsx from "clsx";
-import { Card, CardContent } from "@/components/ui/Card";
+import {
+  ChartZoomHint,
+  ChartZoomReferenceArea,
+  ChartZoomResetButton,
+  CHART_ZOOM_SURFACE_CLASS,
+} from "@/components/charts/ChartZoom";
+import { useChartAreaZoom } from "@/hooks/useChartAreaZoom";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { InlineBarCell } from "@/components/ui/InlineBarCell";
 import { Select } from "@/components/ui/Select";
+import {
+  ALL_MERCH_SALES_GROUPS,
+  ALL_MERCH_SALES_SEGMENTS,
+  MERCH_SALES_GROUP_CHANNELS,
+  MERCH_SALES_GROUP_COLORS,
+  MERCH_SALES_GROUP_LABELS,
+  MERCH_SALES_POINT_COLORS,
+  MERCH_SALES_SEGMENT_COLORS,
+  MERCH_SALES_SEGMENT_LABELS,
+} from "@/lib/merch-filter-options";
 import { ALL_PRICE_ZONES } from "@/lib/ticket-filter-options";
-import { formatCurrency, formatNumber } from "@/lib/format";
+import {
+  formatCurrency,
+  formatNumber,
+  formatShortMonthYear,
+} from "@/lib/format";
 import { ChartWidget } from "@/components/widgets/ChartWidget";
 import type {
   ChannelMixPoint,
   MerchSalesChannelPoint,
+  MerchSalesChannelTrendPoint,
   MerchProductCategory,
   MerchProductCategoryPoint,
+  MerchSalesGroup,
   MerchSalesPoint,
+  MerchSalesSegment,
+  MerchSalesSegmentTrendPoint,
   OrderSource,
   OrderSourceSalesPoint,
   PriceZoneSalesPoint,
@@ -56,15 +81,6 @@ const COLORS = {
 };
 
 const SECTOR_COLORS = ["#5282FF", "#00BFA5", "#FF7043", "#FFB300"];
-
-const MERCH_CHANNEL_COLORS: Record<MerchSalesPoint, string> = {
-  flagship: "#5282FF",
-  arena_north: "#00BFA5",
-  arena_south: "#26A69A",
-  mall_raduga: "#FF7043",
-  mall_continent: "#FFB300",
-  online_store: "#7B61FF",
-};
 
 const MERCH_CATEGORY_COLORS: Record<MerchProductCategory, string> = {
   jerseys: "#5282FF",
@@ -174,57 +190,282 @@ function ChartTooltip({
   );
 }
 
-export function MerchRevenueTrendChart({
+export function getMerchTrendPeriodLabel(
+  point: { period: string; sortKey: number },
+  timeGrouping: TimeGrouping,
+): string {
+  if (timeGrouping === "month") {
+    return formatShortMonthYear(new Date(point.sortKey));
+  }
+  return point.period;
+}
+
+export function getMerchTrendXAxisProps(timeGrouping: TimeGrouping = "month") {
+  const isWeek = timeGrouping === "week";
+  const isDay = timeGrouping === "day";
+  return {
+    dataKey: "period" as const,
+    tick: { fontSize: isWeek ? 12 : 10, fill: "#8B8B8E" },
+    interval: "preserveStartEnd" as const,
+    angle: isDay ? -35 : 0,
+    textAnchor: isDay ? ("end" as const) : ("middle" as const),
+    height: isDay ? 52 : isWeek ? 36 : 30,
+    minTickGap: isDay ? 4 : undefined,
+  };
+}
+
+const MERCH_STACKED_CHART_LEGEND_PROPS = {
+  wrapperStyle: { fontSize: 12 },
+};
+
+function MerchSalesStackedTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: { name: string; value: number; color: string }[];
+  label?: string;
+}) {
+  if (!active || !payload?.length) return null;
+
+  const total = payload.reduce((sum, entry) => sum + entry.value, 0);
+
+  return (
+    <div className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-xs shadow-sm">
+      <p className="mb-1 font-medium text-[var(--foreground)]">{label}</p>
+      {payload
+        .filter((entry) => entry.value > 0)
+        .sort((a, b) => b.value - a.value)
+        .map((entry) => (
+          <p key={entry.name} style={{ color: entry.color }}>
+            {entry.name}: {formatCurrency(entry.value)}
+          </p>
+        ))}
+      <p className="mt-1 border-t border-[var(--border)] pt-1 font-medium text-[var(--foreground)]">
+        Итого: {formatCurrency(total)}
+      </p>
+    </div>
+  );
+}
+
+function sumMerchSalesGroup(
+  channels: Partial<Record<MerchSalesPoint, number>>,
+  group: MerchSalesGroup,
+): number {
+  return MERCH_SALES_GROUP_CHANNELS[group].reduce(
+    (sum, channel) => sum + (channels[channel] ?? 0),
+    0,
+  );
+}
+
+export function MerchSalesStackedChart({
   data,
   className,
-  color = COLORS.secondary,
-  timeGrouping,
+  timeGrouping = "month",
 }: {
-  data: WeeklyPoint[];
+  data: MerchSalesChannelTrendPoint[];
   className?: string;
-  color?: string;
   timeGrouping?: TimeGrouping;
 }) {
-  const chartData =
-    timeGrouping === "month" ? data.filter((d) => d.value !== 0) : data;
+  const chartData = useMemo(() => {
+    const rows = data.map((point) => ({
+      period: getMerchTrendPeriodLabel(point, timeGrouping),
+      arena: sumMerchSalesGroup(point.channels, "arena"),
+      trk: sumMerchSalesGroup(point.channels, "trk"),
+      online: sumMerchSalesGroup(point.channels, "online"),
+    }));
+
+    if (timeGrouping === "month") {
+      return rows.filter(
+        (row) => row.arena > 0 || row.trk > 0 || row.online > 0,
+      );
+    }
+
+    return rows;
+  }, [data, timeGrouping]);
+
+  const activeGroups = useMemo(() => {
+    return ALL_MERCH_SALES_GROUPS.filter((group) =>
+      chartData.some((row) => row[group] > 0),
+    );
+  }, [chartData]);
+
+  const {
+    displayData,
+    isZoomed,
+    resetZoom,
+    selectionArea,
+    yDomain,
+    chartHandlers,
+  } = useChartAreaZoom(chartData, activeGroups, [data, timeGrouping], {
+    yAggregate: "sum",
+  });
 
   return (
     <Card className={clsx("min-w-0", className)}>
-      <CardContent className="flex h-full flex-col pt-4 pb-3">
-        <div className="min-h-[120px] flex-1">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={chartData}
-              margin={{ top: 20, right: 4, bottom: 0, left: 0 }}
-            >
-              <XAxis
-                dataKey="period"
-                tick={{ fontSize: 10, fill: "#8B8B8E" }}
-                axisLine={false}
-                tickLine={false}
-                interval="preserveStartEnd"
-              />
-              <YAxis hide />
-              <Tooltip
-                content={<ChartTooltip formatter={formatCurrency} />}
-              />
-              <Bar
-                dataKey="value"
-                name="Выручка"
-                fill={color}
-                radius={[4, 4, 0, 0]}
-                isAnimationActive={false}
-              >
-                <LabelList
-                  dataKey="value"
-                  position="top"
-                  formatter={(value: number) => formatCompactCurrency(value)}
-                  style={{ fontSize: 9, fill: "#8B8B8E" }}
-                />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+      <CardHeader>
+        <div className="min-w-0">
+          <CardTitle>Продажи по каналам</CardTitle>
+          <ChartZoomHint visible={!isZoomed} />
         </div>
+        {isZoomed && <ChartZoomResetButton onClick={resetZoom} />}
+      </CardHeader>
+      <CardContent className="flex h-full flex-col">
+        {chartData.length === 0 || activeGroups.length === 0 ? (
+          <div className="flex h-[220px] items-center justify-center text-sm text-[var(--muted)]">
+            Нет данных по выбранным каналам
+          </div>
+        ) : (
+          <div className={clsx("h-[220px]", CHART_ZOOM_SURFACE_CLASS)}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={displayData}
+                margin={{
+                  top: 8,
+                  right: 8,
+                  left: 0,
+                  bottom: 0,
+                }}
+                {...chartHandlers}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#E5E5E7" />
+                <XAxis {...getMerchTrendXAxisProps(timeGrouping)} />
+                <YAxis
+                  domain={yDomain}
+                  tick={{ fontSize: 10, fill: "#8B8B8E" }}
+                  width={48}
+                  tickFormatter={(value) =>
+                    value >= 1_000_000
+                      ? `${(value / 1_000_000).toFixed(1)}M`
+                      : value >= 1_000
+                        ? `${Math.round(value / 1_000)}K`
+                        : String(value)
+                  }
+                />
+                <Tooltip content={<MerchSalesStackedTooltip />} />
+                <Legend {...MERCH_STACKED_CHART_LEGEND_PROPS} />
+                <ChartZoomReferenceArea selectionArea={selectionArea} />
+                {activeGroups.map((group) => (
+                  <Bar
+                    key={group}
+                    dataKey={group}
+                    name={MERCH_SALES_GROUP_LABELS[group]}
+                    stackId="sales"
+                    fill={MERCH_SALES_GROUP_COLORS[group]}
+                    isAnimationActive={false}
+                  />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function MerchSalesSegmentStackedChart({
+  data,
+  className,
+  timeGrouping = "month",
+}: {
+  data: MerchSalesSegmentTrendPoint[];
+  className?: string;
+  timeGrouping?: TimeGrouping;
+}) {
+  const chartData = useMemo(() => {
+    const rows = data.map((point) => ({
+      period: getMerchTrendPeriodLabel(point, timeGrouping),
+      offline: point.segments.offline,
+      online: point.segments.online,
+      matchday: point.segments.matchday,
+    }));
+
+    if (timeGrouping === "month") {
+      return rows.filter(
+        (row) => row.offline > 0 || row.online > 0 || row.matchday > 0,
+      );
+    }
+
+    return rows;
+  }, [data, timeGrouping]);
+
+  const activeSegments = useMemo(() => {
+    return ALL_MERCH_SALES_SEGMENTS.filter((segment) =>
+      chartData.some((row) => row[segment] > 0),
+    );
+  }, [chartData]);
+
+  const {
+    displayData,
+    isZoomed,
+    resetZoom,
+    selectionArea,
+    yDomain,
+    chartHandlers,
+  } = useChartAreaZoom(chartData, activeSegments, [data, timeGrouping], {
+    yAggregate: "sum",
+  });
+
+  return (
+    <Card className={clsx("min-w-0", className)}>
+      <CardHeader>
+        <div className="min-w-0">
+          <CardTitle>Продажи по сегментам</CardTitle>
+          <ChartZoomHint visible={!isZoomed} />
+        </div>
+        {isZoomed && <ChartZoomResetButton onClick={resetZoom} />}
+      </CardHeader>
+      <CardContent className="flex h-full flex-col">
+        {chartData.length === 0 || activeSegments.length === 0 ? (
+          <div className="flex h-[220px] items-center justify-center text-sm text-[var(--muted)]">
+            Нет данных по выбранным фильтрам
+          </div>
+        ) : (
+          <div className={clsx("h-[220px]", CHART_ZOOM_SURFACE_CLASS)}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={displayData}
+                margin={{
+                  top: 8,
+                  right: 8,
+                  left: 0,
+                  bottom: 0,
+                }}
+                {...chartHandlers}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#E5E5E7" />
+                <XAxis {...getMerchTrendXAxisProps(timeGrouping)} />
+                <YAxis
+                  domain={yDomain}
+                  tick={{ fontSize: 10, fill: "#8B8B8E" }}
+                  width={48}
+                  tickFormatter={(value) =>
+                    value >= 1_000_000
+                      ? `${(value / 1_000_000).toFixed(1)}M`
+                      : value >= 1_000
+                        ? `${Math.round(value / 1_000)}K`
+                        : String(value)
+                  }
+                />
+                <Tooltip content={<MerchSalesStackedTooltip />} />
+                <Legend {...MERCH_STACKED_CHART_LEGEND_PROPS} />
+                <ChartZoomReferenceArea selectionArea={selectionArea} />
+                {activeSegments.map((segment) => (
+                  <Bar
+                    key={segment}
+                    dataKey={segment}
+                    name={MERCH_SALES_SEGMENT_LABELS[segment]}
+                    stackId="segments"
+                    fill={MERCH_SALES_SEGMENT_COLORS[segment]}
+                    isAnimationActive={false}
+                  />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -239,29 +480,58 @@ export function WeeklyTrendChart({
   title: string;
   color?: string;
 }) {
+  const chartData = useMemo(
+    () => data.map((point) => ({ period: point.period, value: point.value })),
+    [data],
+  );
+
+  const {
+    displayData,
+    isZoomed,
+    resetZoom,
+    selectionArea,
+    yDomain,
+    chartHandlers,
+  } = useChartAreaZoom(chartData, ["value"], [data]);
+
   return (
     <ChartWidget title={title}>
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#E5E5E7" />
-          <XAxis dataKey="period" tick={{ fontSize: 11, fill: "#8B8B8E" }} />
-          <YAxis
-            tick={{ fontSize: 11, fill: "#8B8B8E" }}
-            tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`}
-          />
-          <Tooltip
-            content={<ChartTooltip formatter={formatCurrency} />}
-          />
-          <Line
-            type="monotone"
-            dataKey="value"
-            name="Выручка"
-            stroke={color}
-            strokeWidth={2}
-            dot={false}
-          />
-        </LineChart>
-      </ResponsiveContainer>
+      <div className={clsx("h-full", CHART_ZOOM_SURFACE_CLASS)}>
+        {isZoomed && (
+          <div className="mb-2 flex justify-end">
+            <ChartZoomResetButton onClick={resetZoom} />
+          </div>
+        )}
+        {!isZoomed && (
+          <p className="mb-2 text-[11px] text-[var(--muted)]">
+            Выделите область мышью для приближения · двойной клик — сброс
+          </p>
+        )}
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={displayData} {...chartHandlers}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#E5E5E7" />
+            <XAxis dataKey="period" tick={{ fontSize: 11, fill: "#8B8B8E" }} />
+            <YAxis
+              domain={yDomain}
+              tick={{ fontSize: 11, fill: "#8B8B8E" }}
+              tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`}
+            />
+            <Tooltip
+              content={<ChartTooltip formatter={formatCurrency} />}
+            />
+            <ChartZoomReferenceArea selectionArea={selectionArea} />
+            <Line
+              type="monotone"
+              dataKey="value"
+              name="Выручка"
+              stroke={color}
+              strokeWidth={2}
+              dot={false}
+              isAnimationActive={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
     </ChartWidget>
   );
 }
@@ -372,17 +642,6 @@ function getShareBreakdownChartHeight(itemCount: number, compact = true): number
   return Math.max(compact ? 140 : 160, itemCount * rowHeight + 56);
 }
 
-export function getMerchChartsRowHeight(
-  topProducts: TopProductPoint[],
-  channels?: MerchSalesChannelPoint[],
-  categories?: MerchProductCategoryPoint[],
-): number {
-  const topProductsHeight = Math.max(300, topProducts.length * 36 + 48);
-  const channelsHeight = getShareBreakdownChartHeight(channels?.length ?? 0);
-  const categoriesHeight = getShareBreakdownChartHeight(categories?.length ?? 0);
-  return Math.max(topProductsHeight, channelsHeight, categoriesHeight);
-}
-
 export function MerchSalesChannelsChart({
   data,
   className,
@@ -404,7 +663,7 @@ export function MerchSalesChannelsChart({
         label: item.channel,
         value: item.value,
         share: item.share,
-        color: MERCH_CHANNEL_COLORS[item.channelKey],
+        color: MERCH_SALES_POINT_COLORS[item.channelKey],
       })),
     [sorted],
   );
@@ -431,7 +690,7 @@ export function MerchSalesChannelsChart({
       className={className}
       compact={compact}
     >
-      <ShareBreakdownInlineRows rows={rows} labelClassName="w-36" />
+      <ShareBreakdownInlineRows rows={rows} labelClassName="w-24 sm:w-36" />
     </ChartWidget>
   );
 }
@@ -484,7 +743,7 @@ export function MerchProductCategoriesChart({
       className={className}
       compact={compact}
     >
-      <ShareBreakdownInlineRows rows={rows} labelClassName="w-36" />
+      <ShareBreakdownInlineRows rows={rows} labelClassName="w-24 sm:w-36" />
     </ChartWidget>
   );
 }
@@ -514,8 +773,8 @@ export function ChannelMixChart({
           <YAxis
             type="category"
             dataKey="channel"
-            width={compact ? 64 : 80}
-            tick={{ fontSize: compact ? 9 : 10, fill: "#8B8B8E" }}
+            width={compact ? 80 : 90}
+            tick={{ fontSize: 12, fill: "#8B8B8E" }}
           />
           <Tooltip formatter={(value: number) => formatCurrency(value)} />
           <Bar dataKey="value" name="Выручка" fill={COLORS.secondary} radius={[0, 4, 4, 0]} isAnimationActive={false} />
@@ -557,7 +816,7 @@ export function TopProductsChart({
             type="category"
             dataKey="name"
             width={90}
-            tick={{ fontSize: 9, fill: "#8B8B8E" }}
+            tick={{ fontSize: 12, fill: "#8B8B8E" }}
           />
           <Tooltip formatter={(value: number) => formatCurrency(value)} />
           <Bar dataKey="revenue" name="Выручка" fill={COLORS.secondary} radius={[0, 4, 4, 0]} isAnimationActive={false} />
@@ -676,6 +935,10 @@ export function TicketTypeSalesChart({
     () => [...data].sort((a, b) => b.revenue - a.revenue),
     [data],
   );
+  const maxRevenue = useMemo(
+    () => Math.max(...sorted.map((item) => item.revenue), 0),
+    [sorted],
+  );
   const chartHeight = getOrderSourceChartHeight(sorted.length, compact);
 
   if (sorted.length === 0) {
@@ -708,10 +971,8 @@ export function TicketTypeSalesChart({
             <div className="min-w-0 flex-1">
               <InlineBarCell
                 value={item.revenue}
-                max={100}
-                share={item.share}
+                max={maxRevenue}
                 formatted={formatCurrency(item.revenue)}
-                trailingFormatted={`${item.share.toFixed(1)}%`}
                 barStyle={{
                   backgroundColor: TICKET_TYPE_COLORS[item.type],
                 }}
@@ -739,7 +1000,7 @@ export function PriceZoneSalesChart({
     [data, sortMode],
   );
   const maxTickets = useMemo(
-    () => Math.max(...sorted.map((d) => d.tickets), 0),
+    () => Math.max(...sorted.map((item) => item.tickets), 0),
     [sorted],
   );
   const minTickets = useMemo(
@@ -827,6 +1088,10 @@ export function OrderSourceSalesChart({
     () => [...data].sort((a, b) => b.revenue - a.revenue),
     [data],
   );
+  const maxRevenue = useMemo(
+    () => Math.max(...sorted.map((item) => item.revenue), 0),
+    [sorted],
+  );
   const chartHeight = getOrderSourceChartHeight(sorted.length, compact);
 
   if (sorted.length === 0) {
@@ -851,7 +1116,7 @@ export function OrderSourceSalesChart({
         {sorted.map((item) => (
           <div key={item.source} className="flex items-center gap-2">
             <span
-              className="w-28 shrink-0 truncate text-xs font-medium text-[var(--foreground)]"
+              className="w-20 shrink-0 truncate text-xs font-medium text-[var(--foreground)] sm:w-28"
               title={item.label}
             >
               {item.label}
@@ -859,10 +1124,8 @@ export function OrderSourceSalesChart({
             <div className="min-w-0 flex-1">
               <InlineBarCell
                 value={item.revenue}
-                max={100}
-                share={item.share}
+                max={maxRevenue}
                 formatted={formatCurrency(item.revenue)}
-                trailingFormatted={`${item.share.toFixed(1)}%`}
                 barStyle={{
                   backgroundColor: ORDER_SOURCE_COLORS[item.source],
                 }}

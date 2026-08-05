@@ -1,4 +1,4 @@
-import { addDays, differenceInCalendarDays, startOfDay, subDays } from "date-fns";
+import { addDays, differenceInCalendarDays, isSameDay, startOfDay, subDays } from "date-fns";
 import type {
   ArenaId,
   League,
@@ -15,10 +15,25 @@ import type {
   Transaction,
 } from "@/types/dashboard";
 import { ALL_PRICE_ZONES } from "@/lib/ticket-filter-options";
-
-const MAIN_ARENA_CAPACITY = 10500;
-const SECONDARY_ARENA_CAPACITY = 3200;
-const MHL_ARENA_CAPACITY = 5500;
+import {
+  COMPLETED_MATCH_OVERLAP_COUNT,
+  TICKET_SALES_WINDOW_MAX_DAYS,
+  TICKET_SALES_WINDOW_MIN_DAYS,
+  alignCompletedMatchSalesWindows,
+  alignNearestUpcomingMatchSalesWindows,
+  getMatchTicketSalesWindowDays,
+} from "@/lib/ticket-sales-window";
+import { getMerchListAmount } from "@/lib/merch-catalog";
+import {
+  getMatchPlanRevenue,
+  getMatchTicketPlanProfile,
+  getKhlPlanAvgPrice,
+  LEGACY_TICKET_PLAN_AVG_PRICE,
+  MAIN_ARENA_CAPACITY,
+  MHL_ARENA_CAPACITY,
+  SECONDARY_ARENA_CAPACITY,
+  TICKET_PLAN_AVG_PRICE,
+} from "@/lib/ticket-plan";
 const HOME_ARENA: ArenaId = "main";
 const KHL_MATCH_COUNT = 15;
 const VHL_MATCH_COUNT = 8;
@@ -31,6 +46,55 @@ export const SEASON_END = new Date(2026, 4, 31);
 export const MOCK_TODAY = new Date(2026, 4, 15);
 export const SUBSCRIPTIONS_PERIOD_START = new Date(2025, 7, 25);
 export const SUBSCRIPTIONS_PERIOD_END = new Date(2025, 8, 14);
+/** Playoff stage = final 60 calendar days of each season (inclusive). */
+export const PLAYOFF_WINDOW_DAYS = 60;
+
+export function getPlayoffWindowStart(seasonEnd: Date): Date {
+  return startOfDay(subDays(seasonEnd, PLAYOFF_WINDOW_DAYS - 1));
+}
+
+/** Days before the first playoff match when playoff subscription sales open. */
+export const PLAYOFF_SUBSCRIPTION_SALES_LEAD_DAYS = 21;
+
+export function getFirstPlayoffMatchDate(
+  matches: Match[],
+  season: string,
+): Date | null {
+  const playoffMatches = matches
+    .filter(
+      (match) => match.season === season && match.matchClass === "playoff",
+    )
+    .sort((left, right) => left.date.getTime() - right.date.getTime());
+
+  return playoffMatches[0]?.date ?? null;
+}
+
+/** Playoff subscription sales: 21 days before first playoff match through day before it. */
+export function getPlayoffSubscriptionSalesWindow(firstPlayoffMatch: Date): {
+  start: Date;
+  end: Date;
+} {
+  const firstMatchDay = startOfDay(firstPlayoffMatch);
+  return {
+    start: startOfDay(
+      subDays(firstMatchDay, PLAYOFF_SUBSCRIPTION_SALES_LEAD_DAYS),
+    ),
+    end: startOfDay(subDays(firstMatchDay, 1)),
+  };
+}
+
+export function isInPlayoffWindow(matchDate: Date, seasonEnd: Date): boolean {
+  const matchDay = startOfDay(matchDate);
+  const seasonEndDay = startOfDay(seasonEnd);
+  const playoffStart = getPlayoffWindowStart(seasonEnd);
+  return matchDay >= playoffStart && matchDay <= seasonEndDay;
+}
+
+export function getTournamentStageFromClass(
+  matchClass: MatchClass,
+): Match["tournamentStage"] {
+  return matchClass === "playoff" ? "playoff" : "regular";
+}
 
 function getMatchDate(
   index: number,
@@ -55,6 +119,30 @@ function isEventCompleted(matchDate: Date): boolean {
 function randomDateInSeasonRange(from: Date, to: Date): Date {
   const span = Math.max(0, differenceInCalendarDays(to, from));
   return addDays(from, randomInt(0, span));
+}
+
+function randomDateInWindow(
+  windowStart: Date,
+  windowEnd: Date,
+  preferStart?: Date,
+  preferEnd?: Date,
+): Date {
+  const start = startOfDay(windowStart);
+  const end = startOfDay(windowEnd);
+  if (start > end) return start;
+
+  if (preferStart && preferEnd) {
+    const overlapStart =
+      startOfDay(preferStart) > start ? startOfDay(preferStart) : start;
+    const overlapEnd =
+      startOfDay(preferEnd) < end ? startOfDay(preferEnd) : end;
+
+    if (overlapStart <= overlapEnd && rand() > 0.3) {
+      return randomDateInSeasonRange(overlapStart, overlapEnd);
+    }
+  }
+
+  return randomDateInSeasonRange(start, end);
 }
 
 const OPPONENTS = [
@@ -107,7 +195,6 @@ type LeagueSchedule = {
   arena: ArenaId;
   capacity: number;
   opponents: string[];
-  getTournamentStage: (index: number, total: number) => Match["tournamentStage"];
 };
 
 const KHL_MATCH_CLASS_BY_OPPONENT: Record<string, MatchClass> = {
@@ -128,32 +215,24 @@ const KHL_MATCH_CLASS_BY_OPPONENT: Record<string, MatchClass> = {
   СКА: "class_1",
 };
 
-function getKhlTournamentStage(index: number): Match["tournamentStage"] {
-  if (index >= 9 && index <= 12) return "playoff";
-  return "regular";
-}
-
 const CURRENT_SEASON_SCHEDULES: LeagueSchedule[] = [
   {
     league: "KHL",
     arena: HOME_ARENA,
     capacity: MAIN_ARENA_CAPACITY,
     opponents: OPPONENTS,
-    getTournamentStage: (index) => getKhlTournamentStage(index),
   },
   {
     league: "VHL",
     arena: "secondary",
     capacity: SECONDARY_ARENA_CAPACITY,
     opponents: VHL_OPPONENTS,
-    getTournamentStage: () => "regular",
   },
   {
     league: "MHL",
     arena: HOME_ARENA,
     capacity: MHL_ARENA_CAPACITY,
     opponents: MHL_OPPONENTS,
-    getTournamentStage: () => "regular",
   },
 ];
 
@@ -163,21 +242,18 @@ const PREV_SEASON_SCHEDULES: LeagueSchedule[] = [
     arena: HOME_ARENA,
     capacity: MAIN_ARENA_CAPACITY,
     opponents: PREV_SEASON_OPPONENTS,
-    getTournamentStage: (index) => getKhlTournamentStage(index),
   },
   {
     league: "VHL",
     arena: "secondary",
     capacity: SECONDARY_ARENA_CAPACITY,
     opponents: VHL_OPPONENTS,
-    getTournamentStage: () => "regular",
   },
   {
     league: "MHL",
     arena: HOME_ARENA,
     capacity: MHL_ARENA_CAPACITY,
     opponents: MHL_OPPONENTS,
-    getTournamentStage: () => "regular",
   },
 ];
 
@@ -206,21 +282,23 @@ const SEASON_DEFINITIONS: SeasonDefinition[] = [
   },
 ];
 
+const ZONE_PRICE_SCALE = TICKET_PLAN_AVG_PRICE / LEGACY_TICKET_PLAN_AVG_PRICE;
+
 const ZONE_PRICES: Record<PriceZone, number> = {
-  A: 2500,
-  B1: 2200,
-  B2: 2100,
-  B3: 2000,
-  B4: 1900,
-  C1: 1600,
-  C2: 1500,
-  C3: 1400,
-  C4: 1300,
-  D1: 1100,
-  D2: 1000,
-  D3: 900,
-  D4: 800,
-  VIP: 8500,
+  A: Math.round(2500 * ZONE_PRICE_SCALE),
+  B1: Math.round(2200 * ZONE_PRICE_SCALE),
+  B2: Math.round(2100 * ZONE_PRICE_SCALE),
+  B3: Math.round(2000 * ZONE_PRICE_SCALE),
+  B4: Math.round(1900 * ZONE_PRICE_SCALE),
+  C1: Math.round(1600 * ZONE_PRICE_SCALE),
+  C2: Math.round(1500 * ZONE_PRICE_SCALE),
+  C3: Math.round(1400 * ZONE_PRICE_SCALE),
+  C4: Math.round(1300 * ZONE_PRICE_SCALE),
+  D1: Math.round(1100 * ZONE_PRICE_SCALE),
+  D2: Math.round(1000 * ZONE_PRICE_SCALE),
+  D3: Math.round(900 * ZONE_PRICE_SCALE),
+  D4: Math.round(800 * ZONE_PRICE_SCALE),
+  VIP: Math.round(8500 * ZONE_PRICE_SCALE),
 };
 
 const ORDER_SOURCES: OrderSource[] = [
@@ -280,8 +358,8 @@ function generateOffMatchMerchSales(
     for (let i = 0; i < txCount; i += 1) {
       const item = pickMerchItem();
       const qty = pickMerchQuantity();
-      const amount = item.price * qty;
-      const costAmount = Math.round(amount * (0.35 + rand() * 0.2));
+      const payment = resolveMerchPayment(item, qty);
+      const costAmount = Math.round(payment.amount * (0.35 + rand() * 0.2));
       txs.push({
         id: `tx-${id++}`,
         date: randomDateInSeasonRange(PREV_SEASON_START, MOCK_TODAY),
@@ -289,8 +367,10 @@ function generateOffMatchMerchSales(
         description: item.desc,
         matchId: null,
         channel: channel.point === "online_store" ? "online" : "kiosk",
-        amount,
+        amount: payment.amount,
         quantity: qty,
+        listUnitPrice: payment.listUnitPrice,
+        loyaltyDiscount: payment.loyaltyDiscount,
         merchSalesPoint: channel.point,
         productCategory: item.category,
         costAmount,
@@ -303,6 +383,24 @@ function generateOffMatchMerchSales(
 
 function pickMerchQuantity(): number {
   return rand() < 0.34 ? 1 : 2;
+}
+
+function resolveMerchPayment(
+  item: (typeof MERCH_ITEMS)[number],
+  qty: number,
+): {
+  amount: number;
+  listUnitPrice: number;
+  loyaltyDiscount?: number;
+} {
+  const listUnitPrice = item.price;
+  const gross = listUnitPrice * qty;
+  const { amount, loyaltyDiscount } = applyLoyaltyDiscount(gross);
+  return {
+    amount,
+    listUnitPrice,
+    loyaltyDiscount: loyaltyDiscount > 0 ? loyaltyDiscount : undefined,
+  };
 }
 
 const MERCH_ITEMS: {
@@ -327,7 +425,6 @@ const MERCH_ITEMS: {
   { desc: "Рюкзак клубный", price: 4200, weight: 7, category: "accessories" },
   { desc: "Плед с эмблемой", price: 3200, weight: 6, category: "accessories" },
   { desc: "Кружка керамическая", price: 800, weight: 9, category: "drinkware" },
-  { desc: "Автошторка", price: 1100, weight: 5, category: "accessories" },
   { desc: "Варежки детские", price: 1400, weight: 8, category: "apparel" },
   { desc: "Футболка поло", price: 3800, weight: 8, category: "jerseys" },
   { desc: "Шорты тренировочные", price: 2600, weight: 6, category: "jerseys" },
@@ -357,13 +454,34 @@ function seededRandom(seed: number): () => number {
 
 const rand = seededRandom(42);
 
-function getMatchClass(
-  opponent: string,
-  _tournamentStage: Match["tournamentStage"],
-  league: League,
-): MatchClass {
+function getBaseMatchClass(opponent: string, league: League): MatchClass {
   if (league !== "KHL") return "class_3";
   return KHL_MATCH_CLASS_BY_OPPONENT[opponent] ?? "class_2";
+}
+
+/** KHL matches in the playoff window: later half become class «Плей-офф». */
+function assignPlayoffClasses(matches: Match[]): void {
+  const seasonBounds = new Map(
+    SEASON_DEFINITIONS.map((def) => [def.season, def.end] as const),
+  );
+
+  for (const [season, seasonEnd] of seasonBounds) {
+    const candidates = matches
+      .filter(
+        (match) =>
+          match.league === "KHL" &&
+          match.season === season &&
+          isInPlayoffWindow(match.date, seasonEnd),
+      )
+      .sort((left, right) => left.date.getTime() - right.date.getTime());
+
+    if (candidates.length === 0) continue;
+
+    const playoffCount = Math.max(1, Math.ceil(candidates.length / 2));
+    for (const match of candidates.slice(-playoffCount)) {
+      match.matchClass = "playoff";
+    }
+  }
 }
 
 function randomInt(min: number, max: number): number {
@@ -396,7 +514,7 @@ function buildSeasonMatches({
         ? Math.round(schedule.capacity * fillFactor)
         : 0;
 
-      const tournamentStage = schedule.getTournamentStage(i, matchCount);
+      const matchClass = getBaseMatchClass(opponent, schedule.league);
 
       seasonMatches.push({
         id: `match-${nextId++}`,
@@ -407,9 +525,13 @@ function buildSeasonMatches({
         eventCompleted,
         season,
         league: schedule.league,
-        tournamentStage,
-        matchClass: getMatchClass(opponent, tournamentStage, schedule.league),
+        tournamentStage: getTournamentStageFromClass(matchClass),
+        matchClass,
         arena: schedule.arena,
+        ticketSalesWindowDays: randomInt(
+          TICKET_SALES_WINDOW_MIN_DAYS,
+          TICKET_SALES_WINDOW_MAX_DAYS,
+        ),
       });
     }
   }
@@ -417,8 +539,60 @@ function buildSeasonMatches({
   return seasonMatches;
 }
 
+/** Spacing between clustered match days so 10–16 day windows can share a start. */
+const COMPLETED_KHL_CLUSTER_DAY_SPACING = 2;
+
+/**
+ * Pulls the earliest completed KHL matches in a season onto nearby calendar days
+ * so their ticket sales windows can be aligned to the same start date.
+ */
+function clusterCompletedKhlMatchDates(
+  matches: Match[],
+  season = "2025/26",
+  clusterSize = COMPLETED_MATCH_OVERLAP_COUNT,
+): void {
+  const cluster = matches
+    .filter(
+      (match) =>
+        match.league === "KHL" &&
+        match.season === season &&
+        match.eventCompleted,
+    )
+    .sort((left, right) => left.date.getTime() - right.date.getTime())
+    .slice(0, clusterSize);
+
+  if (cluster.length < 2) return;
+
+  const anchorDate = startOfDay(cluster[0].date);
+  for (let index = 0; index < cluster.length; index += 1) {
+    cluster[index].date = addDays(
+      anchorDate,
+      index * COMPLETED_KHL_CLUSTER_DAY_SPACING,
+    );
+  }
+}
+
+function applyTournamentStages(matches: Match[]): void {
+  for (const match of matches) {
+    match.tournamentStage = getTournamentStageFromClass(match.matchClass);
+  }
+}
+
+function applyMatchClasses(matches: Match[]): void {
+  for (const match of matches) {
+    match.matchClass = getBaseMatchClass(match.opponent, match.league);
+  }
+  assignPlayoffClasses(matches);
+}
+
 function generateMatches(): Match[] {
-  return SEASON_DEFINITIONS.flatMap(buildSeasonMatches);
+  const allMatches = SEASON_DEFINITIONS.flatMap(buildSeasonMatches);
+  clusterCompletedKhlMatchDates(allMatches);
+  applyMatchClasses(allMatches);
+  applyTournamentStages(allMatches);
+  alignCompletedMatchSalesWindows(allMatches);
+  alignNearestUpcomingMatchSalesWindows(allMatches);
+  return allMatches;
 }
 
 function pickOrderSource(): OrderSource {
@@ -465,37 +639,60 @@ function resolveTicketPayment(
   };
 }
 
-const TICKET_SALES_WINDOW_DAYS = 21;
-const TICKET_PLAN_FILL_RATE = 0.82;
-const TICKET_PLAN_AVG_PRICE = 1750;
-
 const HIGH_DEMAND_OPPONENTS = new Set(["Ак Барс", "Локомотив", "Трактор"]);
 const LOW_DEMAND_OPPONENTS = new Set(["Сочи", "Торпедо"]);
 
-function getOpponentSalesFactor(opponent: string): number {
+/** Small opponent variance so fact stays within ~90–98% of plan. */
+function getOpponentSalesFactor(opponent: string, matchClass: MatchClass): number {
+  if (matchClass === "playoff") {
+    return 0.96 + rand() * 0.06;
+  }
   if (HIGH_DEMAND_OPPONENTS.has(opponent)) {
-    return 1.1 + rand() * 0.08;
+    return 1.02 + rand() * 0.04;
   }
   if (LOW_DEMAND_OPPONENTS.has(opponent)) {
-    return 0.5 + rand() * 0.06;
+    return 0.92 + rand() * 0.04;
   }
-  return 0.78 + rand() * 0.14;
+  return 0.96 + rand() * 0.06;
 }
 
-function closestPriceZone(targetPrice: number): PriceZone {
+function getLeagueZonePrice(
+  zone: PriceZone,
+  league: League,
+  matchClass: MatchClass = "class_2",
+): number {
+  switch (league) {
+    case "VHL":
+      return Math.round(ZONE_PRICES[zone] * (1100 / TICKET_PLAN_AVG_PRICE));
+    case "MHL":
+      return Math.round(ZONE_PRICES[zone] * (700 / TICKET_PLAN_AVG_PRICE));
+    default:
+      return Math.round(
+        ZONE_PRICES[zone] *
+          (getKhlPlanAvgPrice(matchClass) / TICKET_PLAN_AVG_PRICE),
+      );
+  }
+}
+
+function closestPriceZone(
+  targetPrice: number,
+  league: League = "KHL",
+  matchClass: MatchClass = "class_2",
+): PriceZone {
   return ALL_PRICE_ZONES.reduce((best, zone) =>
-    Math.abs(ZONE_PRICES[zone] - targetPrice) <
-    Math.abs(ZONE_PRICES[best] - targetPrice)
+    Math.abs(getLeagueZonePrice(zone, league, matchClass) - targetPrice) <
+    Math.abs(getLeagueZonePrice(best, league, matchClass) - targetPrice)
       ? zone
       : best,
   ALL_PRICE_ZONES[0]);
 }
 
-function randomSaleDate(matchDate: Date, explicit?: Date): Date {
+function randomSaleDate(match: Match, explicit?: Date): Date {
   if (explicit) return explicit;
 
-  const saleEnd = matchDate > MOCK_TODAY ? MOCK_TODAY : matchDate;
-  const saleStart = subDays(saleEnd, TICKET_SALES_WINDOW_DAYS - 1);
+  const salesWindowDays = getMatchTicketSalesWindowDays(match);
+  const saleEnd = match.date > MOCK_TODAY ? MOCK_TODAY : match.date;
+  const saleStart = subDays(saleEnd, salesWindowDays - 1);
   const span = Math.max(0, differenceInCalendarDays(saleEnd, saleStart));
   return subDays(saleEnd, randomInt(0, span));
 }
@@ -506,6 +703,8 @@ function buildDayTicketSales(
   startId: number,
   ticketTarget: number,
   revenueTarget: number,
+  league: League,
+  matchClass: MatchClass = "class_2",
 ): Transaction[] {
   const txs: Transaction[] = [];
   let id = startId;
@@ -540,8 +739,12 @@ function buildDayTicketSales(
     }
 
     if (isLast) {
-      const priceZone = closestPriceZone(Math.round(revenueLeft / ticketsLeft));
-      const unitPrice = ZONE_PRICES[priceZone];
+      const priceZone = closestPriceZone(
+        Math.round(revenueLeft / ticketsLeft),
+        league,
+        matchClass,
+      );
+      const unitPrice = getLeagueZonePrice(priceZone, league, matchClass);
       const qty = ticketsLeft;
       const gross = unitPrice * qty;
       const { amount, loyaltyDiscount } = resolveTicketPayment(gross, revenueLeft);
@@ -567,7 +770,7 @@ function buildDayTicketSales(
     }
 
     const priceZone = randomPick(ALL_PRICE_ZONES);
-    const unitPrice = ZONE_PRICES[priceZone];
+    const unitPrice = getLeagueZonePrice(priceZone, league, matchClass);
     const qty = Math.min(randomInt(1, 4), ticketsLeft);
     const gross = unitPrice * qty;
     const { amount, loyaltyDiscount } = resolveTicketPayment(gross, revenueLeft);
@@ -596,40 +799,27 @@ function buildDayTicketSales(
   return txs;
 }
 
-function getLeagueTicketProfile(league: League): { avgPrice: number } {
-  switch (league) {
-    case "VHL":
-      return { avgPrice: 1100 };
-    case "MHL":
-      return { avgPrice: 700 };
-    default:
-      return { avgPrice: TICKET_PLAN_AVG_PRICE };
-  }
-}
-
 function generateMatchTicketSales(
   match: Match,
   startId: number,
 ): { txs: Transaction[]; nextId: number } {
-  const leagueProfile = getLeagueTicketProfile(match.league);
-  const matchVariance = 0.9 + rand() * 0.12;
-  const revenueVariance = 0.92 + rand() * 0.1;
-  const opponentFactor = getOpponentSalesFactor(match.opponent);
+  const planProfile = getMatchTicketPlanProfile(match);
+  const planTickets = Math.round(match.capacity * planProfile.fillRate);
+  const planRevenue = getMatchPlanRevenue(match);
+  const fulfillmentFactor = 0.9 + rand() * 0.08;
+  const opponentFactor = getOpponentSalesFactor(match.opponent, match.matchClass);
+  const targetRevenue = Math.round(
+    planRevenue * fulfillmentFactor * opponentFactor * (0.97 + rand() * 0.05),
+  );
   const targetTickets = Math.min(
     match.capacity,
-    Math.round(
-      match.capacity *
-        TICKET_PLAN_FILL_RATE *
-        matchVariance *
-        opponentFactor,
-    ),
-  );
-  const targetRevenue = Math.round(
-    targetTickets * leagueProfile.avgPrice * revenueVariance,
+    Math.round(planTickets * fulfillmentFactor * opponentFactor),
   );
 
+  const salesWindowDays = getMatchTicketSalesWindowDays(match);
+  const saleDayCount = salesWindowDays + 1;
   const dailyWeights = Array.from(
-    { length: TICKET_SALES_WINDOW_DAYS },
+    { length: saleDayCount },
     () => 0.8 + rand() * 0.4,
   );
   const weightSum = dailyWeights.reduce((sum, weight) => sum + weight, 0);
@@ -638,22 +828,21 @@ function generateMatchTicketSales(
   let id = startId;
   let allocatedTickets = 0;
   let allocatedRevenue = 0;
-  let dayIndex = 0;
 
-  for (let offset = TICKET_SALES_WINDOW_DAYS; offset >= 1; offset -= 1) {
+  for (let offset = salesWindowDays; offset >= 0; offset -= 1) {
     const saleDay = subDays(match.date, offset);
     if (saleDay > MOCK_TODAY) {
-      dayIndex += 1;
       continue;
     }
 
-    const isLastDay = offset === 1;
+    const weightIndex = salesWindowDays - offset;
+    const isLastDay = offset === 0;
     const dayTickets = isLastDay
       ? targetTickets - allocatedTickets
-      : Math.round((targetTickets * dailyWeights[dayIndex]) / weightSum);
+      : Math.round((targetTickets * dailyWeights[weightIndex]) / weightSum);
     const dayRevenue = isLastDay
       ? targetRevenue - allocatedRevenue
-      : Math.round((targetRevenue * dailyWeights[dayIndex]) / weightSum);
+      : Math.round((targetRevenue * dailyWeights[weightIndex]) / weightSum);
 
     if (dayTickets > 0 && dayRevenue > 0) {
       const dayTxs = buildDayTicketSales(
@@ -662,16 +851,77 @@ function generateMatchTicketSales(
         id,
         dayTickets,
         dayRevenue,
+        match.league,
+        match.matchClass,
       );
       id += dayTxs.length;
       txs.push(...dayTxs);
       allocatedTickets += dayTxs.reduce((sum, tx) => sum + tx.quantity, 0);
       allocatedRevenue += dayTxs.reduce((sum, tx) => sum + tx.amount, 0);
     }
-    dayIndex += 1;
   }
 
   return { txs, nextId: id };
+}
+
+function isWithinTicketSalesWindow(match: Match, day: Date): boolean {
+  const matchDay = startOfDay(match.date);
+  const referenceDay = startOfDay(day);
+  const daysUntilMatch = differenceInCalendarDays(matchDay, referenceDay);
+  const salesWindowDays = getMatchTicketSalesWindowDays(match);
+  return daysUntilMatch >= 0 && daysUntilMatch <= salesWindowDays;
+}
+
+function findUpcomingMatchInSalesWindow(
+  allMatches: Match[],
+  day: Date,
+): Match | undefined {
+  const referenceDay = startOfDay(day);
+  return allMatches
+    .filter(
+      (match) =>
+        !match.eventCompleted &&
+        startOfDay(match.date) >= referenceDay &&
+        isWithinTicketSalesWindow(match, referenceDay),
+    )
+    .sort((a, b) => a.date.getTime() - b.date.getTime())[0];
+}
+
+function ensureMockTodayTicketSales(
+  allMatches: Match[],
+  transactions: Transaction[],
+  startId: number,
+): { txs: Transaction[]; nextId: number } {
+  const today = startOfDay(MOCK_TODAY);
+  const hasTodayTickets = transactions.some(
+    (tx) => tx.stream === "tickets" && isSameDay(startOfDay(tx.date), today),
+  );
+  if (hasTodayTickets) {
+    return { txs: [], nextId: startId };
+  }
+
+  const upcomingMatch = findUpcomingMatchInSalesWindow(allMatches, today);
+
+  if (!upcomingMatch) {
+    return { txs: [], nextId: startId };
+  }
+
+  const planProfile = getMatchTicketPlanProfile(upcomingMatch);
+  const tickets = randomInt(120, 280);
+  const revenue = Math.round(
+    tickets * planProfile.avgPrice * (0.95 + rand() * 0.08),
+  );
+  const dayTxs = buildDayTicketSales(
+    upcomingMatch.id,
+    today,
+    startId,
+    tickets,
+    revenue,
+    upcomingMatch.league,
+    upcomingMatch.matchClass,
+  );
+
+  return { txs: dayTxs, nextId: startId + dayTxs.length };
 }
 
 function generateTransactions(allMatches: Match[]): Transaction[] {
@@ -693,7 +943,7 @@ function generateTransactions(allMatches: Match[]): Transaction[] {
         orderSource === "box_office" ? "arena" : "online";
       transactions.push({
         id: `tx-${id++}`,
-        date: randomSaleDate(match.date),
+        date: randomSaleDate(match),
         stream: "tickets",
         description: "Бесплатный билет",
         matchId: match.id,
@@ -717,8 +967,8 @@ function generateTransactions(allMatches: Match[]): Transaction[] {
       const item = pickMerchItem();
       const qty = pickMerchQuantity();
       const merchSalesPoint = pickMerchSalesPoint();
-      const amount = item.price * qty;
-      const costAmount = Math.round(amount * (0.35 + rand() * 0.2));
+      const payment = resolveMerchPayment(item, qty);
+      const costAmount = Math.round(payment.amount * (0.35 + rand() * 0.2));
       transactions.push({
         id: `tx-${id++}`,
         date: match.date,
@@ -726,8 +976,10 @@ function generateTransactions(allMatches: Match[]): Transaction[] {
         description: item.desc,
         matchId: match.id,
         channel: "kiosk",
-        amount,
+        amount: payment.amount,
         quantity: qty,
+        listUnitPrice: payment.listUnitPrice,
+        loyaltyDiscount: payment.loyaltyDiscount,
         merchSalesPoint,
         productCategory: item.category,
         costAmount,
@@ -735,7 +987,7 @@ function generateTransactions(allMatches: Match[]): Transaction[] {
 
       if (rand() < 0.035) {
         const returnQty = randomInt(1, qty);
-        const returnAmount = Math.round(item.price * returnQty);
+        const returnAmount = Math.round((payment.amount / qty) * returnQty);
         transactions.push({
           id: `tx-${id++}`,
           date: addDays(match.date, randomInt(1, 5)),
@@ -745,6 +997,7 @@ function generateTransactions(allMatches: Match[]): Transaction[] {
           channel: "kiosk",
           amount: returnAmount,
           quantity: returnQty,
+          listUnitPrice: payment.listUnitPrice,
           merchSalesPoint,
           productCategory: item.category,
           isReturn: true,
@@ -758,6 +1011,9 @@ function generateTransactions(allMatches: Match[]): Transaction[] {
   transactions.push(...offMatchMerchSales.txs);
   id = offMatchMerchSales.nextId;
 
+  const todayTicketSales = ensureMockTodayTicketSales(allMatches, transactions, id);
+  transactions.push(...todayTicketSales.txs);
+
   return transactions.sort((a, b) => b.date.getTime() - a.date.getTime());
 }
 
@@ -770,58 +1026,135 @@ const subscriptionPlans: SubscriptionPlan[] = [
   { id: "plan-6", code: "SUB-STUD", name: "Студенческий абонемент", matchCount: 10, price: 6000 },
 ];
 
+type SeasonSubscriptionQuota = {
+  season: string;
+  seasonStart: Date;
+  regularCount: number;
+  playoffCount: number;
+  preferDashboardPeriod: boolean;
+};
+
+const SEASON_SUBSCRIPTION_QUOTAS: SeasonSubscriptionQuota[] = [
+  {
+    season: "2025/26",
+    seasonStart: SEASON_START,
+    regularCount: 30,
+    playoffCount: 13,
+    preferDashboardPeriod: true,
+  },
+  {
+    season: "2024/25",
+    seasonStart: PREV_SEASON_START,
+    regularCount: 30,
+    playoffCount: 12,
+    preferDashboardPeriod: false,
+  },
+];
+
+function buildSubscription(
+  id: number,
+  plan: SubscriptionPlan,
+  match: Match,
+  purchasedAt: Date,
+  tournamentStage: Subscription["tournamentStage"],
+): Subscription {
+  const validTo = addDays(purchasedAt, 90);
+  const usedCount = Math.min(randomInt(1, plan.matchCount), randomInt(1, 8));
+  const channel = rand() > 0.4 ? "official_site" : "box_office";
+  const status =
+    usedCount >= plan.matchCount
+      ? "fully_used"
+      : validTo < SUBSCRIPTIONS_PERIOD_END
+        ? "expired"
+        : "active";
+  const priceZone =
+    plan.code.includes("VIP")
+      ? "VIP"
+      : plan.code.includes("-A")
+        ? "A"
+        : plan.code.includes("-B")
+          ? randomPick(["B1", "B2", "B3", "B4"] as PriceZone[])
+          : randomPick(ALL_PRICE_ZONES);
+
+  return {
+    id: `sub-${id}`,
+    planId: plan.id,
+    planName: plan.name,
+    purchasedAt,
+    validTo,
+    price: plan.price,
+    matchesTotal: plan.matchCount,
+    matchesUsed: usedCount,
+    channel,
+    status,
+    season: match.season,
+    league: match.league,
+    tournamentStage,
+    arena: match.arena,
+    ticketType: rand() > 0.08 ? "arena" : "parking",
+    priceZone,
+  };
+}
+
 function generateSubscriptions(allMatches: Match[]): Subscription[] {
   const subs: Subscription[] = [];
   let id = 1;
 
-  for (let i = 0; i < 85; i++) {
-    const plan = randomPick(subscriptionPlans);
-    const tournamentStage: Subscription["tournamentStage"] =
-      rand() > 0.45 ? "regular" : "playoff";
-    const stageMatches = allMatches.filter(
-      (m) => m.tournamentStage === tournamentStage,
+  for (const quota of SEASON_SUBSCRIPTION_QUOTAS) {
+    const seasonMatches = allMatches.filter(
+      (match) => match.season === quota.season,
     );
-    const match = randomPick(stageMatches.length > 0 ? stageMatches : allMatches);
-    const purchasedAt = randomDateInSeasonRange(
-      SUBSCRIPTIONS_PERIOD_START,
-      SUBSCRIPTIONS_PERIOD_END,
+    const regularStageMatches = seasonMatches.filter(
+      (match) => match.tournamentStage === "regular",
     );
-    const validTo = addDays(purchasedAt, 90);
-    const usedCount = Math.min(randomInt(1, plan.matchCount), randomInt(1, 8));
-    const channel = rand() > 0.4 ? "official_site" : "box_office";
-    const status =
-      usedCount >= plan.matchCount
-        ? "fully_used"
-        : validTo < SUBSCRIPTIONS_PERIOD_END
-          ? "expired"
-          : "active";
-    const priceZone =
-      plan.code.includes("VIP")
-        ? "VIP"
-        : plan.code.includes("-A")
-          ? "A"
-          : plan.code.includes("-B")
-            ? randomPick(["B1", "B2", "B3", "B4"] as PriceZone[])
-            : randomPick(ALL_PRICE_ZONES);
+    const playoffStageMatches = seasonMatches.filter(
+      (match) => match.tournamentStage === "playoff",
+    );
 
-    subs.push({
-      id: `sub-${id++}`,
-      planId: plan.id,
-      planName: plan.name,
-      purchasedAt,
-      validTo,
-      price: plan.price,
-      matchesTotal: plan.matchCount,
-      matchesUsed: usedCount,
-      channel,
-      status,
-      season: match.season,
-      league: match.league,
-      tournamentStage,
-      arena: match.arena,
-      ticketType: rand() > 0.08 ? "arena" : "parking",
-      priceZone,
-    });
+    const firstPlayoffMatch = getFirstPlayoffMatchDate(allMatches, quota.season);
+    if (!firstPlayoffMatch) continue;
+
+    const playoffSalesWindow =
+      getPlayoffSubscriptionSalesWindow(firstPlayoffMatch);
+    const regularSalesEnd = subDays(playoffSalesWindow.start, 1);
+    const preferStart = quota.preferDashboardPeriod
+      ? SUBSCRIPTIONS_PERIOD_START
+      : undefined;
+    const preferEnd = quota.preferDashboardPeriod
+      ? SUBSCRIPTIONS_PERIOD_END
+      : undefined;
+
+    for (let i = 0; i < quota.regularCount; i += 1) {
+      const plan = randomPick(subscriptionPlans);
+      const match = randomPick(
+        regularStageMatches.length > 0 ? regularStageMatches : seasonMatches,
+      );
+      const purchasedAt = randomDateInWindow(
+        quota.seasonStart,
+        regularSalesEnd,
+        preferStart,
+        preferEnd,
+      );
+
+      subs.push(
+        buildSubscription(id++, plan, match, purchasedAt, "regular"),
+      );
+    }
+
+    for (let i = 0; i < quota.playoffCount; i += 1) {
+      const plan = randomPick(subscriptionPlans);
+      const match = randomPick(
+        playoffStageMatches.length > 0 ? playoffStageMatches : seasonMatches,
+      );
+      const purchasedAt = randomDateInSeasonRange(
+        playoffSalesWindow.start,
+        playoffSalesWindow.end,
+      );
+
+      subs.push(
+        buildSubscription(id++, plan, match, purchasedAt, "playoff"),
+      );
+    }
   }
 
   return subs.sort((a, b) => b.purchasedAt.getTime() - a.purchasedAt.getTime());

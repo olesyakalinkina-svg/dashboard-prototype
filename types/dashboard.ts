@@ -12,6 +12,10 @@ export type MerchSalesPoint =
   | "mall_continent"
   | "online_store";
 
+export type MerchSalesGroup = "arena" | "trk" | "online";
+
+export type MerchSalesSegment = "offline" | "online" | "matchday";
+
 export type MerchProductCategory =
   | "jerseys"
   | "souvenirs"
@@ -21,7 +25,7 @@ export type MerchProductCategory =
 
 export type League = "KHL" | "VHL" | "MHL";
 export type TournamentStage = "regular" | "playoff";
-export type MatchClass = "class_1" | "class_2" | "class_3";
+export type MatchClass = "class_1" | "class_2" | "class_3" | "playoff";
 export type ArenaId = "main" | "secondary";
 export type TicketType = "parking" | "arena";
 export type PriceZone =
@@ -59,6 +63,8 @@ export type Transaction = {
   orderSource?: OrderSource;
   merchSalesPoint?: MerchSalesPoint;
   productCategory?: MerchProductCategory;
+  /** Recommended unit price before discounts (merch). */
+  listUnitPrice?: number;
   isReturn?: boolean;
   costAmount?: number;
 };
@@ -96,6 +102,8 @@ export type MerchSkuSalesRow = {
   revenue: number;
   receiptsWithProduct: number;
   marginPct: number;
+  /** Average actual unit price vs recommended list price, %. */
+  actualToListPricePct: number;
 };
 
 export type Match = {
@@ -110,6 +118,8 @@ export type Match = {
   matchClass: MatchClass;
   arena: ArenaId;
   eventCompleted: boolean;
+  /** Days before match when ticket sales open (10–16). */
+  ticketSalesWindowDays: number;
 };
 
 export type Promotion = {
@@ -174,6 +184,7 @@ export type SubscriptionFilters = {
   arena: ArenaId | "all";
   ticketType: TicketType | "all";
   priceZone: PriceZone | "all";
+  timeGrouping: TimeGrouping;
 };
 
 export type DashboardTab = "subscriptions" | "tickets" | "merch";
@@ -228,6 +239,11 @@ export type PlanFactTrendPoint = {
   factTickets: number;
 };
 
+export type SubscriptionsPlanFactTrendPoint = PlanFactTrendPoint & {
+  regularFactRevenue: number;
+  playoffFactRevenue: number;
+};
+
 export type TicketMatchCumulativePoint = {
   date: string;
   dateKey: number;
@@ -246,6 +262,7 @@ export type TicketMatchCumulativeSeries = {
   season: string;
   matchDateKey: number;
   eventCompleted: boolean;
+  hasFactSales: boolean;
   planRevenue: number;
   planTickets: number;
   currentDaysBeforeMatch: number | null;
@@ -274,6 +291,18 @@ export type MerchSalesChannelTrendPoint = {
   period: string;
   sortKey: number;
   channels: Record<MerchSalesPoint, number>;
+};
+
+export type TicketsSalesChannelTrendPoint = {
+  period: string;
+  sortKey: number;
+  channels: Record<OrderSource, number>;
+};
+
+export type MerchSalesSegmentTrendPoint = {
+  period: string;
+  sortKey: number;
+  segments: Record<MerchSalesSegment, number>;
 };
 
 export type MerchProductCategoryPoint = {
@@ -338,6 +367,12 @@ export type MerchKpiData = {
   seasonComparison?: MerchSeasonComparison;
 };
 
+export type SubscriptionsSeasonComparison = {
+  previousSeason: string;
+  revenueChange: number;
+  soldChange: number;
+};
+
 export type SubscriptionsKpiData = {
   revenue: number;
   revenueChange: number;
@@ -347,6 +382,7 @@ export type SubscriptionsKpiData = {
   activeCount: number;
   revenueSparkline: number[];
   soldSparkline: number[];
+  seasonComparison?: SubscriptionsSeasonComparison;
 };
 
 export type KpiData = {
@@ -383,13 +419,7 @@ export type SectorPoint = {
   value: number;
 };
 
-export type TicketBreakdownPlanFact = {
-  planRevenue: number;
-  planTickets: number;
-  fulfillmentPct: number;
-};
-
-export type TicketTypeSalesPoint = TicketBreakdownPlanFact & {
+export type TicketTypeSalesPoint = {
   type: TicketType;
   label: string;
   tickets: number;
@@ -397,14 +427,14 @@ export type TicketTypeSalesPoint = TicketBreakdownPlanFact & {
   share: number;
 };
 
-export type PriceZoneSalesPoint = TicketBreakdownPlanFact & {
+export type PriceZoneSalesPoint = {
   zone: PriceZone;
   label: string;
   tickets: number;
   revenue: number;
 };
 
-export type OrderSourceSalesPoint = TicketBreakdownPlanFact & {
+export type OrderSourceSalesPoint = {
   source: OrderSource;
   label: string;
   tickets: number;

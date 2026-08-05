@@ -11,6 +11,7 @@ import {
   isSameDay,
   isSameMonth,
   parseISO,
+  startOfDay,
   startOfMonth,
   startOfWeek,
   subMonths,
@@ -25,6 +26,14 @@ type DateRangePickerProps = {
   value: MerchOrderDateRange;
   onChange: (value: MerchOrderDateRange) => void;
   className?: string;
+  /** Hide the from/to summary boxes inside the dropdown. */
+  hideRangeFields?: boolean;
+  /** Earliest selectable calendar day (inclusive). */
+  minDate?: Date;
+  /** Latest selectable calendar day (inclusive). */
+  maxDate?: Date;
+  /** Reference "today" for calendar navigation and highlighting. */
+  today?: Date;
 };
 
 const WEEKDAY_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
@@ -49,10 +58,16 @@ export function DateRangePicker({
   value,
   onChange,
   className,
+  hideRangeFields = false,
+  minDate,
+  maxDate,
+  today = new Date(),
 }: DateRangePickerProps) {
+  const todayDate = useMemo(() => startOfDay(today), [today]);
   const [open, setOpen] = useState(false);
   const [viewMonth, setViewMonth] = useState(() => {
-    const anchor = parseRangeDate(value.from) ?? parseRangeDate(value.to) ?? new Date();
+    const anchor =
+      parseRangeDate(value.from) ?? parseRangeDate(value.to) ?? todayDate;
     return startOfMonth(anchor);
   });
   const [pendingFrom, setPendingFrom] = useState<string | null>(null);
@@ -96,7 +111,15 @@ export function DateRangePicker({
     return days;
   }, [viewMonth]);
 
+  function isDaySelectable(day: Date): boolean {
+    if (minDate && isBefore(day, startOfDay(minDate))) return false;
+    if (maxDate && isAfter(day, startOfDay(maxDate))) return false;
+    return true;
+  }
+
   function handleDayClick(day: Date) {
+    if (!isDaySelectable(day)) return;
+
     const iso = toIsoDate(day);
 
     if (pendingFrom) {
@@ -171,7 +194,7 @@ export function DateRangePicker({
   }
 
   function handleOpen() {
-    const anchor = fromDate ?? toDate ?? new Date();
+    const anchor = fromDate ?? toDate ?? todayDate;
     setViewMonth(startOfMonth(anchor));
     setPendingFrom(null);
     setOpen((prev) => !prev);
@@ -198,28 +221,40 @@ export function DateRangePicker({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-20 mt-1 w-[280px] rounded-md border border-[var(--border)] bg-white p-3 shadow-lg">
-          <div className="mb-3 grid grid-cols-2 gap-2 text-xs">
-            <div className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5">
-              <span className="text-[var(--muted)]">С</span>
-              <div className="truncate font-medium text-[var(--foreground)]">
-                {formatDisplayDate(pendingFrom ?? value.from)}
+        <div className="absolute left-0 right-0 top-full z-20 mt-1 w-full max-w-[min(100vw-2rem,320px)] rounded-md border border-[var(--border)] bg-white p-3 shadow-lg sm:left-0 sm:right-auto sm:w-[280px]">
+          {!hideRangeFields && (
+            <div className="mb-3 grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5">
+                <span className="text-[var(--muted)]">С</span>
+                <div className="truncate font-medium text-[var(--foreground)]">
+                  {formatDisplayDate(pendingFrom ?? value.from)}
+                </div>
+              </div>
+              <div className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5">
+                <span className="text-[var(--muted)]">По</span>
+                <div className="truncate font-medium text-[var(--foreground)]">
+                  {formatDisplayDate(value.to)}
+                </div>
               </div>
             </div>
-            <div className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5">
-              <span className="text-[var(--muted)]">По</span>
-              <div className="truncate font-medium text-[var(--foreground)]">
-                {formatDisplayDate(value.to)}
-              </div>
-            </div>
-          </div>
+          )}
 
-          <div className="mb-2 flex items-center justify-between">
+          <div
+            className={clsx(
+              "mb-2 flex items-center justify-between",
+              hideRangeFields && "mb-3",
+            )}
+          >
             <button
               type="button"
               aria-label="Предыдущий месяц"
               onClick={() => setViewMonth((m) => subMonths(m, 1))}
-              className="rounded p-1 text-[var(--muted)] hover:bg-[var(--background)] hover:text-[var(--foreground)]"
+              disabled={
+                minDate != null &&
+                startOfMonth(subMonths(viewMonth, 1)) <
+                  startOfMonth(startOfDay(minDate))
+              }
+              className="rounded p-1 text-[var(--muted)] hover:bg-[var(--background)] hover:text-[var(--foreground)] disabled:opacity-40 disabled:hover:bg-transparent"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -230,7 +265,12 @@ export function DateRangePicker({
               type="button"
               aria-label="Следующий месяц"
               onClick={() => setViewMonth((m) => addMonths(m, 1))}
-              className="rounded p-1 text-[var(--muted)] hover:bg-[var(--background)] hover:text-[var(--foreground)]"
+              disabled={
+                maxDate != null &&
+                startOfMonth(addMonths(viewMonth, 1)) >
+                  startOfMonth(startOfDay(maxDate))
+              }
+              className="rounded p-1 text-[var(--muted)] hover:bg-[var(--background)] hover:text-[var(--foreground)] disabled:opacity-40 disabled:hover:bg-transparent"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -250,22 +290,31 @@ export function DateRangePicker({
           <div className="grid grid-cols-7 gap-0.5">
             {calendarDays.map((day) => {
               const inCurrentMonth = isSameMonth(day, viewMonth);
-              const selected = isInRange(day);
+              const selectable = isDaySelectable(day);
+              const selected = selectable && isInRange(day);
               const rangeStart = isRangeStart(day);
               const rangeEnd = isRangeEnd(day);
+              const isToday = isSameDay(day, todayDate);
 
               return (
                 <button
                   key={day.toISOString()}
                   type="button"
                   onClick={() => handleDayClick(day)}
+                  disabled={!selectable}
                   className={clsx(
                     "relative h-8 rounded text-sm transition-colors",
-                    !inCurrentMonth && "text-[var(--muted)]/60",
-                    inCurrentMonth && !selected && "hover:bg-[var(--background)]",
+                    !selectable && "cursor-not-allowed text-[var(--muted)]/40",
+                    !inCurrentMonth && selectable && "text-[var(--muted)]/60",
+                    inCurrentMonth && selectable && !selected && "hover:bg-[var(--background)]",
                     selected && "bg-[var(--accent)]/15 text-[var(--foreground)]",
                     (rangeStart || rangeEnd) &&
                       "bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]",
+                    isToday &&
+                      !rangeStart &&
+                      !rangeEnd &&
+                      selectable &&
+                      "font-semibold ring-1 ring-[var(--accent)] ring-inset",
                   )}
                 >
                   {format(day, "d")}

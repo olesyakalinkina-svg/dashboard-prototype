@@ -27,7 +27,7 @@ export function CardHeader({
   className?: string;
 }) {
   return (
-    <div className={clsx("flex flex-wrap items-center justify-between gap-2 px-3 py-3 sm:gap-3 sm:px-4", className)}>
+    <div className={clsx("flex flex-wrap items-start justify-between gap-2 px-3 py-3 sm:items-center sm:gap-3 sm:px-4", className)}>
       {children}
     </div>
   );

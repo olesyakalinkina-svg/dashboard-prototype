@@ -1,6 +1,6 @@
 "use client";
 
-import { useFilters } from "@/context/FilterContext";
+import { useFilterState } from "@/context/FilterContext";
 import { Select } from "@/components/ui/Select";
 import {
   ARENA_OPTIONS,
@@ -25,7 +25,7 @@ export function SubscriptionsFilterBar() {
     subscriptionFilters,
     setSubscriptionFilters,
     resetSubscriptionFilters,
-  } = useFilters();
+  } = useFilterState();
 
   function update<K extends keyof SubscriptionFilters>(
     key: K,

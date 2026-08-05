@@ -11,7 +11,8 @@ INSERT INTO club (id, name, city, league) VALUES
     (1, 'Металлург Магнитогорск', 'Магнитогорск', 'KHL');
 
 INSERT INTO arena (id, club_id, name, capacity) VALUES
-    (1, 1, 'Арена «Металлург»', 10500);
+    (1, 1, 'Арена «Металлург»', 12000),
+    (2, 1, 'Тренировочная арена', 3000);
 
 INSERT INTO opponent (id, name) VALUES
     (1,  'СКА'),

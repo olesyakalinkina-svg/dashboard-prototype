@@ -1,7 +1,9 @@
 import type {
   MerchFilters,
   MerchProductCategory,
+  MerchSalesGroup,
   MerchSalesPoint,
+  MerchSalesSegment,
   TimeGrouping,
   Transaction,
 } from "@/types/dashboard";
@@ -24,10 +26,60 @@ export const MERCH_SALES_POINT_LABELS: Record<MerchSalesPoint, string> = {
   online_store: "Онлайн-магазин",
 };
 
+export const MERCH_SALES_POINT_COLORS: Record<MerchSalesPoint, string> = {
+  flagship: "#7B61FF",
+  arena_north: "#1976D2",
+  arena_south: "#43A047",
+  mall_raduga: "#FF7043",
+  mall_continent: "#FFB300",
+  online_store: "#00ACC1",
+};
+
 export const MERCH_SALES_POINT_OPTIONS = ALL_MERCH_SALES_POINTS.map((value) => ({
   value,
   label: MERCH_SALES_POINT_LABELS[value],
 }));
+
+export const ALL_MERCH_SALES_GROUPS: MerchSalesGroup[] = ["arena", "trk", "online"];
+
+export const MERCH_SALES_GROUP_CHANNELS: Record<
+  MerchSalesGroup,
+  MerchSalesPoint[]
+> = {
+  arena: ["flagship", "arena_north", "arena_south"],
+  trk: ["mall_raduga", "mall_continent"],
+  online: ["online_store"],
+};
+
+export const MERCH_SALES_GROUP_LABELS: Record<MerchSalesGroup, string> = {
+  arena: "На арене",
+  trk: "Точки ТРК",
+  online: "Онлайн",
+};
+
+export const MERCH_SALES_GROUP_COLORS: Record<MerchSalesGroup, string> = {
+  arena: "#00BFA5",
+  trk: "#FF7043",
+  online: "#7B61FF",
+};
+
+export const ALL_MERCH_SALES_SEGMENTS: MerchSalesSegment[] = [
+  "offline",
+  "online",
+  "matchday",
+];
+
+export const MERCH_SALES_SEGMENT_LABELS: Record<MerchSalesSegment, string> = {
+  offline: "Офлайн-продажи",
+  online: "Онлайн-продажи",
+  matchday: "Матчдей",
+};
+
+export const MERCH_SALES_SEGMENT_COLORS: Record<MerchSalesSegment, string> = {
+  offline: "#5282FF",
+  online: "#7B61FF",
+  matchday: "#00BFA5",
+};
 
 export const ALL_MERCH_PRODUCT_CATEGORIES: MerchProductCategory[] = [
   "jerseys",
@@ -77,7 +129,6 @@ export const MERCH_DESCRIPTION_CATEGORY_MAP: Record<string, MerchProductCategory
     "Рюкзак клубный": "accessories",
     "Плед с эмблемой": "accessories",
     "Кружка керамическая": "drinkware",
-    "Автошторка": "accessories",
     "Варежки детские": "apparel",
     "Футболка поло": "jerseys",
     "Шорты тренировочные": "jerseys",
@@ -101,7 +152,7 @@ export const DEFAULT_MERCH_ORDER_DATE_RANGE: MerchFilters["orderDateRange"] = {
 };
 
 export const DEFAULT_MERCH_FILTERS: MerchFilters = {
-  season: "all",
+  season: "2025/26",
   league: "all",
   tournamentStage: "all",
   matchClass: "all",
@@ -118,6 +169,15 @@ export const MERCH_TIME_GROUPING_LABELS: Record<TimeGrouping, string> = {
   quarter: "Динамика выручки от мерча по кварталам",
 };
 
+export function getEffectiveMerchTimeGrouping(
+  merchFilters: Pick<MerchFilters, "tournamentStage" | "timeGrouping">,
+): TimeGrouping {
+  if (merchFilters.tournamentStage === "playoff") {
+    return "week";
+  }
+  return merchFilters.timeGrouping;
+}
+
 export function getMerchSalesPointLabel(point?: MerchSalesPoint): string {
   if (!point) return "—";
   return MERCH_SALES_POINT_LABELS[point];
@@ -129,5 +189,7 @@ export {
   TIME_GROUPING_OPTIONS,
   TOURNAMENT_STAGE_OPTIONS,
   MATCH_CLASS_OPTIONS,
+  getMatchClassOptionsForStage,
+  sanitizeMatchClassForStage,
   buildMatchFilterOptions,
 } from "@/lib/ticket-filter-options";

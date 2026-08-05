@@ -55,7 +55,7 @@ export const DEFAULT_TICKET_FILTERS: TicketFilters = {
   priceZone: "all",
   orderSource: "all",
   transactionDateRange: DEFAULT_TICKET_TRANSACTION_DATE_RANGE,
-  timeGrouping: "week",
+  timeGrouping: "month",
 };
 
 export function buildMatchFilterOptions(
@@ -106,7 +106,43 @@ export const MATCH_CLASS_OPTIONS: { value: MatchClass | "all"; label: string }[]
   { value: "class_1", label: "1 класс" },
   { value: "class_2", label: "2 класс" },
   { value: "class_3", label: "3 класс" },
+  { value: "playoff", label: "Плей-офф" },
 ];
+
+const REGULAR_MATCH_CLASSES = new Set<MatchClass>(["class_1", "class_2", "class_3"]);
+
+/** Match class options available for the selected tournament stage. */
+export function getMatchClassOptionsForStage(
+  tournamentStage: TournamentStage | "all",
+): { value: MatchClass | "all"; label: string }[] {
+  if (tournamentStage === "regular") {
+    return MATCH_CLASS_OPTIONS.filter(
+      (opt) => opt.value === "all" || REGULAR_MATCH_CLASSES.has(opt.value as MatchClass),
+    );
+  }
+  if (tournamentStage === "playoff") {
+    return MATCH_CLASS_OPTIONS.filter((opt) => opt.value === "all" || opt.value === "playoff");
+  }
+  return MATCH_CLASS_OPTIONS;
+}
+
+/** Normalize match class when tournament stage changes. */
+export function sanitizeMatchClassForStage(
+  matchClass: MatchClass | "all",
+  tournamentStage: TournamentStage | "all",
+): MatchClass | "all" {
+  if (tournamentStage === "playoff") {
+    return "playoff";
+  }
+  if (tournamentStage === "regular" && matchClass === "playoff") {
+    return "all";
+  }
+  if (matchClass === "all") return "all";
+  const isValid = getMatchClassOptionsForStage(tournamentStage).some(
+    (opt) => opt.value === matchClass,
+  );
+  return isValid ? matchClass : "all";
+}
 
 export const ARENA_OPTIONS: { value: ArenaId | "all"; label: string }[] = [
   { value: "all", label: "Все арены" },
@@ -115,9 +151,9 @@ export const ARENA_OPTIONS: { value: ArenaId | "all"; label: string }[] = [
 ];
 
 export const EVENT_COMPLETED_OPTIONS = [
-  { value: "all", label: "Все события" },
-  { value: "yes", label: "Свершилось" },
-  { value: "no", label: "Не свершилось" },
+  { value: "all", label: "Все" },
+  { value: "yes", label: "Да" },
+  { value: "no", label: "Нет" },
 ] as const;
 
 export const TICKET_TYPE_OPTIONS: { value: TicketType | "all"; label: string }[] = [
@@ -161,4 +197,16 @@ export const ORDER_SOURCE_LABELS: Record<OrderSource, string> = {
   box_office: "Кассы",
   official_site: "Официальный сайт",
   yandex_afisha: "Яндекс-Афиша",
+};
+
+export const ALL_ORDER_SOURCES: OrderSource[] = [
+  "box_office",
+  "official_site",
+  "yandex_afisha",
+];
+
+export const ORDER_SOURCE_COLORS: Record<OrderSource, string> = {
+  box_office: "#5282FF",
+  official_site: "#00BFA5",
+  yandex_afisha: "#FF7043",
 };

@@ -1,12 +1,12 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { FilterProvider, useFilters } from "@/context/FilterContext";
+import { FilterProvider, useFilterData, useFilterState } from "@/context/FilterContext";
+import { getEffectiveMerchTimeGrouping } from "@/lib/merch-filter-options";
 import { DashboardHeader } from "@/components/layout/DashboardHeader";
 import { DashboardTabs } from "@/components/layout/DashboardTabs";
 import { FilterBar } from "@/components/layout/FilterBar";
-import { TabKpiCards } from "@/components/widgets/KpiCard";
-import { getMerchChartsRowHeight } from "@/components/widgets/Charts";
+import { MerchKpiCards, TabKpiCards } from "@/components/widgets/KpiCard";
 import { ChartSkeleton } from "@/components/ui/ChartSkeleton";
 import {
   MerchMatchSalesTable,
@@ -22,6 +22,28 @@ const TicketsSalesWidget = dynamic(
   {
     ssr: false,
     loading: () => <ChartSkeleton height={420} />,
+  },
+);
+
+const TicketsPlanFactWidget = dynamic(
+  () =>
+    import("@/components/widgets/TicketsPlanFactWidget").then((mod) => ({
+      default: mod.TicketsPlanFactWidget,
+    })),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton height={360} />,
+  },
+);
+
+const TicketsSalesChannelsTrendWidget = dynamic(
+  () =>
+    import("@/components/widgets/TicketsSalesChannelsTrendWidget").then((mod) => ({
+      default: mod.TicketsSalesChannelsTrendWidget,
+    })),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton height={360} />,
   },
 );
 
@@ -126,6 +148,28 @@ const MerchProductCategoriesChart = dynamic(
   },
 );
 
+const MerchSalesStackedChart = dynamic(
+  () =>
+    import("@/components/widgets/Charts").then((mod) => ({
+      default: mod.MerchSalesStackedChart,
+    })),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton height={260} />,
+  },
+);
+
+const MerchSalesSegmentStackedChart = dynamic(
+  () =>
+    import("@/components/widgets/Charts").then((mod) => ({
+      default: mod.MerchSalesSegmentStackedChart,
+    })),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton height={260} />,
+  },
+);
+
 const TopProductsChart = dynamic(
   () =>
     import("@/components/widgets/Charts").then((mod) => ({
@@ -138,17 +182,15 @@ const TopProductsChart = dynamic(
 );
 
 function DashboardContent() {
+  const { activeTab, ticketFilters, merchFilters } = useFilterState();
   const {
-    activeTab,
     ticketsKpis,
     merchKpis,
     subscriptionsKpis,
-    weeklyTrend,
     ticketsMatchCumulativeSeries,
+    ticketsPlanFactTrend,
+    ticketsSalesChannelTrend,
     subscriptionsPlanFactTrend,
-    ticketFilters,
-    merchFilters,
-    filters,
     channelMix,
     topProducts,
     subscriptionTariffStats,
@@ -159,34 +201,27 @@ function DashboardContent() {
     merchMatchSales,
     merchSalesChannelRevenue,
     merchSalesChannelTrend,
+    merchSalesSegmentTrend,
     merchProductCategoryRevenue,
     merchProductCategoryTrend,
     merchSkuSales,
-  } = useFilters();
-
-  const merchChartsHeight = getMerchChartsRowHeight(
-    topProducts,
-    merchSalesChannelRevenue,
-    merchProductCategoryRevenue,
-  );
+  } = useFilterData();
+  const merchChartTimeGrouping = getEffectiveMerchTimeGrouping(merchFilters);
 
   return (
-    <div className="min-h-screen bg-[var(--background)]">
+    <div className="min-h-screen min-w-0 overflow-x-clip bg-[var(--background)]">
       <DashboardHeader />
       <DashboardTabs />
       <FilterBar />
 
       <main className="min-w-0 space-y-4 p-4 sm:space-y-6 sm:p-6">
-        <TabKpiCards
-          tab={activeTab}
-          ticketsKpis={ticketsKpis}
-          merchKpis={merchKpis}
-          subscriptionsKpis={subscriptionsKpis}
-          merchWeeklyTrend={activeTab === "merch" ? weeklyTrend : undefined}
-          merchTimeGrouping={
-            activeTab === "merch" ? merchFilters.timeGrouping : undefined
-          }
-        />
+        {activeTab !== "merch" && (
+          <TabKpiCards
+            tab={activeTab}
+            ticketsKpis={ticketsKpis}
+            subscriptionsKpis={subscriptionsKpis}
+          />
+        )}
 
         {activeTab === "subscriptions" && (
           <>
@@ -206,6 +241,10 @@ function DashboardContent() {
 
         {activeTab === "tickets" && (
           <>
+            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
+              <TicketsPlanFactWidget data={ticketsPlanFactTrend} />
+              <TicketsSalesChannelsTrendWidget data={ticketsSalesChannelTrend} />
+            </div>
             <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-2">
               <MatchSalesTable data={matchSales} />
               <TicketsSalesWidget
@@ -223,30 +262,36 @@ function DashboardContent() {
 
         {activeTab === "merch" && (
           <>
-            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
+            <MerchKpiCards merchKpis={merchKpis} />
+            <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-2">
+              <MerchSalesStackedChart
+                data={merchSalesChannelTrend}
+                timeGrouping={merchChartTimeGrouping}
+              />
+              <MerchSalesSegmentStackedChart
+                data={merchSalesSegmentTrend}
+                timeGrouping={merchChartTimeGrouping}
+              />
+            </div>
+            <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-2">
               <MerchMatchSalesTable data={merchMatchSales} />
               <MerchSkuSalesTable data={merchSkuSales} />
             </div>
-            <MerchSalesChannelsTrendWidget
-              data={merchSalesChannelTrend}
-              channels={merchFilters.salesChannels}
-              timeGrouping={merchFilters.timeGrouping}
-            />
-            <MerchProductCategoriesTrendWidget
-              data={merchProductCategoryTrend}
-              timeGrouping={merchFilters.timeGrouping}
-            />
-            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
+            <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-2">
+              <MerchSalesChannelsTrendWidget
+                data={merchSalesChannelTrend}
+                channels={merchFilters.salesChannels}
+                timeGrouping={merchChartTimeGrouping}
+              />
+              <MerchProductCategoriesTrendWidget
+                data={merchProductCategoryTrend}
+                timeGrouping={merchChartTimeGrouping}
+              />
+            </div>
+            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-3">
               <MerchSalesChannelsChart data={merchSalesChannelRevenue} />
               <MerchProductCategoriesChart data={merchProductCategoryRevenue} />
-            </div>
-            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
-              <TopProductsChart
-                data={topProducts}
-                height={merchChartsHeight}
-                fillHeight
-                className="xl:col-span-2"
-              />
+              <TopProductsChart data={topProducts} />
             </div>
           </>
         )}

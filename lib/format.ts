@@ -46,6 +46,27 @@ export function formatDateTime(date: Date): string {
   }).format(date);
 }
 
+const SHORT_MONTHS_RU = [
+  "янв",
+  "фев",
+  "мар",
+  "апр",
+  "май",
+  "июн",
+  "июл",
+  "авг",
+  "сен",
+  "окт",
+  "ноя",
+  "дек",
+] as const;
+
+export function formatShortMonthYear(date: Date): string {
+  const month = SHORT_MONTHS_RU[date.getMonth()];
+  const year = String(date.getFullYear()).slice(-2);
+  return `${month} ${year}`;
+}
+
 export const STREAM_LABELS: Record<string, string> = {
   tickets: "Билеты",
   merch: "Мерч",

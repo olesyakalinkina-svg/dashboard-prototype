@@ -81,7 +81,7 @@ export function InlineBarCell({
       : 0;
 
   return (
-    <div className="relative h-6 min-w-[120px] flex-1 overflow-hidden rounded-sm bg-[#f0f0f2]">
+    <div className="relative h-6 min-w-[80px] flex-1 overflow-hidden rounded-sm bg-[#f0f0f2] sm:min-w-[120px]">
       {planValue !== undefined && planWidthPct > 0 && (
         <div
           className="absolute left-0 top-0 h-full rounded-sm border border-[#8B8B8E] bg-[#e4e4e7]"

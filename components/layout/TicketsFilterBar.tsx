@@ -1,19 +1,19 @@
 "use client";
 
-import { useFilters } from "@/context/FilterContext";
+import { useFilterState } from "@/context/FilterContext";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { MultiSelect } from "@/components/ui/MultiSelect";
 import { Select } from "@/components/ui/Select";
 import {
   ARENA_OPTIONS,
   EVENT_COMPLETED_OPTIONS,
+  getMatchClassOptionsForStage,
   LEAGUE_OPTIONS,
-  MATCH_CLASS_OPTIONS,
   ORDER_SOURCE_OPTIONS,
   PRICE_ZONE_OPTIONS,
+  sanitizeMatchClassForStage,
   SEASON_OPTIONS,
   TICKET_TYPE_OPTIONS,
-  TIME_GROUPING_OPTIONS,
   TOURNAMENT_STAGE_OPTIONS,
   NO_MATCHES_FILTER_VALUE,
 } from "@/lib/ticket-filter-options";
@@ -24,12 +24,16 @@ import type {
   PriceZone,
   TicketFilters,
   TicketType,
-  TimeGrouping,
   TournamentStage,
   ArenaId,
 } from "@/types/dashboard";
 import { ResponsiveFilterBar } from "@/components/layout/ResponsiveFilterBar";
-import type { ReactNode } from "react";
+import {
+  clampDateRangeToBounds,
+  getPurchaseDateBounds,
+} from "@/lib/season-dates";
+import { MOCK_TODAY } from "@/lib/mock/hockey";
+import { useMemo, type ReactNode } from "react";
 
 function FilterGroup({
   title,
@@ -54,11 +58,21 @@ export function TicketsFilterBar() {
     ticketMatchOptions,
     setTicketFilters,
     resetTicketFilters,
-  } = useFilters();
+  } = useFilterState();
 
   function update<K extends keyof TicketFilters>(key: K, value: TicketFilters[K]) {
     setTicketFilters({ [key]: value });
   }
+
+  const matchClassOptions = useMemo(
+    () => getMatchClassOptionsForStage(ticketFilters.tournamentStage),
+    [ticketFilters.tournamentStage],
+  );
+
+  const purchaseDateBounds = useMemo(
+    () => getPurchaseDateBounds(ticketFilters.season),
+    [ticketFilters.season],
+  );
 
   return (
     <ResponsiveFilterBar onReset={resetTicketFilters}>
@@ -67,7 +81,16 @@ export function TicketsFilterBar() {
         <Select
           label="Сезон"
           value={ticketFilters.season}
-          onChange={(e) => update("season", e.target.value)}
+          onChange={(e) => {
+            const season = e.target.value;
+            setTicketFilters({
+              season,
+              transactionDateRange: clampDateRangeToBounds(
+                ticketFilters.transactionDateRange,
+                getPurchaseDateBounds(season),
+              ),
+            });
+          }}
         >
           {SEASON_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -91,9 +114,14 @@ export function TicketsFilterBar() {
         <Select
           label="Этап турнира"
           value={ticketFilters.tournamentStage}
-          onChange={(e) =>
-            update("tournamentStage", e.target.value as TournamentStage | "all")
-          }
+          onChange={(e) => {
+            const tournamentStage = e.target.value as TournamentStage | "all";
+            const matchClass = sanitizeMatchClassForStage(
+              ticketFilters.matchClass,
+              tournamentStage,
+            );
+            setTicketFilters({ tournamentStage, matchClass });
+          }}
           className="sm:min-w-[160px]"
         >
           {TOURNAMENT_STAGE_OPTIONS.map((opt) => (
@@ -111,7 +139,7 @@ export function TicketsFilterBar() {
           }
           className="sm:min-w-[160px]"
         >
-          {MATCH_CLASS_OPTIONS.map((opt) => (
+          {matchClassOptions.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
             </option>
@@ -132,7 +160,7 @@ export function TicketsFilterBar() {
         </Select>
 
         <Select
-          label="Событие"
+          label="Событие завершилось?"
           value={ticketFilters.eventCompleted}
           onChange={(e) =>
             update("eventCompleted", e.target.value as TicketFilters["eventCompleted"])
@@ -163,7 +191,9 @@ export function TicketsFilterBar() {
         <Select
           label="Тип билета"
           value={ticketFilters.ticketType}
-          onChange={(e) => update("ticketType", e.target.value as TicketType | "all")}
+          onChange={(e) =>
+            update("ticketType", e.target.value as TicketType | "all")
+          }
         >
           {TICKET_TYPE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -201,22 +231,17 @@ export function TicketsFilterBar() {
           label="Дата покупки"
           value={ticketFilters.transactionDateRange}
           onChange={(transactionDateRange) =>
-            update("transactionDateRange", transactionDateRange)
+            update(
+              "transactionDateRange",
+              clampDateRangeToBounds(transactionDateRange, purchaseDateBounds),
+            )
           }
+          minDate={purchaseDateBounds.min}
+          maxDate={purchaseDateBounds.max}
+          today={MOCK_TODAY}
+          hideRangeFields
           className="sm:min-w-[220px]"
         />
-
-        <Select
-          label="Группировка"
-          value={ticketFilters.timeGrouping}
-          onChange={(e) => update("timeGrouping", e.target.value as TimeGrouping)}
-        >
-          {TIME_GROUPING_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </Select>
       </FilterGroup>
       </div>
     </ResponsiveFilterBar>

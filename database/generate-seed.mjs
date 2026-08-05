@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const ARENA_CAPACITY = 10500;
+const ARENA_CAPACITY = 12000;
 const OPPONENTS = [
   "СКА", "ЦСКА", "Авангард", "Ак Барс", "Локомотив", "Трактор",
   "Металлург", "Салават Юлаев", "Динамо М", "Спартак", "Сибирь",

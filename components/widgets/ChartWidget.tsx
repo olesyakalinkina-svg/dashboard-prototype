@@ -31,9 +31,7 @@ export function ChartWidget({
       )}
     >
       <CardHeader className={compact ? "px-3 py-2" : undefined}>
-        <CardTitle>
-          <span className={compact ? "text-xs" : undefined}>{title}</span>
-        </CardTitle>
+        <CardTitle>{title}</CardTitle>
         <button className="rounded p-1 text-[var(--muted)] hover:bg-[var(--background)]">
           <MoreHorizontal className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
         </button>

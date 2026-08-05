@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { useFilters } from "@/context/FilterContext";
+import { useFilterState } from "@/context/FilterContext";
 import type { DashboardTab } from "@/types/dashboard";
 
 const TABS: { id: DashboardTab; label: string }[] = [
@@ -11,7 +11,7 @@ const TABS: { id: DashboardTab; label: string }[] = [
 ];
 
 export function DashboardTabs() {
-  const { activeTab, setActiveTab } = useFilters();
+  const { activeTab, setActiveTab } = useFilterState();
 
   return (
     <div className="flex gap-1 border-b border-[var(--border)] bg-white px-4 sm:px-6">
@@ -20,7 +20,7 @@ export function DashboardTabs() {
           key={tab.id}
           onClick={() => setActiveTab(tab.id)}
           className={clsx(
-            "relative flex-1 px-3 py-3 text-center text-sm font-medium transition-colors sm:flex-none sm:px-4",
+            "relative min-h-11 flex-1 px-2 py-3 text-center text-xs font-medium transition-colors sm:flex-none sm:px-4 sm:text-sm",
             activeTab === tab.id
               ? "text-[var(--accent)]"
               : "text-[var(--muted)] hover:text-[var(--foreground)]",

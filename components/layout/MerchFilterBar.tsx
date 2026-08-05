@@ -1,6 +1,7 @@
 "use client";
 
-import { useFilters } from "@/context/FilterContext";
+import { useMemo } from "react";
+import { useFilterState } from "@/context/FilterContext";
 import { NO_MATCHES_FILTER_VALUE } from "@/lib/ticket-filter-options";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { MultiSelect } from "@/components/ui/MultiSelect";
@@ -8,18 +9,22 @@ import { Select } from "@/components/ui/Select";
 import {
   LEAGUE_OPTIONS,
   MERCH_SALES_POINT_OPTIONS,
-  MATCH_CLASS_OPTIONS,
+  getMatchClassOptionsForStage,
+  sanitizeMatchClassForStage,
   SEASON_OPTIONS,
-  TIME_GROUPING_OPTIONS,
   TOURNAMENT_STAGE_OPTIONS,
 } from "@/lib/merch-filter-options";
 import { ResponsiveFilterBar } from "@/components/layout/ResponsiveFilterBar";
+import {
+  clampDateRangeToBounds,
+  getPurchaseDateBounds,
+} from "@/lib/season-dates";
+import { MOCK_TODAY } from "@/lib/mock/hockey";
 import type {
   League,
   MatchClass,
   MerchFilters,
   MerchSalesPoint,
-  TimeGrouping,
   TournamentStage,
 } from "@/types/dashboard";
 
@@ -29,11 +34,21 @@ export function MerchFilterBar() {
     merchMatchOptions,
     setMerchFilters,
     resetMerchFilters,
-  } = useFilters();
+  } = useFilterState();
 
   function update<K extends keyof MerchFilters>(key: K, value: MerchFilters[K]) {
     setMerchFilters({ [key]: value });
   }
+
+  const matchClassOptions = useMemo(
+    () => getMatchClassOptionsForStage(merchFilters.tournamentStage),
+    [merchFilters.tournamentStage],
+  );
+
+  const purchaseDateBounds = useMemo(
+    () => getPurchaseDateBounds(merchFilters.season),
+    [merchFilters.season],
+  );
 
   return (
     <ResponsiveFilterBar onReset={resetMerchFilters}>
@@ -41,7 +56,16 @@ export function MerchFilterBar() {
         <Select
           label="Сезон"
           value={merchFilters.season}
-          onChange={(e) => update("season", e.target.value)}
+          onChange={(e) => {
+            const season = e.target.value;
+            setMerchFilters({
+              season,
+              orderDateRange: clampDateRangeToBounds(
+                merchFilters.orderDateRange,
+                getPurchaseDateBounds(season),
+              ),
+            });
+          }}
         >
           {SEASON_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -65,9 +89,14 @@ export function MerchFilterBar() {
         <Select
           label="Этап турнира"
           value={merchFilters.tournamentStage}
-          onChange={(e) =>
-            update("tournamentStage", e.target.value as TournamentStage | "all")
-          }
+          onChange={(e) => {
+            const tournamentStage = e.target.value as TournamentStage | "all";
+            const matchClass = sanitizeMatchClassForStage(
+              merchFilters.matchClass,
+              tournamentStage,
+            );
+            setMerchFilters({ tournamentStage, matchClass });
+          }}
           className="sm:min-w-[160px]"
         >
           {TOURNAMENT_STAGE_OPTIONS.map((opt) => (
@@ -85,7 +114,7 @@ export function MerchFilterBar() {
           }
           className="sm:min-w-[160px]"
         >
-          {MATCH_CLASS_OPTIONS.map((opt) => (
+          {matchClassOptions.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
             </option>
@@ -116,23 +145,20 @@ export function MerchFilterBar() {
         />
 
         <DateRangePicker
-          label="Дата заказа"
+          label="Дата покупки"
           value={merchFilters.orderDateRange}
-          onChange={(orderDateRange) => update("orderDateRange", orderDateRange)}
+          onChange={(orderDateRange) =>
+            update(
+              "orderDateRange",
+              clampDateRangeToBounds(orderDateRange, purchaseDateBounds),
+            )
+          }
+          minDate={purchaseDateBounds.min}
+          maxDate={purchaseDateBounds.max}
+          today={MOCK_TODAY}
+          hideRangeFields
           className="sm:min-w-[220px]"
         />
-
-        <Select
-          label="Группировка"
-          value={merchFilters.timeGrouping}
-          onChange={(e) => update("timeGrouping", e.target.value as TimeGrouping)}
-        >
-          {TIME_GROUPING_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </Select>
 
       </div>
     </ResponsiveFilterBar>

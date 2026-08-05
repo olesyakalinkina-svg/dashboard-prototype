@@ -13,6 +13,11 @@ export const MOCK_TODAY = new Date(2026, 4, 15);
 export const SUBSCRIPTIONS_PERIOD_START = new Date(2025, 7, 25);
 export const SUBSCRIPTIONS_PERIOD_END = new Date(2025, 8, 14);
 
+export {
+  getFirstPlayoffMatchDate,
+  getPlayoffSubscriptionSalesWindow,
+} from "@/lib/mock/hockey-generator";
+
 function getMatchDate(
   index: number,
   matchCount: number,

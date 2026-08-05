@@ -1,34 +1,14 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import clsx from "clsx";
 import { Card, CardContent } from "@/components/ui/Card";
-import { ChartSkeleton } from "@/components/ui/ChartSkeleton";
 import { formatCurrency, formatNumber, formatPercent, formatPercentSigned } from "@/lib/format";
 import type {
   DashboardTab,
   MerchKpiData,
   SubscriptionsKpiData,
   TicketsKpiData,
-  TimeGrouping,
-  WeeklyPoint,
 } from "@/types/dashboard";
-
-const LazyMerchRevenueTrendChart = dynamic(
-  () =>
-    import("@/components/widgets/Charts").then((mod) => ({
-      default: mod.MerchRevenueTrendChart,
-    })),
-  {
-    ssr: false,
-    loading: () => (
-      <ChartSkeleton
-        height={120}
-        className="col-span-full sm:col-span-2 xl:col-span-1"
-      />
-    ),
-  },
-);
 
 type KpiCardProps = {
   title: string;
@@ -56,18 +36,18 @@ export function KpiCard({
   return (
     <Card className="min-w-0">
       <CardContent className="pt-4">
-        <p className="text-xs text-[var(--muted)]">{title}</p>
-        <p className="mt-1 text-2xl font-semibold text-[var(--foreground)]">
+        <p className="text-xs leading-snug text-[var(--muted)]">{title}</p>
+        <p className="mt-1 break-words text-xl font-semibold text-[var(--foreground)] sm:text-2xl">
           {value}
         </p>
         {subtitle && (
-          <p className="mt-0.5 text-xs text-[var(--muted)]">{subtitle}</p>
+          <p className="mt-0.5 text-xs leading-snug text-[var(--muted)]">{subtitle}</p>
         )}
         {!hideTrend && (
           <div className="mt-2 flex items-end justify-between gap-2">
             <span
               className={clsx(
-                "text-xs font-medium",
+                "text-xs font-medium leading-snug",
                 isGood ? "text-emerald-600" : "text-red-500",
               )}
             >
@@ -80,33 +60,85 @@ export function KpiCard({
   );
 }
 
+export function MerchKpiCards({ merchKpis }: { merchKpis: MerchKpiData }) {
+  const sc = merchKpis.seasonComparison;
+  const showSeasonComparison = Boolean(sc);
+  const seasonChangeLabel = sc ? `к сезону ${sc.previousSeason}` : undefined;
+
+  const kpiProps = { changeLabel: seasonChangeLabel };
+
+  return (
+    <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-5 xl:gap-2">
+      <KpiCard
+        title="Выручка"
+        value={formatCurrency(merchKpis.revenue)}
+        change={sc?.revenueChange}
+        hideTrend={!showSeasonComparison}
+        {...kpiProps}
+      />
+      <KpiCard
+        title="Средний чек (руб.)"
+        value={formatCurrency(merchKpis.avgCheck)}
+        subtitle={`UPT ${merchKpis.upt.toFixed(2).replace(".", ",")} шт`}
+        change={sc?.avgCheckChange}
+        hideTrend={!showSeasonComparison}
+        {...kpiProps}
+      />
+      <KpiCard
+        title="Чеки (шт)"
+        value={formatNumber(merchKpis.receipts)}
+        change={sc?.receiptsChange}
+        hideTrend={!showSeasonComparison}
+        {...kpiProps}
+      />
+      <KpiCard
+        title="Возвраты (%)"
+        value={formatPercent(merchKpis.returnsPct)}
+        change={sc?.returnsPctChange}
+        positiveIsGood={false}
+        hideTrend={!showSeasonComparison}
+        {...kpiProps}
+      />
+      <KpiCard
+        title="Маржинальность"
+        value={formatPercent(merchKpis.marginPct)}
+        change={sc?.marginPctChange}
+        hideTrend={!showSeasonComparison}
+        {...kpiProps}
+      />
+    </div>
+  );
+}
+
 export function TabKpiCards({
   tab,
   ticketsKpis,
-  merchKpis,
   subscriptionsKpis,
-  merchWeeklyTrend,
-  merchTimeGrouping,
 }: {
   tab: DashboardTab;
   ticketsKpis: TicketsKpiData;
-  merchKpis: MerchKpiData;
   subscriptionsKpis: SubscriptionsKpiData;
-  merchWeeklyTrend?: WeeklyPoint[];
-  merchTimeGrouping?: TimeGrouping;
 }) {
   if (tab === "subscriptions") {
+    const sc = subscriptionsKpis.seasonComparison;
+    const showSeasonComparison = Boolean(sc);
+    const seasonChangeLabel = sc ? `к сезону ${sc.previousSeason}` : undefined;
+
     return (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <KpiCard
           title="Выручка"
           value={formatCurrency(subscriptionsKpis.revenue)}
-          hideTrend
+          change={sc?.revenueChange}
+          changeLabel={seasonChangeLabel}
+          hideTrend={!showSeasonComparison}
         />
         <KpiCard
           title="Продано"
           value={formatNumber(subscriptionsKpis.sold)}
-          hideTrend
+          change={sc?.soldChange}
+          changeLabel={seasonChangeLabel}
+          hideTrend={!showSeasonComparison}
         />
       </div>
     );
@@ -129,7 +161,6 @@ export function TabKpiCards({
         <KpiCard
           title="Выполнение плана"
           value={formatPercent(ticketsKpis.planCompletionPct)}
-          subtitle="Процент выполнения плана продаж"
           change={sc?.planCompletionChange}
           changeLabel={seasonChangeLabel}
           hideTrend={!showSeasonComparison}
@@ -149,9 +180,8 @@ export function TabKpiCards({
           hideTrend={!showSeasonComparison}
         />
         <KpiCard
-          title="Скидка ПЛ"
+          title="Скидка программы лояльности"
           value={formatPercent(ticketsKpis.loyaltyDiscountPct)}
-          subtitle="Программа лояльности"
           change={sc?.loyaltyDiscountPctChange}
           changeLabel={seasonChangeLabel}
           hideTrend={!showSeasonComparison}
@@ -180,56 +210,5 @@ export function TabKpiCards({
     );
   }
 
-  const sc = merchKpis.seasonComparison;
-  const showSeasonComparison = Boolean(sc);
-  const seasonChangeLabel = sc ? `к сезону ${sc.previousSeason}` : undefined;
-
-  return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,2.5fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
-      <KpiCard
-        title="Выручка"
-        value={formatCurrency(merchKpis.revenue)}
-        change={sc?.revenueChange}
-        changeLabel={seasonChangeLabel}
-        hideTrend={!showSeasonComparison}
-      />
-      {merchWeeklyTrend && (
-        <LazyMerchRevenueTrendChart
-          data={merchWeeklyTrend}
-          timeGrouping={merchTimeGrouping}
-          className="col-span-full sm:col-span-2 xl:col-span-1"
-        />
-      )}
-      <KpiCard
-        title="Средний чек (руб.)"
-        value={formatCurrency(merchKpis.avgCheck)}
-        subtitle={`UPT ${merchKpis.upt.toFixed(2).replace(".", ",")} шт`}
-        change={sc?.avgCheckChange}
-        changeLabel={seasonChangeLabel}
-        hideTrend={!showSeasonComparison}
-      />
-      <KpiCard
-        title="Чеки (шт)"
-        value={formatNumber(merchKpis.receipts)}
-        change={sc?.receiptsChange}
-        changeLabel={seasonChangeLabel}
-        hideTrend={!showSeasonComparison}
-      />
-      <KpiCard
-        title="Возвраты (%)"
-        value={formatPercent(merchKpis.returnsPct)}
-        change={sc?.returnsPctChange}
-        changeLabel={seasonChangeLabel}
-        positiveIsGood={false}
-        hideTrend={!showSeasonComparison}
-      />
-      <KpiCard
-        title="Маржинальность"
-        value={formatPercent(merchKpis.marginPct)}
-        change={sc?.marginPctChange}
-        changeLabel={seasonChangeLabel}
-        hideTrend={!showSeasonComparison}
-      />
-    </div>
-  );
+  return null;
 }

@@ -21,8 +21,8 @@ export function ResponsiveFilterBar({
 }: ResponsiveFilterBarProps) {
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const [open, setOpen] = useState(false);
-  const showInlineFilters = isDesktop !== false;
-  const showMobileDrawer = isDesktop === false && open;
+  const showInlineFilters = isDesktop;
+  const showMobileDrawer = !isDesktop && open;
 
   useEffect(() => {
     if (!open) {
@@ -129,7 +129,7 @@ export function ResponsiveFilterBar({
                 type="button"
                 onClick={() => setOpen(false)}
                 className={clsx(
-                  "inline-flex h-9 w-9 items-center justify-center rounded-md",
+                  "inline-flex h-10 w-10 items-center justify-center rounded-md",
                   "text-[var(--muted)] transition-colors hover:bg-[var(--background)] hover:text-[var(--foreground)]",
                 )}
                 aria-label="Закрыть"
