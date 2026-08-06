@@ -74,6 +74,8 @@ export function TicketsFilterBar() {
     [ticketFilters.season],
   );
 
+  const isParkingTicketType = ticketFilters.ticketType === "parking";
+
   return (
     <ResponsiveFilterBar onReset={resetTicketFilters}>
       <div className="space-y-3 sm:space-y-4">
@@ -191,9 +193,14 @@ export function TicketsFilterBar() {
         <Select
           label="Тип билета"
           value={ticketFilters.ticketType}
-          onChange={(e) =>
-            update("ticketType", e.target.value as TicketType | "all")
-          }
+          onChange={(e) => {
+            const ticketType = e.target.value as TicketType | "all";
+            if (ticketType === "parking") {
+              setTicketFilters({ ticketType, priceZone: "all" });
+            } else {
+              update("ticketType", ticketType);
+            }
+          }}
         >
           {TICKET_TYPE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -206,6 +213,8 @@ export function TicketsFilterBar() {
           label="Ценовая зона"
           value={ticketFilters.priceZone}
           onChange={(e) => update("priceZone", e.target.value as PriceZone | "all")}
+          disabled={isParkingTicketType}
+          className="disabled:cursor-not-allowed disabled:opacity-50"
         >
           {PRICE_ZONE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>

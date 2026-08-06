@@ -7,6 +7,7 @@ import {
   ChartZoomResetButton,
 } from "@/components/charts/ChartZoom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { NO_MATCHES_FILTER_VALUE } from "@/lib/ticket-filter-options";
 import {
   buildSeasonMatchChartRows,
   buildSeasonMatchSeriesViews,
@@ -59,6 +60,11 @@ export function TicketsSeasonMatchDynamicsWidget({
   );
 
   const selectedMatchIdsKey = ticketFilters.matchId.join(",");
+  const selectedMatchId =
+    ticketFilters.matchId.length === 1 &&
+    ticketFilters.matchId[0] !== NO_MATCHES_FILTER_VALUE
+      ? ticketFilters.matchId[0]
+      : null;
 
   useEffect(() => {
     setHiddenSeries(new Set());
@@ -151,6 +157,7 @@ export function TicketsSeasonMatchDynamicsWidget({
               hiddenSeries={hiddenSeries}
               hoveredSeries={hoveredSeries}
               chartHeight={chartHeight}
+              selectedMatchId={selectedMatchId}
               onZoomStateChange={setChartZoomControl}
             />
           </div>

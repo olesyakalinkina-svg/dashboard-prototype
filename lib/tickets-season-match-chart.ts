@@ -12,6 +12,9 @@ export const SEASON_MATCH_PLAN_KEY_PREFIX = "plan_";
 
 export const SEASON_MATCH_CHART_MIN_WIDTH = 760;
 export const SEASON_MATCH_CHART_DAY_WIDTH = 44;
+/** Y-axis width (52) + chart left margin (4). */
+export const SEASON_MATCH_CHART_LEFT_GUTTER = 56;
+export const SEASON_MATCH_CHART_RIGHT_GUTTER = 20;
 export const SEASON_MATCH_MAX_BRIGHT_LINES = 10;
 export const SEASON_MATCH_PLAN_LEGEND_LABEL = "План продаж";
 export const SEASON_MATCH_COMPARISON_COLOR = "#9CA3AF";
@@ -264,6 +267,40 @@ export function getSeasonMatchChartWidth(
 ): number {
   if (rows.length <= 1) return SEASON_MATCH_CHART_MIN_WIDTH;
   return Math.max(rows.length * SEASON_MATCH_CHART_DAY_WIDTH, SEASON_MATCH_CHART_MIN_WIDTH);
+}
+
+export function getSeasonMatchDateXPosition(
+  dateKey: number,
+  rows: TicketsSeasonMatchChartRow[],
+  chartWidth: number,
+): number {
+  if (rows.length === 0) return SEASON_MATCH_CHART_LEFT_GUTTER;
+
+  const minKey = rows[0].dateKey;
+  const maxKey = rows[rows.length - 1].dateKey;
+  if (maxKey === minKey) return SEASON_MATCH_CHART_LEFT_GUTTER;
+
+  const ratio = (dateKey - minKey) / (maxKey - minKey);
+  const plotWidth =
+    chartWidth - SEASON_MATCH_CHART_LEFT_GUTTER - SEASON_MATCH_CHART_RIGHT_GUTTER;
+  return SEASON_MATCH_CHART_LEFT_GUTTER + ratio * plotWidth;
+}
+
+export function getSeasonMatchChartScrollLeft(
+  salesStartDateKey: number,
+  rows: TicketsSeasonMatchChartRow[],
+  chartWidth: number,
+  viewportWidth: number,
+): number {
+  const xPosition = getSeasonMatchDateXPosition(
+    salesStartDateKey,
+    rows,
+    chartWidth,
+  );
+  const leadPadding = Math.min(viewportWidth * 0.25, 80);
+  const target = xPosition - leadPadding;
+  const maxScroll = Math.max(0, chartWidth - viewportWidth);
+  return Math.max(0, Math.min(target, maxScroll));
 }
 
 export function getSeasonMatchYDomainKeys(

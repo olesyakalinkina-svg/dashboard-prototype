@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import clsx from "clsx";
 import {
   CartesianGrid,
@@ -20,6 +20,7 @@ import {
   buildSeasonMatchXAxisTicks,
   formatSeasonMatchDateLabel,
   formatSeasonMatchYAxisTick,
+  getSeasonMatchChartScrollLeft,
   getSeasonMatchChartWidth,
   getSeasonMatchLineOpacity,
   getSeasonMatchStrokeWidth,
@@ -46,6 +47,7 @@ export function TicketsSeasonMatchChart({
   hiddenSeries,
   hoveredSeries,
   chartHeight,
+  selectedMatchId,
   onZoomStateChange,
 }: {
   rows: TicketsSeasonMatchChartRow[];
@@ -53,8 +55,11 @@ export function TicketsSeasonMatchChart({
   hiddenSeries: Set<string>;
   hoveredSeries: string | null;
   chartHeight: number;
+  selectedMatchId?: string | null;
   onZoomStateChange?: (control: ChartZoomControl | null) => void;
 }) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrolledMatchIdRef = useRef<string | null>(null);
   const visibleViews = useMemo(
     () => views.filter((view) => !hiddenSeries.has(view.matchId)),
     [views, hiddenSeries],
@@ -94,6 +99,51 @@ export function TicketsSeasonMatchChart({
   const chartWidth = getSeasonMatchChartWidth(displayData);
   const xTicks = buildSeasonMatchXAxisTicks(displayData);
 
+  useEffect(() => {
+    if (!selectedMatchId) {
+      scrolledMatchIdRef.current = null;
+      return;
+    }
+
+    if (!comparisonMode || isZoomed || displayData.length === 0) {
+      return;
+    }
+
+    const selectedView = visibleViews.find(
+      (view) => view.matchId === selectedMatchId && view.isSelected,
+    );
+    if (!selectedView) return;
+
+    const matchChanged = scrolledMatchIdRef.current !== selectedMatchId;
+    if (!matchChanged) return;
+
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+
+    scrolledMatchIdRef.current = selectedMatchId;
+
+    requestAnimationFrame(() => {
+      const container = scrollContainerRef.current;
+      if (!container) return;
+
+      const scrollLeft = getSeasonMatchChartScrollLeft(
+        selectedView.salesStartDateKey,
+        displayData,
+        chartWidth,
+        container.clientWidth,
+      );
+
+      container.scrollTo({ left: scrollLeft, behavior: "smooth" });
+    });
+  }, [
+    selectedMatchId,
+    comparisonMode,
+    isZoomed,
+    chartWidth,
+    displayData,
+    visibleViews,
+  ]);
+
   if (visibleViews.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-[var(--muted)]">
@@ -103,7 +153,10 @@ export function TicketsSeasonMatchChart({
   }
 
   return (
-    <div className="h-full min-w-0 overflow-x-auto overflow-y-hidden">
+    <div
+      ref={scrollContainerRef}
+      className="h-full min-w-0 overflow-x-auto overflow-y-hidden"
+    >
       <div
         className={clsx("relative", CHART_ZOOM_SURFACE_CLASS)}
         style={{ width: chartWidth, minWidth: chartWidth, height: chartHeight }}
