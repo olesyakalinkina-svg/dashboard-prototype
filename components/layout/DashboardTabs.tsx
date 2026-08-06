@@ -15,24 +15,27 @@ export function DashboardTabs() {
   const { activeTab, setActiveTab } = useFilterState();
 
   return (
-    <div className="flex gap-1 border-b border-[var(--border)] bg-white px-4 sm:px-6">
-      {TABS.map((tab) => (
-        <button
-          key={tab.id}
-          onClick={() => setActiveTab(tab.id)}
-          className={clsx(
-            "relative min-h-11 flex-1 px-2 py-3 text-center text-xs font-medium transition-colors sm:flex-none sm:px-4 sm:text-sm",
-            activeTab === tab.id
-              ? "text-[var(--accent)]"
-              : "text-[var(--muted)] hover:text-[var(--foreground)]",
-          )}
-        >
-          {tab.label}
-          {activeTab === tab.id && (
-            <span className="absolute inset-x-0 bottom-0 h-0.5 bg-[var(--accent)]" />
-          )}
-        </button>
-      ))}
+    <div className="min-w-0 border-b border-[var(--border)] bg-white">
+      <div className="scrollbar-hide flex gap-1 overflow-x-auto px-4 sm:px-6">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={clsx(
+              "relative shrink-0 whitespace-nowrap px-3 py-3 text-xs font-medium transition-colors sm:px-4 sm:text-sm",
+              "min-h-11",
+              activeTab === tab.id
+                ? "text-[var(--accent)]"
+                : "text-[var(--muted)] hover:text-[var(--foreground)]",
+            )}
+          >
+            {tab.label}
+            {activeTab === tab.id && (
+              <span className="absolute inset-x-0 bottom-0 h-0.5 bg-[var(--accent)]" />
+            )}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

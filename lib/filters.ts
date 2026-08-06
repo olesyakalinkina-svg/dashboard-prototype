@@ -1541,7 +1541,7 @@ export function computeSubscriptionsPlanFactTrend(
   filters: DashboardFilters,
   subscriptionFilters?: SubscriptionFilters,
 ): SubscriptionsPlanFactTrendPoint[] {
-  const grouping = subscriptionFilters?.timeGrouping ?? "month";
+  const grouping = subscriptionFilters?.timeGrouping ?? "week";
   const trendFilters = subscriptionFilters
     ? { ...subscriptionFilters, tournamentStage: "all" as const }
     : undefined;
@@ -3002,6 +3002,26 @@ export function computeMatchRevenueChart(
       tickets: row.ticketRevenue,
       merch: row.merchRevenue,
     }));
+}
+
+/** Ticket transactions for season benchmark — ignores purchase-date filter. */
+export function filterTicketTransactionsForSeasonBenchmark(
+  ticketFilters: TicketFilters,
+  seasonId: string,
+): Transaction[] {
+  const benchmarkFilters: TicketFilters = {
+    ...ticketFilters,
+    season: seasonId,
+    transactionDateRange: { from: null, to: null },
+  };
+  const allowedMatches = filterMatchesByTicketFilters(benchmarkFilters);
+  const allowedMatchIds = new Set(allowedMatches.map((m) => m.id));
+  const cutoff = getTicketsSeasonCutoff(seasonId);
+
+  return transactions.filter((tx) => {
+    if (tx.date < cutoff || tx.date > endOfDay(MOCK_TODAY)) return false;
+    return passesTicketFilters(tx, benchmarkFilters, allowedMatchIds);
+  });
 }
 
 export { matchById };

@@ -560,3 +560,47 @@ export type PromotionRow = Promotion & {
   conversionRate: number;
   roi: number;
 };
+
+export type SeasonPeriodStatus = "upcoming" | "active" | "completed";
+
+export type SeasonPeriod = {
+  seasonId: string;
+  seasonName: string;
+  startDate: string;
+  endDate: string;
+  status: SeasonPeriodStatus;
+};
+
+export type SeasonBenchmark = {
+  seasonId: string;
+  seasonName: string;
+  seasonStartDate: string;
+  seasonEndDate: string;
+  status: SeasonPeriodStatus;
+  comparisonDate: string;
+  elapsedDays: number;
+  revenueToDate: number;
+};
+
+export type SeasonBenchmarkPoint = {
+  dayOfSeason: number;
+  currentSeasonRevenue: number;
+  benchmarkSeasonRevenue: number;
+  currentSeasonDate: string;
+  benchmarkSeasonDate: string;
+};
+
+export type SeasonBenchmarkMode = "current_stage" | "full_season";
+
+export type SeasonBenchmarkResult = {
+  current: SeasonBenchmark;
+  benchmark: SeasonBenchmark;
+  commonComparisonDays: number;
+  absoluteDeviation: number;
+  percentageDeviation: number | null;
+  chartData: SeasonBenchmarkPoint[];
+  warnings: string[];
+  dateRangeFilterExcluded: boolean;
+  emptyReason?: string;
+  canUseFullSeasonMode: boolean;
+};

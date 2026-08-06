@@ -37,7 +37,7 @@ export function matchSalesFiltersToTicketFilters(
     priceZone: "all",
     orderSource: "all",
     transactionDateRange: filters.purchaseDateRange,
-    timeGrouping: "month",
+    timeGrouping: "week",
   };
 }
 
@@ -52,6 +52,6 @@ export function matchSalesFiltersToMerchFilters(
     matchId: filters.matchId,
     salesChannels: [...ALL_MERCH_SALES_POINTS],
     orderDateRange: filters.purchaseDateRange,
-    timeGrouping: "month",
+    timeGrouping: "week",
   };
 }

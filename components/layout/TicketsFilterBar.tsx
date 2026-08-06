@@ -1,6 +1,6 @@
 "use client";
 
-import { useFilterState } from "@/context/FilterContext";
+import { useFilterBarState } from "@/context/MobileFilterDraftContext";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { MultiSelect } from "@/components/ui/MultiSelect";
 import { Select } from "@/components/ui/Select";
@@ -16,6 +16,9 @@ import {
   TICKET_TYPE_OPTIONS,
   TOURNAMENT_STAGE_OPTIONS,
   NO_MATCHES_FILTER_VALUE,
+  TREND_TIME_GROUPING_OPTIONS,
+  getEffectiveTicketTimeGrouping,
+  isTicketTimeGroupingRestrictedToDay,
 } from "@/lib/ticket-filter-options";
 import type {
   League,
@@ -24,6 +27,7 @@ import type {
   PriceZone,
   TicketFilters,
   TicketType,
+  TimeGrouping,
   TournamentStage,
   ArenaId,
 } from "@/types/dashboard";
@@ -33,6 +37,7 @@ import {
   getPurchaseDateBounds,
 } from "@/lib/season-dates";
 import { MOCK_TODAY } from "@/lib/mock/hockey";
+import { countActiveTicketFilters } from "@/lib/filter-count";
 import { useMemo, type ReactNode } from "react";
 
 function FilterGroup({
@@ -58,7 +63,12 @@ export function TicketsFilterBar() {
     ticketMatchOptions,
     setTicketFilters,
     resetTicketFilters,
-  } = useFilterState();
+  } = useFilterBarState();
+
+  const activeFilterCount = useMemo(
+    () => countActiveTicketFilters(ticketFilters),
+    [ticketFilters],
+  );
 
   function update<K extends keyof TicketFilters>(key: K, value: TicketFilters[K]) {
     setTicketFilters({ [key]: value });
@@ -75,9 +85,15 @@ export function TicketsFilterBar() {
   );
 
   const isParkingTicketType = ticketFilters.ticketType === "parking";
+  const timeGroupingRestrictedToDay =
+    isTicketTimeGroupingRestrictedToDay(ticketFilters);
+  const effectiveTimeGrouping = getEffectiveTicketTimeGrouping(ticketFilters);
 
   return (
-    <ResponsiveFilterBar onReset={resetTicketFilters}>
+    <ResponsiveFilterBar
+      onReset={resetTicketFilters}
+      activeFilterCount={activeFilterCount}
+    >
       <div className="space-y-3 sm:space-y-4">
       <FilterGroup title="Фильтры матчей">
         <Select
@@ -251,6 +267,26 @@ export function TicketsFilterBar() {
           hideRangeFields
           className="sm:min-w-[220px]"
         />
+
+        <div className="sm:ml-auto sm:shrink-0">
+          <Select
+            label="Группировка"
+            value={effectiveTimeGrouping}
+            onChange={(e) =>
+              update("timeGrouping", e.target.value as TimeGrouping)
+            }
+          >
+            {TREND_TIME_GROUPING_OPTIONS.map((opt) => (
+              <option
+                key={opt.value}
+                value={opt.value}
+                disabled={timeGroupingRestrictedToDay && opt.value !== "day"}
+              >
+                {opt.label}
+              </option>
+            ))}
+          </Select>
+        </div>
       </FilterGroup>
       </div>
     </ResponsiveFilterBar>

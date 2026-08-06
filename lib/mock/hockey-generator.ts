@@ -39,7 +39,7 @@ import {
   TICKET_PLAN_AVG_PRICE,
 } from "@/lib/ticket-plan";
 const HOME_ARENA: ArenaId = "main";
-const KHL_MATCH_COUNT = 15;
+const KHL_MATCH_COUNT = 16;
 const VHL_MATCH_COUNT = 8;
 const MHL_MATCH_COUNT = 8;
 
@@ -164,6 +164,7 @@ const OPPONENTS = [
   "Амур",
   "Сочи",
   "Торпедо",
+  "Динамо Мск",
   "Шанхай",
 ];
 
@@ -209,6 +210,7 @@ const KHL_MATCH_CLASS_BY_OPPONENT: Record<string, MatchClass> = {
   Сибирь: "class_2",
   Спартак: "class_2",
   "Динамо Минск": "class_1",
+  "Динамо Мск": "class_1",
   "Салават Юлаев": "class_2",
   Металлург: "class_1",
   Трактор: "class_1",
@@ -573,6 +575,31 @@ function buildSeasonMatches({
   return seasonMatches;
 }
 
+/** Fixed KHL match dates for the current season (2025/26). */
+const CURRENT_SEASON_KHL_MATCH_DATES: Record<string, Date> = {
+  "Ак Барс": new Date(2025, 8, 29),
+  "Локомотив": new Date(2025, 9, 5),
+  "Трактор": new Date(2025, 9, 29),
+  "Металлург": new Date(2025, 10, 7),
+  "Салават Юлаев": new Date(2025, 11, 1),
+  "Динамо Мск": new Date(2026, 0, 5),
+};
+
+function applyCurrentSeasonKhlMatchDates(matches: Match[]): void {
+  for (const match of matches) {
+    if (match.season !== "2025/26" || match.league !== "KHL") continue;
+
+    const override = CURRENT_SEASON_KHL_MATCH_DATES[match.opponent];
+    if (!override) continue;
+
+    match.date = startOfDay(override);
+    match.eventCompleted = isEventCompleted(match.date);
+    if (!match.eventCompleted) {
+      match.attendance = 0;
+    }
+  }
+}
+
 /** Spacing between clustered match days so 10–16 day windows can share a start. */
 const COMPLETED_KHL_CLUSTER_DAY_SPACING = 2;
 
@@ -627,6 +654,7 @@ function generateMatches(): Match[] {
   alignCompletedMatchSalesWindows(allMatches);
   alignNearestUpcomingMatchSalesWindows(allMatches);
   applyTicketChartDemoProfiles(allMatches);
+  applyCurrentSeasonKhlMatchDates(allMatches);
   return allMatches;
 }
 
@@ -1279,6 +1307,7 @@ function buildSubscription(
   purchasedAt: Date,
   tournamentStage: Subscription["tournamentStage"],
   explicitPriceZone?: PriceZone,
+  explicitTicketType?: Subscription["ticketType"],
 ): Subscription {
   const validTo = addDays(purchasedAt, 90);
   const usedCount = Math.min(randomInt(1, plan.matchCount), randomInt(1, 8));
@@ -1314,7 +1343,7 @@ function buildSubscription(
     league: match.league,
     tournamentStage,
     arena: match.arena,
-    ticketType: rand() > 0.08 ? "arena" : "parking",
+    ticketType: explicitTicketType ?? (rand() > 0.08 ? "arena" : "parking"),
     priceZone,
   };
 }
@@ -1380,9 +1409,42 @@ function generateSubscriptions(allMatches: Match[]): Subscription[] {
     }
   }
 
-  ensureSubscriptionPriceZoneCoverage(subs, allMatches, id);
+  id = ensureSubscriptionPriceZoneCoverage(subs, allMatches, id);
+  ensureCriticalSubscriptionCombos(subs, allMatches, id);
 
   return subs.sort((a, b) => b.purchasedAt.getTime() - a.purchasedAt.getTime());
+}
+
+/** Ensures rare but tested filter combinations have at least one subscription. */
+function ensureCriticalSubscriptionCombos(
+  subs: Subscription[],
+  allMatches: Match[],
+  startId: number,
+): void {
+  const hasCombo = subs.some(
+    (sub) =>
+      sub.season === "2024/25" &&
+      sub.league === "VHL" &&
+      sub.ticketType === "parking",
+  );
+  if (hasCombo) return;
+
+  const vhlMatch = allMatches.find(
+    (match) => match.season === "2024/25" && match.league === "VHL",
+  );
+  if (!vhlMatch) return;
+
+  subs.push(
+    buildSubscription(
+      startId,
+      SEED_SUBSCRIPTION_PLAN,
+      vhlMatch,
+      SUBSCRIPTIONS_PERIOD_START,
+      "regular",
+      "D1",
+      "parking",
+    ),
+  );
 }
 
 export function generateMockData(): {

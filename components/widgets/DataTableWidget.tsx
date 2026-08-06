@@ -28,6 +28,7 @@ import {
   TICKET_TYPE_LABELS,
 } from "@/lib/ticket-filter-options";
 import { InlineBarCell } from "@/components/ui/InlineBarCell";
+import { MobileSalesCards } from "@/components/widgets/MobileSalesCards";
 import { getMerchSalesPointLabel } from "@/lib/merch-filter-options";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import type {
@@ -162,6 +163,19 @@ function DataTable<T>({
   );
 }
 
+export function ResponsiveMatchSalesTable({ data }: { data: MatchSalesRow[] }) {
+  return (
+    <>
+      <div className="min-w-0 md:hidden">
+        <MobileSalesCards data={data} />
+      </div>
+      <div className="hidden min-w-0 md:block">
+        <MatchSalesTable data={data} />
+      </div>
+    </>
+  );
+}
+
 export function MatchSalesTable({
   data,
   embedded = false,
@@ -204,16 +218,28 @@ export function MatchSalesTable({
       {
         accessorKey: "revenue",
         header: "Выручка",
-        cell: ({ row }) => (
-          <InlineBarCell
-            value={row.original.revenue}
-            planValue={row.original.planRevenue}
-            max={maxValues.revenue}
-            formatted={formatCurrency(row.original.revenue)}
-            planFormatted={formatCurrency(row.original.planRevenue)}
-            barClassName="bg-red-400"
-          />
-        ),
+        cell: ({ row }) => {
+          const { revenue, planRevenue } = row.original;
+          const fulfillmentPct =
+            planRevenue > 0 ? (revenue / planRevenue) * 100 : null;
+
+          return (
+            <InlineBarCell
+              value={revenue}
+              max={100}
+              share={fulfillmentPct !== null ? fulfillmentPct : 0}
+              formatted={formatCurrency(revenue)}
+              trailingFormatted={
+                fulfillmentPct !== null ? formatPercent(fulfillmentPct) : "—"
+              }
+              barClassName={
+                fulfillmentPct !== null && fulfillmentPct >= 100
+                  ? "bg-emerald-500"
+                  : "bg-red-400"
+              }
+            />
+          );
+        },
       },
       {
         accessorKey: "avgPrice",

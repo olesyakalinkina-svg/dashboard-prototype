@@ -24,6 +24,7 @@ INSERT INTO opponent (id, name) VALUES
     (7,  'Металлург'),
     (8,  'Салават Юлаев'),
     (9,  'Динамо Минск'),
+    (16, 'Динамо Мск'),
     (10, 'Спартак'),
     (11, 'Сибирь'),
     (12, 'Амур'),
@@ -115,7 +116,8 @@ INSERT INTO match (id, arena_id, opponent_id, match_date, attendance, status) VA
     ('match-12', 1, 12, CURRENT_DATE - 24, 8610,  'completed'),
     ('match-13', 1, 13, CURRENT_DATE - 18, 9030,  'completed'),
     ('match-14', 1, 14, CURRENT_DATE - 12, 7560,  'completed'),
-    ('match-15', 1, 15, CURRENT_DATE -  6, 9870,  'completed');
+    ('match-15', 1, 15, CURRENT_DATE -  6, 9870,  'completed'),
+    ('match-16', 1, 16, '2026-01-05', 8190,  'completed');
 
 INSERT INTO promotion_match (promotion_id, match_id) VALUES
     ('promo-1', 'match-1'), ('promo-1', 'match-2'),

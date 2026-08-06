@@ -15,6 +15,24 @@ export function formatCurrency(value: number): string {
   return currencyFormatter.format(value);
 }
 
+/** Compact currency for narrow mobile KPI cards (e.g. 1,2 млн ₽). */
+export function formatCurrencyCompact(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000) {
+    const billions = value / 1_000_000_000;
+    return `${billions.toFixed(billions >= 10 ? 0 : 1).replace(".", ",")} млрд ₽`;
+  }
+  if (abs >= 1_000_000) {
+    const millions = value / 1_000_000;
+    return `${millions.toFixed(millions >= 10 ? 0 : 1).replace(".", ",")} млн ₽`;
+  }
+  if (abs >= 10_000) {
+    const thousands = value / 1_000;
+    return `${Math.round(thousands).toLocaleString("ru-RU")} тыс ₽`;
+  }
+  return formatCurrency(value);
+}
+
 export function formatNumber(value: number): string {
   return numberFormatter.format(value);
 }

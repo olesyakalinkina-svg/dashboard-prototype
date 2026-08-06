@@ -1,16 +1,20 @@
-import { addDays, format, startOfDay } from "date-fns";
+import { addDays, format, startOfDay, startOfMonth, startOfWeek } from "date-fns";
+import { ru } from "date-fns/locale";
+import { formatShortMonthYear } from "@/lib/format";
 import type {
   TicketMatchCumulativeSeries,
   TicketsSeasonMatchChartRow,
   TicketsSeasonMatchQuickFilter,
   TicketsSeasonMatchSeriesView,
   TicketsSeasonMatchStatus,
+  TimeGrouping,
 } from "@/types/dashboard";
 
 export const SEASON_MATCH_FACT_KEY_PREFIX = "fact_";
 export const SEASON_MATCH_PLAN_KEY_PREFIX = "plan_";
 
 export const SEASON_MATCH_CHART_MIN_WIDTH = 760;
+export const SEASON_MATCH_CHART_MOBILE_MAX_WIDTH = 760;
 export const SEASON_MATCH_CHART_DAY_WIDTH = 44;
 /** Y-axis width (52) + chart left margin (4). */
 export const SEASON_MATCH_CHART_LEFT_GUTTER = 56;
@@ -262,11 +266,111 @@ export function buildSeasonMatchChartRows(
     });
 }
 
+function getSeasonMatchPeriodSortKey(
+  dateKey: number,
+  grouping: TimeGrouping,
+): number {
+  const date = startOfDay(new Date(dateKey));
+  if (grouping === "month") {
+    return startOfMonth(date).getTime();
+  }
+  if (grouping === "week") {
+    return startOfWeek(date, { locale: ru }).getTime();
+  }
+  return date.getTime();
+}
+
+function getSeasonMatchPeriodLabel(
+  periodSortKey: number,
+  grouping: TimeGrouping,
+): string {
+  const date = new Date(periodSortKey);
+  if (grouping === "month") {
+    return formatShortMonthYear(date);
+  }
+  if (grouping === "week") {
+    return format(date, "dd MMM", { locale: ru });
+  }
+  return formatSeasonMatchDateLabel(periodSortKey);
+}
+
+/** Buckets daily chart rows by week/month; cumulative values use period-end snapshot. */
+export function aggregateSeasonMatchChartRowsByGrouping(
+  dailyRows: TicketsSeasonMatchChartRow[],
+  views: TicketsSeasonMatchSeriesView[],
+  grouping: TimeGrouping,
+): TicketsSeasonMatchChartRow[] {
+  if (grouping === "day" || dailyRows.length === 0) {
+    return dailyRows;
+  }
+
+  const seriesKeys = views.flatMap((view) => [
+    seasonMatchFactKey(view.matchId),
+    seasonMatchPlanKey(view.matchId),
+  ]);
+
+  const buckets = new Map<number, TicketsSeasonMatchChartRow[]>();
+
+  for (const row of dailyRows) {
+    const sortKey = getSeasonMatchPeriodSortKey(row.dateKey, grouping);
+    const bucket = buckets.get(sortKey) ?? [];
+    bucket.push(row);
+    buckets.set(sortKey, bucket);
+  }
+
+  return [...buckets.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([periodSortKey, bucketRows]) => {
+      const lastRow = bucketRows[bucketRows.length - 1];
+      const aggregated: TicketsSeasonMatchChartRow = {
+        dateKey: lastRow.dateKey,
+        periodLabel: getSeasonMatchPeriodLabel(periodSortKey, grouping),
+      };
+
+      for (const key of seriesKeys) {
+        let value: number | null = null;
+        for (const row of bucketRows) {
+          const pointValue = row[key];
+          if (pointValue != null) {
+            value = pointValue as number;
+          }
+        }
+        aggregated[key] = value;
+      }
+
+      return aggregated;
+    });
+}
+
+export function formatSeasonMatchAxisLabel(
+  dateKey: number,
+  rows: TicketsSeasonMatchChartRow[],
+): string {
+  const row = rows.find((entry) => entry.dateKey === dateKey);
+  return row?.periodLabel ?? formatSeasonMatchDateLabel(dateKey);
+}
+
 export function getSeasonMatchChartWidth(
   rows: TicketsSeasonMatchChartRow[],
+  options?: { maxWidth?: number; containerWidth?: number },
 ): number {
-  if (rows.length <= 1) return SEASON_MATCH_CHART_MIN_WIDTH;
-  return Math.max(rows.length * SEASON_MATCH_CHART_DAY_WIDTH, SEASON_MATCH_CHART_MIN_WIDTH);
+  const dataWidth =
+    rows.length <= 1
+      ? SEASON_MATCH_CHART_MIN_WIDTH
+      : Math.max(
+          rows.length * SEASON_MATCH_CHART_DAY_WIDTH,
+          SEASON_MATCH_CHART_MIN_WIDTH,
+        );
+
+  if (options?.maxWidth != null) {
+    const capped = Math.min(dataWidth, options.maxWidth);
+    if (options.containerWidth != null && options.containerWidth > 0) {
+      return Math.max(options.containerWidth, capped);
+    }
+    return capped;
+  }
+
+  return dataWidth;
 }
 
 export function getSeasonMatchDateXPosition(
@@ -318,10 +422,22 @@ export function getSeasonMatchYDomainKeys(
 
 export function buildSeasonMatchXAxisTicks(
   rows: TicketsSeasonMatchChartRow[],
-  stepDays = 2,
+  options?: { stepDays?: number; grouping?: TimeGrouping },
 ): number[] {
   if (rows.length === 0) return [];
 
+  const grouping = options?.grouping ?? "day";
+  if (grouping !== "day") {
+    if (rows.length <= 14) {
+      return rows.map((row) => row.dateKey);
+    }
+    const step = grouping === "month" ? 1 : 2;
+    return rows
+      .filter((_, index) => index % step === 0 || index === rows.length - 1)
+      .map((row) => row.dateKey);
+  }
+
+  const stepDays = options?.stepDays ?? 2;
   const minKey = rows[0].dateKey;
   const maxKey = rows[rows.length - 1].dateKey;
   const ticks: number[] = [];

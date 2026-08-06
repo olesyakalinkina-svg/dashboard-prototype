@@ -2,7 +2,13 @@
 
 import clsx from "clsx";
 import { Card, CardContent } from "@/components/ui/Card";
-import { formatCurrency, formatNumber, formatPercent, formatPercentSigned } from "@/lib/format";
+import {
+  formatCurrency,
+  formatCurrencyCompact,
+  formatNumber,
+  formatPercent,
+  formatPercentSigned,
+} from "@/lib/format";
 import type {
   DashboardTab,
   MatchSalesKpiData,
@@ -14,32 +20,46 @@ import type {
 type KpiCardProps = {
   title: string;
   value: string;
+  fullValue?: string;
   subtitle?: string;
   change?: number;
   changeLabel?: string;
   sparkline?: number[];
   positiveIsGood?: boolean;
   hideTrend?: boolean;
+  compactCurrency?: boolean;
+  rawCurrencyValue?: number;
 };
 
 export function KpiCard({
   title,
   value,
+  fullValue,
   subtitle,
   change = 0,
   changeLabel = "к пред. периоду",
   positiveIsGood = true,
   hideTrend = false,
+  compactCurrency = false,
+  rawCurrencyValue,
 }: KpiCardProps) {
   const isPositive = change >= 0;
   const isGood = positiveIsGood ? isPositive : !isPositive;
+  const displayValue =
+    compactCurrency && rawCurrencyValue != null
+      ? formatCurrencyCompact(rawCurrencyValue)
+      : value;
+  const tooltipValue = fullValue ?? (compactCurrency ? value : undefined);
 
   return (
     <Card className="min-w-0">
-      <CardContent className="pt-4">
+      <CardContent className="pt-3 sm:pt-4">
         <p className="text-xs leading-snug text-[var(--muted)]">{title}</p>
-        <p className="mt-1 break-words text-xl font-semibold text-[var(--foreground)] sm:text-2xl">
-          {value}
+        <p
+          className="mt-1 break-words text-lg font-semibold text-[var(--foreground)] min-[480px]:text-xl sm:text-2xl"
+          title={tooltipValue}
+        >
+          {displayValue}
         </p>
         {subtitle && (
           <p className="mt-0.5 text-xs leading-snug text-[var(--muted)]">{subtitle}</p>
@@ -69,10 +89,12 @@ export function MerchKpiCards({ merchKpis }: { merchKpis: MerchKpiData }) {
   const kpiProps = { changeLabel: seasonChangeLabel };
 
   return (
-    <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-5 xl:gap-2">
+    <div className="grid min-w-0 grid-cols-1 gap-3 min-[480px]:grid-cols-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-5 xl:gap-2">
       <KpiCard
         title="Выручка"
         value={formatCurrency(merchKpis.revenue)}
+        compactCurrency
+        rawCurrencyValue={merchKpis.revenue}
         change={sc?.revenueChange}
         hideTrend={!showSeasonComparison}
         {...kpiProps}
@@ -80,6 +102,8 @@ export function MerchKpiCards({ merchKpis }: { merchKpis: MerchKpiData }) {
       <KpiCard
         title="Средний чек (руб.)"
         value={formatCurrency(merchKpis.avgCheck)}
+        compactCurrency
+        rawCurrencyValue={merchKpis.avgCheck}
         subtitle={`UPT ${merchKpis.upt.toFixed(2).replace(".", ",")} шт`}
         change={sc?.avgCheckChange}
         hideTrend={!showSeasonComparison}
@@ -123,10 +147,12 @@ export function MatchSalesKpiCards({
   const kpiProps = { changeLabel: seasonChangeLabel };
 
   return (
-    <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-6 xl:gap-2">
+    <div className="grid min-w-0 grid-cols-1 gap-3 min-[480px]:grid-cols-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-6 xl:gap-2">
       <KpiCard
         title="Общая выручка"
         value={formatCurrency(matchSalesKpis.totalRevenue)}
+        compactCurrency
+        rawCurrencyValue={matchSalesKpis.totalRevenue}
         change={sc?.totalRevenueChange}
         hideTrend={!showSeasonComparison}
         {...kpiProps}
@@ -134,6 +160,8 @@ export function MatchSalesKpiCards({
       <KpiCard
         title="Выручка от билетов"
         value={formatCurrency(matchSalesKpis.ticketRevenue)}
+        compactCurrency
+        rawCurrencyValue={matchSalesKpis.ticketRevenue}
         change={sc?.ticketRevenueChange}
         hideTrend={!showSeasonComparison}
         {...kpiProps}
@@ -141,6 +169,8 @@ export function MatchSalesKpiCards({
       <KpiCard
         title="Выручка от мерча"
         value={formatCurrency(matchSalesKpis.merchRevenue)}
+        compactCurrency
+        rawCurrencyValue={matchSalesKpis.merchRevenue}
         change={sc?.merchRevenueChange}
         hideTrend={!showSeasonComparison}
         {...kpiProps}
@@ -185,10 +215,12 @@ export function TabKpiCards({
     const seasonChangeLabel = sc ? `к сезону ${sc.previousSeason}` : undefined;
 
     return (
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid min-w-0 grid-cols-1 gap-3 min-[480px]:grid-cols-2 md:gap-4">
         <KpiCard
           title="Выручка"
           value={formatCurrency(subscriptionsKpis.revenue)}
+          compactCurrency
+          rawCurrencyValue={subscriptionsKpis.revenue}
           change={sc?.revenueChange}
           changeLabel={seasonChangeLabel}
           hideTrend={!showSeasonComparison}
@@ -210,10 +242,12 @@ export function TabKpiCards({
     const seasonChangeLabel = sc ? `к сезону ${sc.previousSeason}` : undefined;
 
     return (
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid min-w-0 grid-cols-1 gap-3 min-[480px]:grid-cols-2 md:gap-4 lg:grid-cols-4">
         <KpiCard
           title="Выручка"
           value={formatCurrency(ticketsKpis.revenue)}
+          compactCurrency
+          rawCurrencyValue={ticketsKpis.revenue}
           change={sc?.revenueChange}
           changeLabel={seasonChangeLabel}
           hideTrend={!showSeasonComparison}
@@ -235,6 +269,8 @@ export function TabKpiCards({
         <KpiCard
           title="Средняя цена"
           value={formatCurrency(ticketsKpis.avgPrice)}
+          compactCurrency
+          rawCurrencyValue={ticketsKpis.avgPrice}
           change={sc?.avgPriceChange}
           changeLabel={seasonChangeLabel}
           hideTrend={!showSeasonComparison}
@@ -257,6 +293,8 @@ export function TabKpiCards({
         <KpiCard
           title="Выручка сегодня"
           value={formatCurrency(ticketsKpis.revenueToday)}
+          compactCurrency
+          rawCurrencyValue={ticketsKpis.revenueToday}
           subtitle="За текущий день"
           hideTrend
         />

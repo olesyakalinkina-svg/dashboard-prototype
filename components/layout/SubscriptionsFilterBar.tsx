@@ -1,6 +1,7 @@
 "use client";
 
-import { useFilterState } from "@/context/FilterContext";
+import { useMemo } from "react";
+import { useFilterBarState } from "@/context/MobileFilterDraftContext";
 import { Select } from "@/components/ui/Select";
 import {
   ARENA_OPTIONS,
@@ -8,15 +9,18 @@ import {
   PRICE_ZONE_OPTIONS,
   SEASON_OPTIONS,
   TICKET_TYPE_OPTIONS,
+  TREND_TIME_GROUPING_OPTIONS,
   TOURNAMENT_STAGE_OPTIONS,
 } from "@/lib/subscription-filter-options";
 import { ResponsiveFilterBar } from "@/components/layout/ResponsiveFilterBar";
+import { countActiveSubscriptionFilters } from "@/lib/filter-count";
 import type {
   ArenaId,
   League,
   PriceZone,
   SubscriptionFilters,
   TicketType,
+  TimeGrouping,
   TournamentStage,
 } from "@/types/dashboard";
 
@@ -25,7 +29,12 @@ export function SubscriptionsFilterBar() {
     subscriptionFilters,
     setSubscriptionFilters,
     resetSubscriptionFilters,
-  } = useFilterState();
+  } = useFilterBarState();
+
+  const activeFilterCount = useMemo(
+    () => countActiveSubscriptionFilters(subscriptionFilters),
+    [subscriptionFilters],
+  );
 
   function update<K extends keyof SubscriptionFilters>(
     key: K,
@@ -35,7 +44,10 @@ export function SubscriptionsFilterBar() {
   }
 
   return (
-    <ResponsiveFilterBar onReset={resetSubscriptionFilters}>
+    <ResponsiveFilterBar
+      onReset={resetSubscriptionFilters}
+      activeFilterCount={activeFilterCount}
+    >
       <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end">
         <Select
           label="Сезон"
@@ -114,6 +126,22 @@ export function SubscriptionsFilterBar() {
             </option>
           ))}
         </Select>
+
+        <div className="sm:ml-auto sm:shrink-0">
+          <Select
+            label="Группировка"
+            value={subscriptionFilters.timeGrouping}
+            onChange={(e) =>
+              update("timeGrouping", e.target.value as TimeGrouping)
+            }
+          >
+            {TREND_TIME_GROUPING_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </Select>
+        </div>
       </div>
     </ResponsiveFilterBar>
   );

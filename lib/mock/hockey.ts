@@ -16,6 +16,7 @@ export const SUBSCRIPTIONS_PERIOD_END = new Date(2025, 8, 14);
 export {
   getFirstPlayoffMatchDate,
   getPlayoffSubscriptionSalesWindow,
+  getPlayoffWindowStart,
 } from "@/lib/mock/hockey-generator";
 
 function getMatchDate(

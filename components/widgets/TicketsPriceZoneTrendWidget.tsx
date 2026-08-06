@@ -36,14 +36,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import type {
   PriceZoneGroup,
   TicketsPriceZoneTrendPoint,
-  TimeGrouping,
 } from "@/types/dashboard";
-
-const TIME_GROUPING_OPTIONS: { value: TimeGrouping; label: string }[] = [
-  { value: "day", label: "Дни" },
-  { value: "week", label: "Недели" },
-  { value: "month", label: "Месяцы" },
-];
 
 function ZoneTrendTooltip({
   active,
@@ -81,7 +74,7 @@ export function TicketsPriceZoneTrendWidget({
 }: {
   data: TicketsPriceZoneTrendPoint[];
 }) {
-  const { ticketFilters, setTicketFilters } = useFilterState();
+  const { ticketFilters } = useFilterState();
   const timeGrouping = getEffectiveTicketTimeGrouping(ticketFilters);
 
   const activeGroups = useMemo(() => {
@@ -125,26 +118,7 @@ export function TicketsPriceZoneTrendWidget({
           <CardTitle>Динамика продаж по секторам</CardTitle>
           <ChartZoomHint visible={!isZoomed} />
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {isZoomed && <ChartZoomResetButton onClick={resetZoom} />}
-          <div className="flex w-full rounded-md border border-[var(--border)] bg-[var(--background)] p-0.5 sm:w-auto">
-            {TIME_GROUPING_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => setTicketFilters({ timeGrouping: option.value })}
-                className={clsx(
-                  "flex-1 rounded px-3 py-1.5 text-xs font-medium transition-colors sm:flex-none",
-                  timeGrouping === option.value
-                    ? "bg-white text-[var(--accent)] shadow-sm"
-                    : "text-[var(--muted)] hover:text-[var(--foreground)]",
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        {isZoomed && <ChartZoomResetButton onClick={resetZoom} />}
       </CardHeader>
       <CardContent className="min-w-0">
         {chartData.length === 0 || activeGroups.length === 0 ? (

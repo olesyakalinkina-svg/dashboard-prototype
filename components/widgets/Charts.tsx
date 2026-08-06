@@ -16,7 +16,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { ChartScrollContainer } from "@/components/charts/ChartScrollContainer";
 import {
@@ -47,6 +47,16 @@ import {
   formatShortMonthYear,
 } from "@/lib/format";
 import { ChartWidget } from "@/components/widgets/ChartWidget";
+import {
+  abbreviateMatchOpponent,
+  formatMatchRevenueDateShort,
+  getMatchRevenueChartWidth,
+  MATCH_REVENUE_DESKTOP_CHART_HEIGHT,
+  MATCH_REVENUE_MOBILE_BREAKPOINT,
+  MATCH_REVENUE_MOBILE_CHART_HEIGHT,
+  parseMatchRevenueLabel,
+  shouldShowMatchRevenueScrollHint,
+} from "@/lib/match-revenue-chart";
 import type {
   ChannelMixPoint,
   MerchSalesChannelPoint,
@@ -1054,7 +1064,7 @@ export function PriceZoneSalesChart({
           label="Сортировка"
           value={sortMode}
           onChange={(e) => setSortMode(e.target.value as PriceZoneSortMode)}
-          className="h-8 max-w-[180px] text-xs"
+          className="h-8 w-full max-w-full text-xs sm:max-w-[180px]"
         >
           {PRICE_ZONE_SORT_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -1062,11 +1072,11 @@ export function PriceZoneSalesChart({
             </option>
           ))}
         </Select>
-        <div className="flex min-h-0 flex-1 flex-col justify-center gap-1.5 overflow-y-auto">
+        <div className="flex min-h-0 flex-1 flex-col justify-center gap-1 overflow-y-auto sm:gap-1.5">
           {sorted.map((item) => (
-            <div key={item.zone} className="flex items-center gap-2">
+            <div key={item.zone} className="flex items-center gap-1.5 sm:gap-2">
               <span
-                className="w-8 shrink-0 text-xs font-medium text-[var(--foreground)]"
+                className="w-7 shrink-0 text-[10px] font-medium text-[var(--foreground)] sm:w-8 sm:text-xs"
                 title={item.label}
               >
                 {item.label}
@@ -1161,6 +1171,68 @@ export function OrderSourceSalesChart({
   );
 }
 
+type MatchRevenueXAxisTickProps = {
+  x?: number;
+  y?: number;
+  payload?: { value?: string };
+  isMobile: boolean;
+};
+
+function MatchRevenueXAxisTick({
+  x = 0,
+  y = 0,
+  payload,
+  isMobile,
+}: MatchRevenueXAxisTickProps) {
+  const match = payload?.value ?? "";
+  const { opponent, date } = parseMatchRevenueLabel(match);
+
+  if (!isMobile) {
+    return (
+      <g transform={`translate(${x},${y})`}>
+        <text
+          x={0}
+          y={0}
+          dy={16}
+          textAnchor="end"
+          fill="#8B8B8E"
+          fontSize={9}
+          transform="rotate(-35)"
+        >
+          {match}
+        </text>
+      </g>
+    );
+  }
+
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text
+        x={0}
+        y={0}
+        dy={10}
+        textAnchor="middle"
+        fill="#8B8B8E"
+        fontSize={9}
+      >
+        {abbreviateMatchOpponent(opponent, 5)}
+      </text>
+      {date ? (
+        <text
+          x={0}
+          y={0}
+          dy={22}
+          textAnchor="middle"
+          fill="#8B8B8E"
+          fontSize={9}
+        >
+          {formatMatchRevenueDateShort(date)}
+        </text>
+      ) : null}
+    </g>
+  );
+}
+
 export function MatchRevenueChart({
   data,
   className,
@@ -1168,6 +1240,9 @@ export function MatchRevenueChart({
   data: MatchRevenuePoint[];
   className?: string;
 }) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [viewportWidth, setViewportWidth] = useState(0);
+
   const chartData = useMemo(
     () =>
       data.map((point) => ({
@@ -1190,6 +1265,108 @@ export function MatchRevenueChart({
     yAggregate: "sum",
   });
 
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const updateWidth = () => {
+      setViewportWidth(container.clientWidth);
+    };
+
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [chartData.length]);
+
+  const isMobileViewport =
+    viewportWidth > 0 && viewportWidth < MATCH_REVENUE_MOBILE_BREAKPOINT;
+  const chartHeight = isMobileViewport
+    ? MATCH_REVENUE_MOBILE_CHART_HEIGHT
+    : MATCH_REVENUE_DESKTOP_CHART_HEIGHT;
+  const chartWidth = useMemo(
+    () =>
+      isMobileViewport
+        ? getMatchRevenueChartWidth(displayData.length, {
+            containerWidth: viewportWidth,
+          })
+        : undefined,
+    [displayData.length, isMobileViewport, viewportWidth],
+  );
+  const showScrollHint =
+    isMobileViewport &&
+    chartWidth != null &&
+    shouldShowMatchRevenueScrollHint(chartWidth, viewportWidth);
+
+  const chart = (
+    <ResponsiveContainer width="100%" height={chartHeight}>
+      <BarChart
+        data={displayData}
+        margin={{
+          top: 8,
+          right: 8,
+          left: 0,
+          bottom: isMobileViewport ? 4 : 0,
+        }}
+        {...chartHandlers}
+      >
+        <CartesianGrid strokeDasharray="3 3" stroke="#E5E5E7" />
+        <XAxis
+          dataKey="match"
+          tick={(props) => (
+            <MatchRevenueXAxisTick {...props} isMobile={isMobileViewport} />
+          )}
+          interval={0}
+          angle={isMobileViewport ? 0 : -35}
+          textAnchor={isMobileViewport ? "middle" : "end"}
+          height={isMobileViewport ? 48 : 72}
+          tickMargin={isMobileViewport ? 4 : 0}
+        />
+        <YAxis
+          domain={yDomain}
+          tick={{ fontSize: 10, fill: "#8B8B8E" }}
+          width={48}
+          tickFormatter={(value) =>
+            value >= 1_000_000
+              ? `${(value / 1_000_000).toFixed(1)}M`
+              : value >= 1_000
+                ? `${Math.round(value / 1_000)}K`
+                : String(value)
+          }
+        />
+        <Tooltip
+          formatter={(value: number, name: string) => [
+            formatCurrency(value),
+            name === "tickets" ? "Билеты" : "Мерч",
+          ]}
+        />
+        <Legend
+          verticalAlign="bottom"
+          wrapperStyle={{
+            paddingTop: 8,
+            fontSize: isMobileViewport ? 11 : 12,
+          }}
+          formatter={(value) => (value === "tickets" ? "Билеты" : "Мерч")}
+        />
+        <ChartZoomReferenceArea selectionArea={selectionArea} />
+        <Bar
+          dataKey="tickets"
+          name="tickets"
+          stackId="revenue"
+          fill="#EF4444"
+          isAnimationActive={false}
+        />
+        <Bar
+          dataKey="merch"
+          name="merch"
+          stackId="revenue"
+          fill="#5282FF"
+          isAnimationActive={false}
+        />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+
   return (
     <Card className={clsx("min-w-0", className)}>
       <CardHeader>
@@ -1201,67 +1378,36 @@ export function MatchRevenueChart({
       </CardHeader>
       <CardContent className="flex min-w-0 h-full flex-col">
         {chartData.length === 0 ? (
-          <div className="flex h-[280px] items-center justify-center text-sm text-[var(--muted)]">
+          <div
+            className="flex items-center justify-center text-sm text-[var(--muted)]"
+            style={{ height: MATCH_REVENUE_DESKTOP_CHART_HEIGHT }}
+          >
             Нет данных по выбранным фильтрам
           </div>
         ) : (
-          <ChartScrollContainer
-            className={clsx("h-[280px]", CHART_ZOOM_SURFACE_CLASS)}
-          >
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={displayData}
-                margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
-                {...chartHandlers}
+          <div ref={scrollContainerRef} className="min-w-0">
+            {isMobileViewport ? (
+              <div className="max-w-full overflow-x-auto overflow-y-hidden">
+                {showScrollHint ? (
+                  <p className="pb-1 text-right text-xs text-[var(--muted)]">
+                    Свайпните →
+                  </p>
+                ) : null}
+                <div
+                  className={clsx("relative", CHART_ZOOM_SURFACE_CLASS)}
+                  style={{ width: chartWidth, height: chartHeight }}
+                >
+                  {chart}
+                </div>
+              </div>
+            ) : (
+              <ChartScrollContainer
+                className={clsx("h-[280px]", CHART_ZOOM_SURFACE_CLASS)}
               >
-                <CartesianGrid strokeDasharray="3 3" stroke="#E5E5E7" />
-                <XAxis
-                  dataKey="match"
-                  tick={{ fontSize: 9, fill: "#8B8B8E" }}
-                  interval={0}
-                  angle={-35}
-                  textAnchor="end"
-                  height={72}
-                />
-                <YAxis
-                  domain={yDomain}
-                  tick={{ fontSize: 10, fill: "#8B8B8E" }}
-                  width={48}
-                  tickFormatter={(value) =>
-                    value >= 1_000_000
-                      ? `${(value / 1_000_000).toFixed(1)}M`
-                      : value >= 1_000
-                        ? `${Math.round(value / 1_000)}K`
-                        : String(value)
-                  }
-                />
-                <Tooltip
-                  formatter={(value: number, name: string) => [
-                    formatCurrency(value),
-                    name === "tickets" ? "Билеты" : "Мерч",
-                  ]}
-                />
-                <Legend
-                  formatter={(value) => (value === "tickets" ? "Билеты" : "Мерч")}
-                />
-                <ChartZoomReferenceArea selectionArea={selectionArea} />
-                <Bar
-                  dataKey="tickets"
-                  name="tickets"
-                  stackId="revenue"
-                  fill="#EF4444"
-                  isAnimationActive={false}
-                />
-                <Bar
-                  dataKey="merch"
-                  name="merch"
-                  stackId="revenue"
-                  fill="#5282FF"
-                  isAnimationActive={false}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartScrollContainer>
+                {chart}
+              </ChartScrollContainer>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>

@@ -18,7 +18,7 @@ export const DEFAULT_SUBSCRIPTION_FILTERS: SubscriptionFilters = {
   arena: "all",
   ticketType: "all",
   priceZone: "all",
-  timeGrouping: "month",
+  timeGrouping: "week",
 };
 
 export {
@@ -27,5 +27,6 @@ export {
   PRICE_ZONE_OPTIONS,
   SEASON_OPTIONS,
   TICKET_TYPE_OPTIONS,
+  TREND_TIME_GROUPING_OPTIONS,
   TOURNAMENT_STAGE_OPTIONS,
 } from "@/lib/ticket-filter-options";

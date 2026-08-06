@@ -7,8 +7,9 @@ import {
   ChartZoomResetButton,
 } from "@/components/charts/ChartZoom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { NO_MATCHES_FILTER_VALUE } from "@/lib/ticket-filter-options";
+import { NO_MATCHES_FILTER_VALUE, getEffectiveTicketTimeGrouping } from "@/lib/ticket-filter-options";
 import {
+  aggregateSeasonMatchChartRowsByGrouping,
   buildSeasonMatchChartRows,
   buildSeasonMatchSeriesViews,
   filterSeasonMatchSeriesViews,
@@ -19,6 +20,7 @@ import type {
   TicketMatchCumulativeSeries,
   TicketsSeasonMatchQuickFilter,
 } from "@/types/dashboard";
+import { MobileMatchSelector } from "./tickets-season-match/MobileMatchSelector";
 import { TicketsSeasonMatchChart } from "./tickets-season-match/TicketsSeasonMatchChart";
 import { TicketsSeasonMatchLegend } from "./tickets-season-match/TicketsSeasonMatchLegend";
 
@@ -44,6 +46,8 @@ export function TicketsSeasonMatchDynamicsWidget({
   const [chartZoomControl, setChartZoomControl] =
     useState<ChartZoomControl | null>(null);
 
+  const timeGrouping = getEffectiveTicketTimeGrouping(ticketFilters);
+
   const allViews = useMemo(
     () => buildSeasonMatchSeriesViews(series),
     [series],
@@ -54,9 +58,19 @@ export function TicketsSeasonMatchDynamicsWidget({
     [allViews, quickFilter, searchQuery],
   );
 
-  const chartRows = useMemo(
+  const dailyChartRows = useMemo(
     () => buildSeasonMatchChartRows(filteredViews, series),
     [filteredViews, series],
+  );
+
+  const chartRows = useMemo(
+    () =>
+      aggregateSeasonMatchChartRowsByGrouping(
+        dailyChartRows,
+        filteredViews,
+        timeGrouping,
+      ),
+    [dailyChartRows, filteredViews, timeGrouping],
   );
 
   const selectedMatchIdsKey = ticketFilters.matchId.join(",");
@@ -70,7 +84,7 @@ export function TicketsSeasonMatchDynamicsWidget({
     setHiddenSeries(new Set());
     setHoveredSeries(null);
     setChartZoomControl(null);
-  }, [series, quickFilter, searchQuery, selectedMatchIdsKey]);
+  }, [series, quickFilter, searchQuery, selectedMatchIdsKey, timeGrouping]);
 
   const toggleSeries = (matchId: string) => {
     setHiddenSeries((current) => {
@@ -84,7 +98,7 @@ export function TicketsSeasonMatchDynamicsWidget({
     });
   };
 
-  const chartHeight = filteredViews.length > 14 ? 380 : 340;
+  const chartHeight = 300;
 
   return (
     <Card className="flex h-full min-w-0 flex-col">
@@ -96,7 +110,7 @@ export function TicketsSeasonMatchDynamicsWidget({
           </p>
           <ChartZoomHint visible={!chartZoomControl?.isZoomed} />
         </div>
-        <div className="flex w-full flex-wrap items-center gap-2">
+        <div className="hidden w-full flex-wrap items-center gap-2 md:flex">
           {chartZoomControl?.isZoomed && (
             <ChartZoomResetButton onClick={chartZoomControl.resetZoom} />
           )}
@@ -110,7 +124,7 @@ export function TicketsSeasonMatchDynamicsWidget({
         </div>
       </CardHeader>
       <CardContent className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="mb-3 flex shrink-0 flex-wrap gap-2">
+        <div className="mb-3 hidden shrink-0 flex-wrap gap-2 md:flex">
           {SEASON_MATCH_QUICK_FILTERS.map((option) => (
             <button
               key={option.value}
@@ -150,7 +164,7 @@ export function TicketsSeasonMatchDynamicsWidget({
             Нет данных для построения графика
           </div>
         ) : (
-          <div className="shrink-0" style={{ height: chartHeight }}>
+          <div className="min-w-0 shrink-0" style={{ height: chartHeight }}>
             <TicketsSeasonMatchChart
               rows={chartRows}
               views={filteredViews}
@@ -158,19 +172,24 @@ export function TicketsSeasonMatchDynamicsWidget({
               hoveredSeries={hoveredSeries}
               chartHeight={chartHeight}
               selectedMatchId={selectedMatchId}
+              timeGrouping={timeGrouping}
               onZoomStateChange={setChartZoomControl}
             />
           </div>
         )}
 
-        <TicketsSeasonMatchLegend
+        <MobileMatchSelector
           views={filteredViews}
           hiddenSeries={hiddenSeries}
           hoveredSeries={hoveredSeries}
+          quickFilter={quickFilter}
+          searchQuery={searchQuery}
+          onQuickFilterChange={setQuickFilter}
+          onSearchChange={setSearchQuery}
           onToggleSeries={toggleSeries}
           onHoverSeries={setHoveredSeries}
-          mobileDropdown
         />
+
         <TicketsSeasonMatchLegend
           views={filteredViews}
           hiddenSeries={hiddenSeries}

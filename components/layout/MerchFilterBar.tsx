@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useFilterState } from "@/context/FilterContext";
+import { useFilterBarState } from "@/context/MobileFilterDraftContext";
 import { NO_MATCHES_FILTER_VALUE } from "@/lib/ticket-filter-options";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { MultiSelect } from "@/components/ui/MultiSelect";
@@ -9,7 +9,10 @@ import { Select } from "@/components/ui/Select";
 import {
   LEAGUE_OPTIONS,
   MERCH_SALES_POINT_OPTIONS,
+  TREND_TIME_GROUPING_OPTIONS,
+  getEffectiveMerchTimeGrouping,
   getMatchClassOptionsForStage,
+  isMerchTimeGroupingRestrictedToWeek,
   sanitizeMatchClassForStage,
   SEASON_OPTIONS,
   TOURNAMENT_STAGE_OPTIONS,
@@ -20,11 +23,13 @@ import {
   getPurchaseDateBounds,
 } from "@/lib/season-dates";
 import { MOCK_TODAY } from "@/lib/mock/hockey";
+import { countActiveMerchFilters } from "@/lib/filter-count";
 import type {
   League,
   MatchClass,
   MerchFilters,
   MerchSalesPoint,
+  TimeGrouping,
   TournamentStage,
 } from "@/types/dashboard";
 
@@ -34,7 +39,12 @@ export function MerchFilterBar() {
     merchMatchOptions,
     setMerchFilters,
     resetMerchFilters,
-  } = useFilterState();
+  } = useFilterBarState();
+
+  const activeFilterCount = useMemo(
+    () => countActiveMerchFilters(merchFilters),
+    [merchFilters],
+  );
 
   function update<K extends keyof MerchFilters>(key: K, value: MerchFilters[K]) {
     setMerchFilters({ [key]: value });
@@ -50,8 +60,15 @@ export function MerchFilterBar() {
     [merchFilters.season],
   );
 
+  const timeGroupingRestrictedToWeek =
+    isMerchTimeGroupingRestrictedToWeek(merchFilters);
+  const effectiveTimeGrouping = getEffectiveMerchTimeGrouping(merchFilters);
+
   return (
-    <ResponsiveFilterBar onReset={resetMerchFilters}>
+    <ResponsiveFilterBar
+      onReset={resetMerchFilters}
+      activeFilterCount={activeFilterCount}
+    >
       <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end">
         <Select
           label="Сезон"
@@ -159,6 +176,26 @@ export function MerchFilterBar() {
           hideRangeFields
           className="sm:min-w-[220px]"
         />
+
+        <div className="sm:ml-auto sm:shrink-0">
+          <Select
+            label="Группировка"
+            value={effectiveTimeGrouping}
+            onChange={(e) =>
+              update("timeGrouping", e.target.value as TimeGrouping)
+            }
+          >
+            {TREND_TIME_GROUPING_OPTIONS.map((opt) => (
+              <option
+                key={opt.value}
+                value={opt.value}
+                disabled={timeGroupingRestrictedToWeek && opt.value !== "week"}
+              >
+                {opt.label}
+              </option>
+            ))}
+          </Select>
+        </div>
 
       </div>
     </ResponsiveFilterBar>

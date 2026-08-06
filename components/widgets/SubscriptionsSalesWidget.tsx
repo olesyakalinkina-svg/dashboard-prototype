@@ -27,19 +27,13 @@ import { useFilterState } from "@/context/FilterContext";
 import { useChartAreaZoom } from "@/hooks/useChartAreaZoom";
 import { formatCurrency } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import type { SubscriptionsPlanFactTrendPoint, TimeGrouping } from "@/types/dashboard";
+import type { SubscriptionsPlanFactTrendPoint } from "@/types/dashboard";
 
 const COLORS = {
   plan: "#8B8B8E",
   regular: "#7B61FF",
   playoff: "#FF6B35",
 };
-
-const TIME_GROUPING_OPTIONS: { value: TimeGrouping; label: string }[] = [
-  { value: "day", label: "Дни" },
-  { value: "week", label: "Недели" },
-  { value: "month", label: "Месяцы" },
-];
 
 function PlanFactTooltip({
   active,
@@ -68,7 +62,7 @@ export function SubscriptionsSalesWidget({
 }: {
   data: SubscriptionsPlanFactTrendPoint[];
 }) {
-  const { subscriptionFilters, setSubscriptionFilters } = useFilterState();
+  const { subscriptionFilters } = useFilterState();
   const timeGrouping = subscriptionFilters.timeGrouping;
 
   const chartData = useMemo(
@@ -101,28 +95,7 @@ export function SubscriptionsSalesWidget({
           <CardTitle>Динамика продаж абонементов</CardTitle>
           <ChartZoomHint visible={!isZoomed} />
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {isZoomed && <ChartZoomResetButton onClick={resetZoom} />}
-          <div className="flex w-full rounded-md border border-[var(--border)] bg-[var(--background)] p-0.5 sm:w-auto">
-            {TIME_GROUPING_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() =>
-                  setSubscriptionFilters({ timeGrouping: option.value })
-                }
-                className={clsx(
-                  "flex-1 rounded px-3 py-1.5 text-xs font-medium transition-colors sm:flex-none",
-                  timeGrouping === option.value
-                    ? "bg-white text-[var(--accent)] shadow-sm"
-                    : "text-[var(--muted)] hover:text-[var(--foreground)]",
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        {isZoomed && <ChartZoomResetButton onClick={resetZoom} />}
       </CardHeader>
       <CardContent className="min-w-0">
         <ChartScrollContainer

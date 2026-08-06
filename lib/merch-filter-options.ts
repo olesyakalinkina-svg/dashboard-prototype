@@ -159,7 +159,7 @@ export const DEFAULT_MERCH_FILTERS: MerchFilters = {
   matchId: [],
   salesChannels: [...ALL_MERCH_SALES_POINTS],
   orderDateRange: DEFAULT_MERCH_ORDER_DATE_RANGE,
-  timeGrouping: "month",
+  timeGrouping: "week",
 };
 
 export const MERCH_TIME_GROUPING_LABELS: Record<TimeGrouping, string> = {
@@ -178,6 +178,12 @@ export function getEffectiveMerchTimeGrouping(
   return merchFilters.timeGrouping;
 }
 
+export function isMerchTimeGroupingRestrictedToWeek(
+  merchFilters: Pick<MerchFilters, "tournamentStage">,
+): boolean {
+  return merchFilters.tournamentStage === "playoff";
+}
+
 export function getMerchSalesPointLabel(point?: MerchSalesPoint): string {
   if (!point) return "—";
   return MERCH_SALES_POINT_LABELS[point];
@@ -187,6 +193,7 @@ export {
   LEAGUE_OPTIONS,
   SEASON_OPTIONS,
   TIME_GROUPING_OPTIONS,
+  TREND_TIME_GROUPING_OPTIONS,
   TOURNAMENT_STAGE_OPTIONS,
   MATCH_CLASS_OPTIONS,
   getMatchClassOptionsForStage,

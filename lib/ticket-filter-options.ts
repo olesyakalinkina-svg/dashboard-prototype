@@ -71,7 +71,7 @@ export const DEFAULT_TICKET_FILTERS: TicketFilters = {
   priceZone: "all",
   orderSource: "all",
   transactionDateRange: DEFAULT_TICKET_TRANSACTION_DATE_RANGE,
-  timeGrouping: "month",
+  timeGrouping: "week",
 };
 
 export function hasTransactionDateRangeFilter(
@@ -106,6 +106,27 @@ export function getEffectiveTicketTimeGrouping(
   }
 
   return ticketFilters.timeGrouping;
+}
+
+export const TREND_TIME_GROUPING_OPTIONS: { value: TimeGrouping; label: string }[] =
+  [
+    { value: "day", label: "Дни" },
+    { value: "week", label: "Недели" },
+    { value: "month", label: "Месяцы" },
+  ];
+
+export function isTicketTimeGroupingRestrictedToDay(
+  ticketFilters: Pick<TicketFilters, "matchId" | "transactionDateRange">,
+): boolean {
+  if (hasTransactionDateRangeFilter(ticketFilters.transactionDateRange)) {
+    return true;
+  }
+
+  const singleMatchSelected =
+    ticketFilters.matchId.length === 1 &&
+    ticketFilters.matchId[0] !== NO_MATCHES_FILTER_VALUE;
+
+  return singleMatchSelected;
 }
 
 export function buildMatchFilterOptions(

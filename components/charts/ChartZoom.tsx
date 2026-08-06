@@ -2,12 +2,12 @@
 
 import { ReferenceArea } from "recharts";
 
-export const CHART_ZOOM_SURFACE_CLASS = "cursor-crosshair select-none";
+export const CHART_ZOOM_SURFACE_CLASS = "chart-zoom-surface cursor-crosshair select-none";
 
 export function ChartZoomHint({ visible }: { visible: boolean }) {
   if (!visible) return null;
   return (
-    <p className="mt-0.5 hidden text-[11px] text-[var(--muted)] sm:block">
+    <p className="chart-zoom-hint mt-0.5 text-[11px] text-[var(--muted)]">
       Выделите область мышью для приближения · двойной клик — сброс
     </p>
   );

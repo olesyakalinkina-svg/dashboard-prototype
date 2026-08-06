@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useFilterState } from "@/context/FilterContext";
+import { useFilterBarState } from "@/context/MobileFilterDraftContext";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { MultiSelect } from "@/components/ui/MultiSelect";
 import { Select } from "@/components/ui/Select";
@@ -21,6 +21,7 @@ import {
   getPurchaseDateBounds,
 } from "@/lib/season-dates";
 import { MOCK_TODAY } from "@/lib/mock/hockey";
+import { countActiveMatchSalesFilters } from "@/lib/filter-count";
 import type {
   ArenaId,
   League,
@@ -35,7 +36,12 @@ export function MatchSalesFilterBar() {
     matchSalesMatchOptions,
     setMatchSalesFilters,
     resetMatchSalesFilters,
-  } = useFilterState();
+  } = useFilterBarState();
+
+  const activeFilterCount = useMemo(
+    () => countActiveMatchSalesFilters(matchSalesFilters),
+    [matchSalesFilters],
+  );
 
   function update<K extends keyof MatchSalesFilters>(
     key: K,
@@ -55,7 +61,10 @@ export function MatchSalesFilterBar() {
   );
 
   return (
-    <ResponsiveFilterBar onReset={resetMatchSalesFilters}>
+    <ResponsiveFilterBar
+      onReset={resetMatchSalesFilters}
+      activeFilterCount={activeFilterCount}
+    >
       <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end">
         <Select
           label="Сезон"

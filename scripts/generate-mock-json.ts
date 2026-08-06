@@ -6,18 +6,24 @@
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { format } from "date-fns";
 import { generateMockData } from "../lib/mock/hockey-generator";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const outDir = join(__dirname, "../lib/mock/data");
 const outPath = join(outDir, "hockey-mock.json");
 
+/** Avoid UTC day shift when mock JSON is revived in the browser. */
+function toLocalCalendarIso(date: Date): string {
+  return format(date, "yyyy-MM-dd'T'12:00:00");
+}
+
 const { matches, transactions, subscriptions } = generateMockData();
 
 const serialized = {
   matches: matches.map((match) => ({
     ...match,
-    date: match.date.toISOString(),
+    date: toLocalCalendarIso(match.date),
   })),
   transactions: transactions.map((tx) => ({
     ...tx,

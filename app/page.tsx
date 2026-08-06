@@ -12,7 +12,7 @@ import {
   CombinedMatchSalesTable,
   MerchMatchSalesTable,
   MerchSkuSalesTable,
-  MatchSalesTable,
+  ResponsiveMatchSalesTable,
 } from "@/components/widgets/DataTableWidget";
 
 const MatchRevenueChart = dynamic(
@@ -56,6 +56,17 @@ const TicketsPriceZoneTrendWidget = dynamic(
   {
     ssr: false,
     loading: () => <ChartSkeleton height={360} />,
+  },
+);
+
+const SeasonRevenueBenchmarkWidget = dynamic(
+  () =>
+    import("@/components/widgets/SeasonRevenueBenchmarkWidget").then((mod) => ({
+      default: mod.SeasonRevenueBenchmarkWidget,
+    })),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton height={420} />,
   },
 );
 
@@ -177,17 +188,6 @@ const MerchProductCategoriesChart = dynamic(
   },
 );
 
-const MerchSalesStackedChart = dynamic(
-  () =>
-    import("@/components/widgets/Charts").then((mod) => ({
-      default: mod.MerchSalesStackedChart,
-    })),
-  {
-    ssr: false,
-    loading: () => <ChartSkeleton height={260} />,
-  },
-);
-
 const MerchSalesSegmentStackedChart = dynamic(
   () =>
     import("@/components/widgets/Charts").then((mod) => ({
@@ -247,7 +247,10 @@ function DashboardContent() {
       <DashboardTabs />
       <FilterBar />
 
-      <main className="min-w-0 space-y-4 p-4 sm:space-y-6 sm:p-6">
+      <main
+        className="min-w-0 space-y-4 p-4 sm:space-y-6 sm:p-6"
+        style={{ paddingBottom: "calc(1rem + var(--safe-area-bottom))" }}
+      >
         {activeTab !== "merch" && activeTab !== "matches" && (
           <TabKpiCards
             tab={activeTab}
@@ -274,8 +277,9 @@ function DashboardContent() {
 
         {activeTab === "tickets" && (
           <>
+            <SeasonRevenueBenchmarkWidget />
             <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
-              <MatchSalesTable data={matchSales} />
+              <ResponsiveMatchSalesTable data={matchSales} />
               <TicketsSeasonMatchDynamicsWidget
                 series={ticketsMatchCumulativeSeries}
                 ticketFilters={ticketFilters}
@@ -297,15 +301,12 @@ function DashboardContent() {
         {activeTab === "merch" && (
           <>
             <MerchKpiCards merchKpis={merchKpis} />
-            <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-2">
-              <MerchSalesStackedChart
-                data={merchSalesChannelTrend}
-                timeGrouping={merchChartTimeGrouping}
-              />
+            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
               <MerchSalesSegmentStackedChart
                 data={merchSalesSegmentTrend}
                 timeGrouping={merchChartTimeGrouping}
               />
+              <TopProductsChart data={topProducts} />
             </div>
             <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-2">
               <MerchMatchSalesTable data={merchMatchSales} />
@@ -322,10 +323,9 @@ function DashboardContent() {
                 timeGrouping={merchChartTimeGrouping}
               />
             </div>
-            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-3">
+            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
               <MerchSalesChannelsChart data={merchSalesChannelRevenue} />
               <MerchProductCategoriesChart data={merchProductCategoryRevenue} />
-              <TopProductsChart data={topProducts} />
             </div>
           </>
         )}
