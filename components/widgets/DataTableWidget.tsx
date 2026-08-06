@@ -31,6 +31,7 @@ import { InlineBarCell } from "@/components/ui/InlineBarCell";
 import { getMerchSalesPointLabel } from "@/lib/merch-filter-options";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import type {
+  CombinedMatchSalesRow,
   MatchSalesRow,
   MerchMatchSalesRow,
   MerchSalesPoint,
@@ -660,6 +661,146 @@ export function MerchMatchSalesTable({
       defaultSort={[{ id: "revenue", desc: true }]}
       summaryRow={summaryRow}
       pageSize={10}
+    />
+  );
+}
+
+export function CombinedMatchSalesTable({
+  data,
+}: {
+  data: CombinedMatchSalesRow[];
+}) {
+  const maxValues = useMemo(
+    () => ({
+      totalRevenue: Math.max(...data.map((row) => row.totalRevenue), 0),
+      ticketRevenue: Math.max(...data.map((row) => row.ticketRevenue), 0),
+      merchRevenue: Math.max(...data.map((row) => row.merchRevenue), 0),
+      ticketsSold: Math.max(...data.map((row) => row.ticketsSold), 0),
+    }),
+    [data],
+  );
+
+  const columns = useMemo<ColumnDef<CombinedMatchSalesRow, unknown>[]>(
+    () => [
+      {
+        accessorKey: "eventLabel",
+        header: "Мероприятие",
+        cell: ({ getValue }) => (
+          <span className="whitespace-nowrap font-medium">{getValue<string>()}</span>
+        ),
+      },
+      {
+        accessorKey: "date",
+        header: "Дата",
+        cell: ({ getValue }) => formatDate(getValue<Date>()),
+        sortingFn: (rowA, rowB) =>
+          rowA.original.date.getTime() - rowB.original.date.getTime(),
+      },
+      {
+        accessorKey: "ticketRevenue",
+        header: "Билеты",
+        cell: ({ getValue }) => (
+          <InlineBarCell
+            value={getValue<number>()}
+            max={maxValues.ticketRevenue}
+            formatted={formatCurrency(getValue<number>())}
+            barClassName="bg-red-400"
+          />
+        ),
+      },
+      {
+        accessorKey: "merchRevenue",
+        header: "Мерч",
+        cell: ({ getValue }) => (
+          <InlineBarCell
+            value={getValue<number>()}
+            max={maxValues.merchRevenue}
+            formatted={formatCurrency(getValue<number>())}
+            barClassName="bg-[var(--accent)]"
+          />
+        ),
+      },
+      {
+        accessorKey: "totalRevenue",
+        header: "Итого",
+        cell: ({ getValue }) => (
+          <InlineBarCell
+            value={getValue<number>()}
+            max={maxValues.totalRevenue}
+            formatted={formatCurrency(getValue<number>())}
+            barClassName="bg-emerald-500"
+          />
+        ),
+      },
+      {
+        accessorKey: "ticketsSold",
+        header: "Билеты, шт",
+        cell: ({ getValue }) => (
+          <InlineBarCell
+            value={getValue<number>()}
+            max={maxValues.ticketsSold}
+            formatted={`${formatNumber(getValue<number>())} шт`}
+            barClassName="bg-gray-300"
+          />
+        ),
+      },
+      {
+        accessorKey: "fillRate",
+        header: "Заполняемость",
+        cell: ({ row }) => (
+          <InlineBarCell
+            value={row.original.fillRate}
+            max={100}
+            formatted={formatPercent(row.original.fillRate)}
+            barClassName="bg-emerald-500"
+          />
+        ),
+      },
+      {
+        accessorKey: "merchReceipts",
+        header: "Чеки мерча",
+        cell: ({ getValue }) => formatNumber(getValue<number>()),
+      },
+    ],
+    [maxValues],
+  );
+
+  const summaryRow = useCallback((rows: CombinedMatchSalesRow[]) => {
+    if (rows.length === 0) return null;
+
+    const ticketRevenue = rows.reduce((sum, row) => sum + row.ticketRevenue, 0);
+    const merchRevenue = rows.reduce((sum, row) => sum + row.merchRevenue, 0);
+    const totalRevenue = rows.reduce((sum, row) => sum + row.totalRevenue, 0);
+    const ticketsSold = rows.reduce((sum, row) => sum + row.ticketsSold, 0);
+    const totalIssued = rows.reduce((sum, row) => sum + row.issuedTickets, 0);
+    const totalCapacity = rows.reduce((sum, row) => sum + row.capacity, 0);
+    const fillRate = totalCapacity > 0 ? (totalIssued / totalCapacity) * 100 : 0;
+    const merchReceipts = rows.reduce((sum, row) => sum + row.merchReceipts, 0);
+
+    return (
+      <tr className="border-t-2 border-[var(--border)] bg-[var(--background)] font-medium">
+        <td className="px-3 py-2.5">Итого</td>
+        <td className="px-3 py-2.5" />
+        <td className="px-3 py-2.5">{formatCurrency(ticketRevenue)}</td>
+        <td className="px-3 py-2.5">{formatCurrency(merchRevenue)}</td>
+        <td className="px-3 py-2.5">{formatCurrency(totalRevenue)}</td>
+        <td className="px-3 py-2.5">{formatNumber(ticketsSold)} шт</td>
+        <td className="px-3 py-2.5">{formatPercent(fillRate)}</td>
+        <td className="px-3 py-2.5">{formatNumber(merchReceipts)}</td>
+      </tr>
+    );
+  }, []);
+
+  return (
+    <MerchSalesTable
+      title="Продажи по матчам"
+      data={data}
+      columns={columns}
+      searchPlaceholder="Поиск по мероприятию..."
+      countLabel="мероприятий"
+      defaultSort={[{ id: "date", desc: true }]}
+      summaryRow={summaryRow}
+      pageSize={15}
     />
   );
 }

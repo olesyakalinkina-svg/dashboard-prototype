@@ -16,6 +16,7 @@ import {
   getMerchTrendPeriodLabel,
   getMerchTrendXAxisProps,
 } from "@/components/widgets/Charts";
+import { ChartScrollContainer } from "@/components/charts/ChartScrollContainer";
 import {
   ChartZoomHint,
   ChartZoomReferenceArea,
@@ -123,8 +124,10 @@ export function SubscriptionsSalesWidget({
           </div>
         </div>
       </CardHeader>
-      <CardContent>
-        <div className={clsx("h-[280px] sm:h-[380px]", CHART_ZOOM_SURFACE_CLASS)}>
+      <CardContent className="min-w-0">
+        <ChartScrollContainer
+          className={clsx("h-[280px] sm:h-[380px]", CHART_ZOOM_SURFACE_CLASS)}
+        >
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={displayData} {...chartHandlers}>
               <CartesianGrid strokeDasharray="3 3" stroke="#E5E5E7" />
@@ -168,7 +171,7 @@ export function SubscriptionsSalesWidget({
               />
             </LineChart>
           </ResponsiveContainer>
-        </div>
+        </ChartScrollContainer>
       </CardContent>
     </Card>
   );

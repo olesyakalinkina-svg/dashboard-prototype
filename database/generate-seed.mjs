@@ -14,7 +14,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ARENA_CAPACITY = 12000;
 const OPPONENTS = [
   "СКА", "ЦСКА", "Авангард", "Ак Барс", "Локомотив", "Трактор",
-  "Металлург", "Салават Юлаев", "Динамо М", "Спартак", "Сибирь",
+  "Металлург", "Салават Юлаев", "Динамо Минск", "Спартак", "Сибирь",
   "Амур", "Сочи", "Торпедо", "Шанхай",
 ];
 
@@ -210,7 +210,7 @@ const redemptions = [];
 let subIndex = 1;
 let redemptionIndex = 1;
 
-for (let i = 0; i < 85; i++) {
+for (let i = 0; i < 128; i++) {
   const plan = randomPick(SUBSCRIPTION_PLANS);
   const purchasedAt = subDays(today, randomInt(5, 85));
   const validFrom = purchasedAt;

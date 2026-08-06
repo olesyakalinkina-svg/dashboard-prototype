@@ -76,6 +76,7 @@ export function TicketsSeasonMatchTooltip({
         >
           <p className="font-medium" style={{ color: entry.view.color }}>
             {entry.view.opponent}
+            {entry.view.isComparison ? " (сравнение)" : ""}
           </p>
           <p className="text-[var(--muted)]">Матч: {entry.view.matchDate}</p>
           <p>

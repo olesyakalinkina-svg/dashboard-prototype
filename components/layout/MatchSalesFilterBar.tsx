@@ -1,0 +1,189 @@
+"use client";
+
+import { useMemo } from "react";
+import { useFilterState } from "@/context/FilterContext";
+import { DateRangePicker } from "@/components/ui/DateRangePicker";
+import { MultiSelect } from "@/components/ui/MultiSelect";
+import { Select } from "@/components/ui/Select";
+import {
+  ARENA_OPTIONS,
+  EVENT_COMPLETED_OPTIONS,
+  getMatchClassOptionsForStage,
+  LEAGUE_OPTIONS,
+  sanitizeMatchClassForStage,
+  SEASON_OPTIONS,
+  TOURNAMENT_STAGE_OPTIONS,
+  NO_MATCHES_FILTER_VALUE,
+} from "@/lib/ticket-filter-options";
+import { ResponsiveFilterBar } from "@/components/layout/ResponsiveFilterBar";
+import {
+  clampDateRangeToBounds,
+  getPurchaseDateBounds,
+} from "@/lib/season-dates";
+import { MOCK_TODAY } from "@/lib/mock/hockey";
+import type {
+  ArenaId,
+  League,
+  MatchClass,
+  MatchSalesFilters,
+  TournamentStage,
+} from "@/types/dashboard";
+
+export function MatchSalesFilterBar() {
+  const {
+    matchSalesFilters,
+    matchSalesMatchOptions,
+    setMatchSalesFilters,
+    resetMatchSalesFilters,
+  } = useFilterState();
+
+  function update<K extends keyof MatchSalesFilters>(
+    key: K,
+    value: MatchSalesFilters[K],
+  ) {
+    setMatchSalesFilters({ [key]: value });
+  }
+
+  const matchClassOptions = useMemo(
+    () => getMatchClassOptionsForStage(matchSalesFilters.tournamentStage),
+    [matchSalesFilters.tournamentStage],
+  );
+
+  const purchaseDateBounds = useMemo(
+    () => getPurchaseDateBounds(matchSalesFilters.season),
+    [matchSalesFilters.season],
+  );
+
+  return (
+    <ResponsiveFilterBar onReset={resetMatchSalesFilters}>
+      <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end">
+        <Select
+          label="Сезон"
+          value={matchSalesFilters.season}
+          onChange={(e) => {
+            const season = e.target.value;
+            setMatchSalesFilters({
+              season,
+              purchaseDateRange: clampDateRangeToBounds(
+                matchSalesFilters.purchaseDateRange,
+                getPurchaseDateBounds(season),
+              ),
+            });
+          }}
+        >
+          {SEASON_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </Select>
+
+        <Select
+          label="Лига"
+          value={matchSalesFilters.league}
+          onChange={(e) => update("league", e.target.value as League | "all")}
+        >
+          {LEAGUE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </Select>
+
+        <Select
+          label="Этап турнира"
+          value={matchSalesFilters.tournamentStage}
+          onChange={(e) => {
+            const tournamentStage = e.target.value as TournamentStage | "all";
+            const matchClass = sanitizeMatchClassForStage(
+              matchSalesFilters.matchClass,
+              tournamentStage,
+            );
+            setMatchSalesFilters({ tournamentStage, matchClass });
+          }}
+          className="sm:min-w-[160px]"
+        >
+          {TOURNAMENT_STAGE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </Select>
+
+        <Select
+          label="Класс матча"
+          value={matchSalesFilters.matchClass}
+          onChange={(e) =>
+            update("matchClass", e.target.value as MatchClass | "all")
+          }
+          className="sm:min-w-[160px]"
+        >
+          {matchClassOptions.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </Select>
+
+        <Select
+          label="Арена"
+          value={matchSalesFilters.arena}
+          onChange={(e) => update("arena", e.target.value as ArenaId | "all")}
+          className="sm:min-w-[180px]"
+        >
+          {ARENA_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </Select>
+
+        <Select
+          label="Событие завершилось?"
+          value={matchSalesFilters.eventCompleted}
+          onChange={(e) =>
+            update(
+              "eventCompleted",
+              e.target.value as MatchSalesFilters["eventCompleted"],
+            )
+          }
+        >
+          {EVENT_COMPLETED_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </Select>
+
+        <MultiSelect
+          label="Матч"
+          options={matchSalesMatchOptions}
+          value={matchSalesFilters.matchId}
+          onChange={(matchId) => update("matchId", matchId)}
+          selectAllLabel="Все матчи"
+          allSelectedLabel="Все матчи"
+          emptyMeansAll
+          applyOnClose
+          noneValue={NO_MATCHES_FILTER_VALUE}
+          className="sm:min-w-[220px]"
+        />
+
+        <DateRangePicker
+          label="Дата покупки"
+          value={matchSalesFilters.purchaseDateRange}
+          onChange={(purchaseDateRange) =>
+            update(
+              "purchaseDateRange",
+              clampDateRangeToBounds(purchaseDateRange, purchaseDateBounds),
+            )
+          }
+          minDate={purchaseDateBounds.min}
+          maxDate={purchaseDateBounds.max}
+          today={MOCK_TODAY}
+          hideRangeFields
+          className="sm:min-w-[220px]"
+        />
+      </div>
+    </ResponsiveFilterBar>
+  );
+}

@@ -60,6 +60,11 @@ export function TicketsSeasonMatchChart({
     [views, hiddenSeries],
   );
 
+  const comparisonMode = useMemo(
+    () => visibleViews.some((view) => view.isSelected),
+    [visibleViews],
+  );
+
   const brightMatchIds = useMemo(
     () => pickBrightSeasonMatchIds(visibleViews),
     [visibleViews],
@@ -150,6 +155,7 @@ export function TicketsSeasonMatchChart({
                 hidden: false,
                 hoveredMatchId: hoveredSeries,
                 brightMatchIds,
+                comparisonMode,
               });
               const strokeWidth = getSeasonMatchStrokeWidth(
                 view,

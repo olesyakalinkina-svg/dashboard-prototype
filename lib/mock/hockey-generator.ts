@@ -156,7 +156,7 @@ const OPPONENTS = [
   "Трактор",
   "Металлург",
   "Салават Юлаев",
-  "Динамо М",
+  "Динамо Минск",
   "Спартак",
   "Сибирь",
   "Амур",
@@ -206,7 +206,7 @@ const KHL_MATCH_CLASS_BY_OPPONENT: Record<string, MatchClass> = {
   Амур: "class_3",
   Сибирь: "class_2",
   Спартак: "class_2",
-  "Динамо М": "class_1",
+  "Динамо Минск": "class_1",
   "Салават Юлаев": "class_2",
   Металлург: "class_1",
   Трактор: "class_1",
@@ -639,21 +639,56 @@ function applyTicketChartDemoProfiles(matches: Match[]): void {
 
   const completedProfiles: TicketSalesProfile[] = [
     { fulfillmentFactor: 1.06, tempo: "front_loaded" },
-    { fulfillmentFactor: 0.88, tempo: "slow_start" },
-    { fulfillmentFactor: 0.97, tempo: "back_loaded" },
+    { fulfillmentFactor: 1.05, tempo: "slow_start" },
+    { fulfillmentFactor: 1.08, tempo: "back_loaded" },
   ];
+
+  const completedKhlIds = new Set(completedKhl.map((match) => match.id));
 
   completedKhl.forEach((match, index) => {
     match.ticketSalesProfile = completedProfiles[index];
   });
+
+  const otherCompletedKhlProfiles: TicketSalesProfile[] = [
+    { fulfillmentFactor: 0.88, tempo: "steady" },
+    { fulfillmentFactor: 0.91, tempo: "front_loaded" },
+    { fulfillmentFactor: 0.86, tempo: "slow_start" },
+    { fulfillmentFactor: 0.93, tempo: "back_loaded" },
+    { fulfillmentFactor: 0.89, tempo: "steady" },
+    { fulfillmentFactor: 0.87, tempo: "front_loaded" },
+    { fulfillmentFactor: 0.9, tempo: "slow_start" },
+    { fulfillmentFactor: 0.85, tempo: "back_loaded" },
+    { fulfillmentFactor: 0.92, tempo: "steady" },
+    { fulfillmentFactor: 0.84, tempo: "front_loaded" },
+    { fulfillmentFactor: 0.88, tempo: "slow_start" },
+    { fulfillmentFactor: 0.9, tempo: "back_loaded" },
+  ];
+
+  matches
+    .filter(
+      (match) =>
+        match.league === "KHL" &&
+        match.season === "2025/26" &&
+        match.eventCompleted &&
+        !completedKhlIds.has(match.id),
+    )
+    .sort((left, right) => left.date.getTime() - right.date.getTime())
+    .forEach((match, index) => {
+      match.ticketSalesProfile =
+        otherCompletedKhlProfiles[index % otherCompletedKhlProfiles.length];
+    });
 
   const upcomingKhl = matches
     .filter((match) => match.league === "KHL" && !match.eventCompleted)
     .sort((left, right) => left.date.getTime() - right.date.getTime());
 
   if (upcomingKhl[0]) {
+    // In-sale demo: sales window opens before MOCK_TODAY so presale txs exist
+    // through mock today (partial curve; match still upcoming).
+    upcomingKhl[0].date = startOfDay(new Date(2026, 4, 25));
+    upcomingKhl[0].ticketSalesWindowDays = TICKET_SALES_WINDOW_MAX_DAYS;
     upcomingKhl[0].ticketSalesProfile = {
-      fulfillmentFactor: 0.93,
+      fulfillmentFactor: 0.88,
       tempo: "steady",
     };
   }
@@ -1107,18 +1142,97 @@ const SEASON_SUBSCRIPTION_QUOTAS: SeasonSubscriptionQuota[] = [
   {
     season: "2025/26",
     seasonStart: SEASON_START,
-    regularCount: 30,
-    playoffCount: 13,
+    regularCount: 45,
+    playoffCount: 20,
     preferDashboardPeriod: true,
   },
   {
     season: "2024/25",
     seasonStart: PREV_SEASON_START,
-    regularCount: 30,
-    playoffCount: 12,
+    regularCount: 45,
+    playoffCount: 18,
     preferDashboardPeriod: false,
   },
 ];
+
+function isInRegularSubscriptionSalesWindow(purchasedAt: Date): boolean {
+  const day = startOfDay(purchasedAt);
+  return (
+    day >= startOfDay(SUBSCRIPTIONS_PERIOD_START) &&
+    day <= startOfDay(SUBSCRIPTIONS_PERIOD_END)
+  );
+}
+
+function isInPlayoffSubscriptionSalesWindow(
+  purchasedAt: Date,
+  season: string,
+  allMatches: Match[],
+): boolean {
+  const firstPlayoff = getFirstPlayoffMatchDate(allMatches, season);
+  if (!firstPlayoff) return false;
+  const window = getPlayoffSubscriptionSalesWindow(firstPlayoff);
+  const day = startOfDay(purchasedAt);
+  return (
+    day >= startOfDay(window.start) && day <= startOfDay(window.end)
+  );
+}
+
+function subscriptionPassesDefaultSeasonFilter(
+  sub: Subscription,
+  allMatches: Match[],
+): boolean {
+  if (sub.season !== "2025/26") return false;
+  if (sub.tournamentStage === "playoff") {
+    return isInPlayoffSubscriptionSalesWindow(
+      sub.purchasedAt,
+      sub.season,
+      allMatches,
+    );
+  }
+  return isInRegularSubscriptionSalesWindow(sub.purchasedAt);
+}
+
+const SEED_SUBSCRIPTION_PLAN =
+  subscriptionPlans.find((plan) => plan.code === "SUB-SEASON") ??
+  subscriptionPlans[3];
+
+/** Seed subscriptions so every price zone appears in 2025/26 default filters. */
+function ensureSubscriptionPriceZoneCoverage(
+  subs: Subscription[],
+  allMatches: Match[],
+  startId: number,
+): number {
+  const seasonMatches = allMatches.filter((match) => match.season === "2025/26");
+  const regularMatch =
+    seasonMatches.find((match) => match.tournamentStage === "regular") ??
+    seasonMatches[0];
+  if (!regularMatch) return startId;
+
+  const purchasedAt = SUBSCRIPTIONS_PERIOD_START;
+  let id = startId;
+
+  for (const zone of ALL_PRICE_ZONES) {
+    const hasCoverage = subs.some(
+      (sub) =>
+        sub.priceZone === zone &&
+        subscriptionPassesDefaultSeasonFilter(sub, allMatches),
+    );
+    if (!hasCoverage) {
+      subs.push(
+        buildSubscription(
+          id++,
+          SEED_SUBSCRIPTION_PLAN,
+          regularMatch,
+          purchasedAt,
+          "regular",
+          zone,
+        ),
+      );
+    }
+  }
+
+  return id;
+}
 
 function buildSubscription(
   id: number,
@@ -1126,6 +1240,7 @@ function buildSubscription(
   match: Match,
   purchasedAt: Date,
   tournamentStage: Subscription["tournamentStage"],
+  explicitPriceZone?: PriceZone,
 ): Subscription {
   const validTo = addDays(purchasedAt, 90);
   const usedCount = Math.min(randomInt(1, plan.matchCount), randomInt(1, 8));
@@ -1137,13 +1252,14 @@ function buildSubscription(
         ? "expired"
         : "active";
   const priceZone =
-    plan.code.includes("VIP")
+    explicitPriceZone ??
+    (plan.code.includes("VIP")
       ? "VIP"
       : plan.code.includes("-A")
         ? "A"
         : plan.code.includes("-B")
           ? randomPick(["B1", "B2", "B3", "B4"] as PriceZone[])
-          : randomPick(ALL_PRICE_ZONES);
+          : randomPick(ALL_PRICE_ZONES));
 
   return {
     id: `sub-${id}`,
@@ -1225,6 +1341,8 @@ function generateSubscriptions(allMatches: Match[]): Subscription[] {
       );
     }
   }
+
+  ensureSubscriptionPriceZoneCoverage(subs, allMatches, id);
 
   return subs.sort((a, b) => b.purchasedAt.getTime() - a.purchasedAt.getTime());
 }

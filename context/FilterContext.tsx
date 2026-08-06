@@ -32,7 +32,12 @@ import {
   computeTicketsMatchCumulativeSeries,
   computeTicketsPlanFactTrend,
   computeTicketsSalesChannelTrend,
+  computeTicketsPriceZoneTrend,
   computeTopProducts,
+  computeMatchRevenueChart,
+  computeMatchSalesKpis,
+  computeCombinedMatchSalesTable,
+  filterMatchesByMatchSalesFilters,
   filterMatchesByMerchFilters,
   filterMatchesByTicketFilters,
   runWithFilterCache,
@@ -42,12 +47,17 @@ import {
   DEFAULT_TICKET_FILTERS,
 } from "@/lib/ticket-filter-options";
 import { DEFAULT_MERCH_FILTERS } from "@/lib/merch-filter-options";
+import { DEFAULT_MATCH_SALES_FILTERS } from "@/lib/match-sales-filter-options";
 import { DEFAULT_SUBSCRIPTION_FILTERS } from "@/lib/subscription-filter-options";
 import type {
   ChannelMixPoint,
   DashboardFilters,
   DashboardTab,
   DateRangePreset,
+  CombinedMatchSalesRow,
+  MatchRevenuePoint,
+  MatchSalesFilters,
+  MatchSalesKpiData,
   MatchSalesRow,
   MerchFilters,
   MerchKpiData,
@@ -68,6 +78,7 @@ import type {
   TicketFilters,
   TicketMatchCumulativeSeries,
   TicketsSalesChannelTrendPoint,
+  TicketsPriceZoneTrendPoint,
   TicketTypeSalesPoint,
   TicketsKpiData,
   TopProductPoint,
@@ -77,6 +88,7 @@ type FilterStateContextValue = {
   filters: DashboardFilters;
   ticketFilters: TicketFilters;
   merchFilters: MerchFilters;
+  matchSalesFilters: MatchSalesFilters;
   subscriptionFilters: SubscriptionFilters;
   activeTab: DashboardTab;
   lastUpdated: Date | null;
@@ -84,15 +96,18 @@ type FilterStateContextValue = {
   setMatchId: (matchId: string | "all") => void;
   setTicketFilters: (patch: Partial<TicketFilters>) => void;
   setMerchFilters: (patch: Partial<MerchFilters>) => void;
+  setMatchSalesFilters: (patch: Partial<MatchSalesFilters>) => void;
   setSubscriptionFilters: (patch: Partial<SubscriptionFilters>) => void;
   setActiveTab: (tab: DashboardTab) => void;
   resetFilters: () => void;
   resetTicketFilters: () => void;
   resetMerchFilters: () => void;
+  resetMatchSalesFilters: () => void;
   resetSubscriptionFilters: () => void;
   refresh: () => void;
   ticketMatchOptions: ReturnType<typeof buildMatchFilterOptions>;
   merchMatchOptions: ReturnType<typeof buildMatchFilterOptions>;
+  matchSalesMatchOptions: ReturnType<typeof buildMatchFilterOptions>;
 };
 
 type FilterDataContextValue = {
@@ -102,11 +117,15 @@ type FilterDataContextValue = {
   ticketsMatchCumulativeSeries: TicketMatchCumulativeSeries[];
   ticketsPlanFactTrend: PlanFactTrendPoint[];
   ticketsSalesChannelTrend: TicketsSalesChannelTrendPoint[];
+  ticketsPriceZoneTrend: TicketsPriceZoneTrendPoint[];
   subscriptionsPlanFactTrend: SubscriptionsPlanFactTrendPoint[];
   channelMix: ChannelMixPoint[];
   topProducts: TopProductPoint[];
   subscriptionTariffStats: SubscriptionPlanStat[];
   matchSales: MatchSalesRow[];
+  combinedMatchSales: CombinedMatchSalesRow[];
+  matchSalesKpis: MatchSalesKpiData;
+  matchRevenueChart: MatchRevenuePoint[];
   ticketTypeSales: TicketTypeSalesPoint[];
   priceZoneSales: PriceZoneSalesPoint[];
   orderSourceSales: OrderSourceSalesPoint[];
@@ -166,6 +185,15 @@ const EMPTY_SUBSCRIPTIONS_KPIS: SubscriptionsKpiData = {
   soldSparkline: [],
 };
 
+const EMPTY_MATCH_SALES_KPIS: MatchSalesKpiData = {
+  totalRevenue: 0,
+  ticketRevenue: 0,
+  merchRevenue: 0,
+  ticketsSold: 0,
+  fillRate: 0,
+  matchCount: 0,
+};
+
 const FilterStateContext = createContext<FilterStateContextValue | null>(null);
 const FilterDataContext = createContext<FilterDataContextValue | null>(null);
 
@@ -173,6 +201,7 @@ function computeFilterData(
   filters: DashboardFilters,
   ticketFiltersForData: TicketFilters,
   merchFiltersForData: MerchFilters,
+  matchSalesFiltersForData: MatchSalesFilters,
   subscriptionFilters: SubscriptionFilters,
   activeTab: DashboardTab,
 ): FilterDataContextValue {
@@ -194,11 +223,18 @@ function computeFilterData(
           filters,
           ticketFiltersForData,
         ),
+        ticketsPriceZoneTrend: computeTicketsPriceZoneTrend(
+          filters,
+          ticketFiltersForData,
+        ),
         subscriptionsPlanFactTrend: [],
         channelMix: [],
         topProducts: [],
         subscriptionTariffStats: [],
         matchSales: computeMatchSalesTable(filters, ticketFiltersForData),
+        combinedMatchSales: [],
+        matchSalesKpis: EMPTY_MATCH_SALES_KPIS,
+        matchRevenueChart: [],
         ticketTypeSales: computeTicketTypeSales(filters, ticketFiltersForData),
         priceZoneSales: computePriceZoneSales(filters, ticketFiltersForData),
         orderSourceSales: computeOrderSourceSales(filters, ticketFiltersForData),
@@ -220,11 +256,15 @@ function computeFilterData(
         ticketsMatchCumulativeSeries: [],
         ticketsPlanFactTrend: [],
         ticketsSalesChannelTrend: [],
+        ticketsPriceZoneTrend: [],
         subscriptionsPlanFactTrend: [],
         channelMix: [],
         topProducts: computeTopProducts(filters, merchFiltersForData),
         subscriptionTariffStats: [],
         matchSales: [],
+        combinedMatchSales: [],
+        matchSalesKpis: EMPTY_MATCH_SALES_KPIS,
+        matchRevenueChart: [],
         ticketTypeSales: [],
         priceZoneSales: [],
         orderSourceSales: [],
@@ -253,6 +293,42 @@ function computeFilterData(
       };
     }
 
+    if (activeTab === "matches") {
+      return {
+        ticketsKpis: EMPTY_TICKETS_KPIS,
+        merchKpis: EMPTY_MERCH_KPIS,
+        subscriptionsKpis: EMPTY_SUBSCRIPTIONS_KPIS,
+        ticketsMatchCumulativeSeries: [],
+        ticketsPlanFactTrend: [],
+        ticketsSalesChannelTrend: [],
+        ticketsPriceZoneTrend: [],
+        subscriptionsPlanFactTrend: [],
+        channelMix: [],
+        topProducts: [],
+        subscriptionTariffStats: [],
+        matchSales: [],
+        combinedMatchSales: computeCombinedMatchSalesTable(
+          filters,
+          matchSalesFiltersForData,
+        ),
+        matchSalesKpis: computeMatchSalesKpis(filters, matchSalesFiltersForData),
+        matchRevenueChart: computeMatchRevenueChart(
+          filters,
+          matchSalesFiltersForData,
+        ),
+        ticketTypeSales: [],
+        priceZoneSales: [],
+        orderSourceSales: [],
+        merchMatchSales: [],
+        merchSalesChannelRevenue: [],
+        merchSalesChannelTrend: [],
+        merchSalesSegmentTrend: [],
+        merchProductCategoryRevenue: [],
+        merchProductCategoryTrend: [],
+        merchSkuSales: [],
+      };
+    }
+
     return {
       ticketsKpis: EMPTY_TICKETS_KPIS,
       merchKpis: EMPTY_MERCH_KPIS,
@@ -260,6 +336,7 @@ function computeFilterData(
       ticketsMatchCumulativeSeries: [],
       ticketsPlanFactTrend: [],
       ticketsSalesChannelTrend: [],
+      ticketsPriceZoneTrend: [],
       subscriptionsPlanFactTrend: computeSubscriptionsPlanFactTrend(
         filters,
         subscriptionFilters,
@@ -271,6 +348,9 @@ function computeFilterData(
         subscriptionFilters,
       ),
       matchSales: [],
+      combinedMatchSales: [],
+      matchSalesKpis: EMPTY_MATCH_SALES_KPIS,
+      matchRevenueChart: [],
       ticketTypeSales: [],
       priceZoneSales: [],
       orderSourceSales: [],
@@ -291,6 +371,8 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     useState<TicketFilters>(DEFAULT_TICKET_FILTERS);
   const [merchFilters, setMerchFiltersState] =
     useState<MerchFilters>(DEFAULT_MERCH_FILTERS);
+  const [matchSalesFilters, setMatchSalesFiltersState] =
+    useState<MatchSalesFilters>(DEFAULT_MATCH_SALES_FILTERS);
   const [subscriptionFilters, setSubscriptionFiltersState] =
     useState<SubscriptionFilters>(DEFAULT_SUBSCRIPTION_FILTERS);
   const [activeTab, setActiveTabState] = useState<DashboardTab>("tickets");
@@ -324,6 +406,12 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const setMatchSalesFilters = useCallback((patch: Partial<MatchSalesFilters>) => {
+    startTransition(() => {
+      setMatchSalesFiltersState((prev) => ({ ...prev, ...patch }));
+    });
+  }, []);
+
   const setSubscriptionFilters = useCallback((patch: Partial<SubscriptionFilters>) => {
     startTransition(() => {
       setSubscriptionFiltersState((prev) => ({ ...prev, ...patch }));
@@ -347,6 +435,13 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     startTransition(() => {
       setFilters(defaultFilters);
       setMerchFiltersState(DEFAULT_MERCH_FILTERS);
+    });
+  }, []);
+
+  const resetMatchSalesFilters = useCallback(() => {
+    startTransition(() => {
+      setFilters(defaultFilters);
+      setMatchSalesFiltersState(DEFAULT_MATCH_SALES_FILTERS);
     });
   }, []);
 
@@ -395,8 +490,24 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     ],
   );
 
+  const matchSalesMatchOptions = useMemo(
+    () =>
+      buildMatchFilterOptions(
+        filterMatchesByMatchSalesFilters({ ...matchSalesFilters, matchId: [] }),
+      ),
+    [
+      matchSalesFilters.season,
+      matchSalesFilters.league,
+      matchSalesFilters.tournamentStage,
+      matchSalesFilters.matchClass,
+      matchSalesFilters.arena,
+      matchSalesFilters.eventCompleted,
+    ],
+  );
+
   const deferredTicketMatchIds = useDeferredValue(ticketFilters.matchId);
   const deferredMerchMatchIds = useDeferredValue(merchFilters.matchId);
+  const deferredMatchSalesMatchIds = useDeferredValue(matchSalesFilters.matchId);
 
   const ticketFiltersForData = useMemo(
     () => ({ ...ticketFilters, matchId: deferredTicketMatchIds }),
@@ -408,11 +519,17 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     [merchFilters, deferredMerchMatchIds],
   );
 
+  const matchSalesFiltersForData = useMemo(
+    () => ({ ...matchSalesFilters, matchId: deferredMatchSalesMatchIds }),
+    [matchSalesFilters, deferredMatchSalesMatchIds],
+  );
+
   const stateValue = useMemo<FilterStateContextValue>(
     () => ({
       filters,
       ticketFilters,
       merchFilters,
+      matchSalesFilters,
       subscriptionFilters,
       activeTab,
       lastUpdated,
@@ -420,20 +537,24 @@ export function FilterProvider({ children }: { children: ReactNode }) {
       setMatchId,
       setTicketFilters,
       setMerchFilters,
+      setMatchSalesFilters,
       setSubscriptionFilters,
       setActiveTab,
       resetFilters,
       resetTicketFilters,
       resetMerchFilters,
+      resetMatchSalesFilters,
       resetSubscriptionFilters,
       refresh,
       ticketMatchOptions,
       merchMatchOptions,
+      matchSalesMatchOptions,
     }),
     [
       filters,
       ticketFilters,
       merchFilters,
+      matchSalesFilters,
       subscriptionFilters,
       activeTab,
       lastUpdated,
@@ -441,15 +562,18 @@ export function FilterProvider({ children }: { children: ReactNode }) {
       setMatchId,
       setTicketFilters,
       setMerchFilters,
+      setMatchSalesFilters,
       setSubscriptionFilters,
       setActiveTab,
       resetFilters,
       resetTicketFilters,
       resetMerchFilters,
+      resetMatchSalesFilters,
       resetSubscriptionFilters,
       refresh,
       ticketMatchOptions,
       merchMatchOptions,
+      matchSalesMatchOptions,
     ],
   );
 
@@ -459,6 +583,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
         filters,
         ticketFiltersForData,
         merchFiltersForData,
+        matchSalesFiltersForData,
         subscriptionFilters,
         activeTab,
       ),
@@ -466,6 +591,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
       filters,
       ticketFiltersForData,
       merchFiltersForData,
+      matchSalesFiltersForData,
       subscriptionFilters,
       activeTab,
     ],

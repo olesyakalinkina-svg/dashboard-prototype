@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { formatCurrency, formatNumber, formatPercent, formatPercentSigned } from "@/lib/format";
 import type {
   DashboardTab,
+  MatchSalesKpiData,
   MerchKpiData,
   SubscriptionsKpiData,
   TicketsKpiData,
@@ -105,6 +106,47 @@ export function MerchKpiCards({ merchKpis }: { merchKpis: MerchKpiData }) {
         change={sc?.marginPctChange}
         hideTrend={!showSeasonComparison}
         {...kpiProps}
+      />
+    </div>
+  );
+}
+
+export function MatchSalesKpiCards({
+  matchSalesKpis,
+}: {
+  matchSalesKpis: MatchSalesKpiData;
+}) {
+  return (
+    <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-6 xl:gap-2">
+      <KpiCard
+        title="Общая выручка"
+        value={formatCurrency(matchSalesKpis.totalRevenue)}
+        hideTrend
+      />
+      <KpiCard
+        title="Выручка от билетов"
+        value={formatCurrency(matchSalesKpis.ticketRevenue)}
+        hideTrend
+      />
+      <KpiCard
+        title="Выручка от мерча"
+        value={formatCurrency(matchSalesKpis.merchRevenue)}
+        hideTrend
+      />
+      <KpiCard
+        title="Продано билетов"
+        value={formatNumber(matchSalesKpis.ticketsSold)}
+        hideTrend
+      />
+      <KpiCard
+        title="Заполняемость"
+        value={formatPercent(matchSalesKpis.fillRate)}
+        hideTrend
+      />
+      <KpiCard
+        title="Матчей"
+        value={formatNumber(matchSalesKpis.matchCount)}
+        hideTrend
       />
     </div>
   );

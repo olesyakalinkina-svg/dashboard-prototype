@@ -210,3 +210,20 @@ export const ORDER_SOURCE_COLORS: Record<OrderSource, string> = {
   official_site: "#00BFA5",
   yandex_afisha: "#FF7043",
 };
+
+export const PRICE_ZONE_COLORS: Record<PriceZone, string> = {
+  A: "#1E3A8A",
+  B1: "#2563EB",
+  B2: "#3B82F6",
+  B3: "#60A5FA",
+  B4: "#93C5FD",
+  C1: "#065F46",
+  C2: "#059669",
+  C3: "#34D399",
+  C4: "#6EE7B7",
+  D1: "#7C2D12",
+  D2: "#C2410C",
+  D3: "#FB923C",
+  D4: "#FDBA74",
+  VIP: "#7C3AED",
+};

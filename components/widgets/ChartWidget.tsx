@@ -39,6 +39,7 @@ export function ChartWidget({
       <CardContent
         className={clsx(
           fillHeight && "flex flex-1 flex-col",
+          "min-w-0",
           compact ? "px-3 pb-3" : undefined,
         )}
       >

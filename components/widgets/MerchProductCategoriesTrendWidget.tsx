@@ -26,6 +26,8 @@ import {
 
 } from "recharts";
 
+import { ChartScrollContainer } from "@/components/charts/ChartScrollContainer";
+
 import {
 
   ChartZoomHint,
@@ -246,7 +248,7 @@ export function MerchProductCategoriesTrendWidget({
 
       </CardHeader>
 
-      <CardContent>
+      <CardContent className="min-w-0">
 
         {chartData.length === 0 || activeCategories.length === 0 ? (
 
@@ -258,7 +260,9 @@ export function MerchProductCategoriesTrendWidget({
 
         ) : (
 
-          <div className={clsx("h-[280px] sm:h-[360px]", CHART_ZOOM_SURFACE_CLASS)}>
+          <ChartScrollContainer
+            className={clsx("h-[280px] sm:h-[360px]", CHART_ZOOM_SURFACE_CLASS)}
+          >
 
             <ResponsiveContainer width="100%" height="100%">
 
@@ -334,7 +338,7 @@ export function MerchProductCategoriesTrendWidget({
 
             </ResponsiveContainer>
 
-          </div>
+          </ChartScrollContainer>
 
         )}
 

@@ -12,6 +12,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { ChartScrollContainer } from "@/components/charts/ChartScrollContainer";
 import {
   ChartZoomHint,
   ChartZoomReferenceArea,
@@ -140,13 +141,13 @@ export function TicketsSalesChannelsTrendWidget({
           </div>
         </div>
       </CardHeader>
-      <CardContent className="flex flex-1 flex-col">
+      <CardContent className="flex min-w-0 flex-1 flex-col">
         {chartData.length === 0 || activeSources.length === 0 ? (
           <div className="flex min-h-[280px] flex-1 items-center justify-center text-sm text-[var(--muted)] sm:min-h-[360px]">
             Нет данных по выбранным каналам
           </div>
         ) : (
-          <div
+          <ChartScrollContainer
             className={clsx(
               "min-h-[280px] flex-1 sm:min-h-[360px]",
               CHART_ZOOM_SURFACE_CLASS,
@@ -192,7 +193,7 @@ export function TicketsSalesChannelsTrendWidget({
                 ))}
               </LineChart>
             </ResponsiveContainer>
-          </div>
+          </ChartScrollContainer>
         )}
       </CardContent>
     </Card>

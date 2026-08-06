@@ -55,6 +55,10 @@ import {
   TICKET_PLAN_AVG_PRICE,
 } from "@/lib/ticket-plan";
 import { isDateInTournamentStage } from "@/lib/season-dates";
+import {
+  matchSalesFiltersToMerchFilters,
+  matchSalesFiltersToTicketFilters,
+} from "@/lib/match-sales-filter-options";
 import { SUBSCRIPTION_CHANNEL_LABELS } from "@/lib/subscription-filter-options";
 import type {
   ChannelMixPoint,
@@ -69,6 +73,10 @@ import type {
   TournamentStage,
   MatchSalesRow,
   Match,
+  MatchRevenuePoint,
+  MatchSalesFilters,
+  MatchSalesKpiData,
+  CombinedMatchSalesRow,
   MerchFilters,
   MerchMatchSalesRow,
   MerchProductCategory,
@@ -77,6 +85,8 @@ import type {
   MerchSalesChannelPoint,
   MerchSalesChannelTrendPoint,
   TicketsSalesChannelTrendPoint,
+  TicketsPriceZoneTrendPoint,
+  PriceZone,
   MerchSalesPoint,
   MerchSalesSegment,
   MerchSalesSegmentTrendPoint,
@@ -1762,10 +1772,50 @@ export function computeTicketsMatchCumulativeSeries(
   filters: DashboardFilters,
   ticketFilters: TicketFilters,
 ): TicketMatchCumulativeSeries[] {
-  const txs = filterTicketTransactions(filters, ticketFilters);
-  const chartMatches = filterMatchesByTicketFilters(ticketFilters).sort(
-    (a, b) => a.date.getTime() - b.date.getTime(),
+  const selectedMatchId =
+    ticketFilters.matchId.length === 1 ? ticketFilters.matchId[0] : null;
+  const matchesWithoutMatchIdFilter = filterMatchesByTicketFilters({
+    ...ticketFilters,
+    matchId: [],
+  }).sort((left, right) => left.date.getTime() - right.date.getTime());
+
+  let chartMatches = filterMatchesByTicketFilters(ticketFilters).sort(
+    (left, right) => left.date.getTime() - right.date.getTime(),
   );
+  const comparisonMatchIds = new Set<string>();
+
+  if (selectedMatchId) {
+    const selectedMatch = matchesWithoutMatchIdFilter.find(
+      (match) => match.id === selectedMatchId,
+    );
+
+    if (selectedMatch) {
+      const comparisonMatches = matchesWithoutMatchIdFilter.filter(
+        (match) =>
+          match.id !== selectedMatchId &&
+          match.matchClass === selectedMatch.matchClass &&
+          match.date.getTime() < selectedMatch.date.getTime(),
+      );
+
+      for (const match of comparisonMatches) {
+        comparisonMatchIds.add(match.id);
+      }
+
+      chartMatches = [...comparisonMatches, selectedMatch];
+    }
+  }
+
+  let txs = filterTicketTransactions(filters, ticketFilters);
+  if (selectedMatchId && comparisonMatchIds.size > 0) {
+    const expandedMatchIds = new Set([
+      selectedMatchId,
+      ...comparisonMatchIds,
+    ]);
+    txs = filterTicketTransactions(filters, {
+      ...ticketFilters,
+      matchId: [],
+    }).filter((tx) => tx.matchId != null && expandedMatchIds.has(tx.matchId));
+  }
 
   const txsByMatchId = new Map<string, Transaction[]>();
   for (const tx of txs) {
@@ -1888,6 +1938,7 @@ export function computeTicketsMatchCumulativeSeries(
       color,
       league: match.league,
       season: match.season,
+      matchClass: match.matchClass,
       matchDateKey: matchDay.getTime(),
       eventCompleted: match.eventCompleted,
       hasFactSales,
@@ -1895,6 +1946,11 @@ export function computeTicketsMatchCumulativeSeries(
       planTickets: matchPlanTickets,
       currentDaysBeforeMatch,
       points,
+      seriesRole: comparisonMatchIds.has(match.id)
+        ? "comparison"
+        : match.id === selectedMatchId
+          ? "selected"
+          : undefined,
     });
   }
 
@@ -2145,6 +2201,55 @@ export function computeTicketsSalesChannelTrend(
           Math.max(0, channels.get(source) ?? 0),
         ]),
       ) as Record<OrderSource, number>,
+    }))
+    .sort((a, b) => a.sortKey - b.sortKey);
+}
+
+export function computeTicketsPriceZoneTrend(
+  filters: DashboardFilters,
+  ticketFilters: TicketFilters,
+): TicketsPriceZoneTrendPoint[] {
+  const txs = filterTicketTransactions(filters, ticketFilters);
+  const timeGrouping = ticketFilters.timeGrouping;
+  const activeZones: PriceZone[] =
+    ticketFilters.priceZone !== "all"
+      ? [ticketFilters.priceZone]
+      : ALL_PRICE_ZONES;
+
+  const periodMap = new Map<
+    string,
+    { sortKey: number; zones: Map<PriceZone, number> }
+  >();
+
+  for (const tx of txs) {
+    if (tx.ticketType === "parking" || !tx.priceZone) continue;
+    if (!activeZones.includes(tx.priceZone)) continue;
+
+    const { period, sortKey } = periodKeyAndSort(tx.date, timeGrouping);
+    const entry =
+      periodMap.get(period) ??
+      ({
+        sortKey,
+        zones: new Map(
+          activeZones.map((zone) => [zone, 0] as const),
+        ),
+      } as { sortKey: number; zones: Map<PriceZone, number> });
+
+    const delta = tx.isReturn ? -tx.amount : tx.amount;
+    entry.zones.set(
+      tx.priceZone,
+      (entry.zones.get(tx.priceZone) ?? 0) + delta,
+    );
+    periodMap.set(period, entry);
+  }
+
+  return Array.from(periodMap.entries())
+    .map(([period, { sortKey, zones }]) => ({
+      period,
+      sortKey,
+      zones: Object.fromEntries(
+        activeZones.map((zone) => [zone, Math.max(0, zones.get(zone) ?? 0)]),
+      ) as Record<PriceZone, number>,
     }))
     .sort((a, b) => a.sortKey - b.sortKey);
 }
@@ -2728,6 +2833,115 @@ export function computeMerchSkuSalesTable(
     }))
     .filter((row) => row.units > 0)
     .sort((a, b) => b.units - a.units);
+}
+
+export function filterMatchesByMatchSalesFilters(
+  matchSalesFilters: MatchSalesFilters,
+  dateRange?: number,
+) {
+  return filterMatchesByTicketFilters(
+    matchSalesFiltersToTicketFilters(matchSalesFilters),
+    dateRange,
+  );
+}
+
+export function computeCombinedMatchSalesTable(
+  filters: DashboardFilters,
+  matchSalesFilters: MatchSalesFilters,
+): CombinedMatchSalesRow[] {
+  const ticketFilters = matchSalesFiltersToTicketFilters(matchSalesFilters);
+  const merchFilters = matchSalesFiltersToMerchFilters(matchSalesFilters);
+
+  const ticketRows = computeMatchSalesTable(filters, ticketFilters);
+  const merchRows = computeMerchMatchSalesTable(filters, merchFilters);
+
+  const ticketByMatch = new Map(ticketRows.map((row) => [row.matchId, row]));
+  const merchByMatch = new Map(merchRows.map((row) => [row.matchId, row]));
+
+  const matchIds = new Set([
+    ...ticketByMatch.keys(),
+    ...merchByMatch.keys(),
+  ]);
+
+  const allowedMatches = filterMatchesByMatchSalesFilters(matchSalesFilters);
+  const allowedMatchIds = new Set(allowedMatches.map((m) => m.id));
+
+  const rows: CombinedMatchSalesRow[] = [];
+
+  for (const matchId of matchIds) {
+    if (!allowedMatchIds.has(matchId)) continue;
+
+    const ticket = ticketByMatch.get(matchId);
+    const merch = merchByMatch.get(matchId);
+    const match = matchById.get(matchId);
+    if (!match) continue;
+
+    const ticketRevenue = ticket?.revenue ?? 0;
+    const merchRevenue = merch?.revenue ?? 0;
+    const totalRevenue = ticketRevenue + merchRevenue;
+
+    if (totalRevenue <= 0 && (ticket?.ticketsSold ?? 0) <= 0) continue;
+
+    const issuedTickets = ticket?.issuedTickets ?? 0;
+    const capacity = ticket?.capacity ?? match.capacity;
+    const fillRate = capacity > 0 ? (issuedTickets / capacity) * 100 : 0;
+
+    rows.push({
+      matchId,
+      eventLabel: `${match.opponent} ${format(match.date, "dd-MM-yy", { locale: ru })}`,
+      date: match.date,
+      ticketRevenue,
+      merchRevenue,
+      totalRevenue,
+      planRevenue: ticket?.planRevenue ?? 0,
+      ticketsSold: ticket?.ticketsSold ?? 0,
+      issuedTickets,
+      capacity,
+      fillRate,
+      merchReceipts: merch?.receipts ?? 0,
+    });
+  }
+
+  return rows.sort((a, b) => b.date.getTime() - a.date.getTime());
+}
+
+export function computeMatchSalesKpis(
+  filters: DashboardFilters,
+  matchSalesFilters: MatchSalesFilters,
+): MatchSalesKpiData {
+  const rows = computeCombinedMatchSalesTable(filters, matchSalesFilters);
+
+  const ticketRevenue = rows.reduce((sum, row) => sum + row.ticketRevenue, 0);
+  const merchRevenue = rows.reduce((sum, row) => sum + row.merchRevenue, 0);
+  const ticketsSold = rows.reduce((sum, row) => sum + row.ticketsSold, 0);
+  const totalIssued = rows.reduce((sum, row) => sum + row.issuedTickets, 0);
+  const totalCapacity = rows.reduce((sum, row) => sum + row.capacity, 0);
+  const fillRate = totalCapacity > 0 ? (totalIssued / totalCapacity) * 100 : 0;
+
+  return {
+    totalRevenue: ticketRevenue + merchRevenue,
+    ticketRevenue,
+    merchRevenue,
+    ticketsSold,
+    fillRate,
+    matchCount: rows.length,
+  };
+}
+
+export function computeMatchRevenueChart(
+  filters: DashboardFilters,
+  matchSalesFilters: MatchSalesFilters,
+): MatchRevenuePoint[] {
+  const rows = computeCombinedMatchSalesTable(filters, matchSalesFilters);
+
+  return rows
+    .slice()
+    .sort((a, b) => a.date.getTime() - b.date.getTime())
+    .map((row) => ({
+      match: row.eventLabel,
+      tickets: row.ticketRevenue,
+      merch: row.merchRevenue,
+    }));
 }
 
 export { matchById };

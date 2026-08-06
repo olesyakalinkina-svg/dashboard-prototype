@@ -200,7 +200,43 @@ export type SubscriptionFilters = {
   timeGrouping: TimeGrouping;
 };
 
-export type DashboardTab = "subscriptions" | "tickets" | "merch";
+export type MatchSalesFilters = {
+  season: string | "all";
+  league: League | "all";
+  tournamentStage: TournamentStage | "all";
+  matchClass: MatchClass | "all";
+  arena: ArenaId | "all";
+  eventCompleted: "all" | "yes" | "no";
+  matchId: string[];
+  /** Shared purchase date window for ticket and merch transactions */
+  purchaseDateRange: MerchOrderDateRange;
+};
+
+export type CombinedMatchSalesRow = {
+  matchId: string;
+  eventLabel: string;
+  date: Date;
+  ticketRevenue: number;
+  merchRevenue: number;
+  totalRevenue: number;
+  planRevenue: number;
+  ticketsSold: number;
+  issuedTickets: number;
+  capacity: number;
+  fillRate: number;
+  merchReceipts: number;
+};
+
+export type MatchSalesKpiData = {
+  totalRevenue: number;
+  ticketRevenue: number;
+  merchRevenue: number;
+  ticketsSold: number;
+  fillRate: number;
+  matchCount: number;
+};
+
+export type DashboardTab = "subscriptions" | "tickets" | "merch" | "matches";
 
 export type SubscriptionStatus = "active" | "expired" | "fully_used" | "cancelled";
 
@@ -267,12 +303,15 @@ export type TicketMatchCumulativePoint = {
   planTickets: number;
 };
 
+export type TicketMatchCumulativeSeriesRole = "selected" | "comparison";
+
 export type TicketMatchCumulativeSeries = {
   matchId: string;
   label: string;
   color: string;
   league: League;
   season: string;
+  matchClass: MatchClass;
   matchDateKey: number;
   eventCompleted: boolean;
   hasFactSales: boolean;
@@ -280,6 +319,7 @@ export type TicketMatchCumulativeSeries = {
   planTickets: number;
   currentDaysBeforeMatch: number | null;
   points: TicketMatchCumulativePoint[];
+  seriesRole?: TicketMatchCumulativeSeriesRole;
 };
 
 export type TicketsSeasonMatchQuickFilter =
@@ -300,6 +340,7 @@ export type TicketsSeasonMatchSeriesView = {
   color: string;
   league: League;
   season: string;
+  matchClass: MatchClass;
   planRevenue: number;
   eventCompleted: boolean;
   hasFactSales: boolean;
@@ -309,6 +350,8 @@ export type TicketsSeasonMatchSeriesView = {
   completionPct: number;
   deviationPct: number;
   status: TicketsSeasonMatchStatus;
+  isSelected?: boolean;
+  isComparison?: boolean;
 };
 
 export type TicketsSeasonMatchChartRow = {
@@ -345,6 +388,12 @@ export type TicketsSalesChannelTrendPoint = {
   period: string;
   sortKey: number;
   channels: Record<OrderSource, number>;
+};
+
+export type TicketsPriceZoneTrendPoint = {
+  period: string;
+  sortKey: number;
+  zones: Record<PriceZone, number>;
 };
 
 export type MerchSalesSegmentTrendPoint = {

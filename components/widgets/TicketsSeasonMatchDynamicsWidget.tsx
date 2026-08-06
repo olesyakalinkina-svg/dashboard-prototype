@@ -28,6 +28,7 @@ type ChartZoomControl = {
 
 export function TicketsSeasonMatchDynamicsWidget({
   series,
+  ticketFilters,
 }: {
   series: TicketMatchCumulativeSeries[];
   ticketFilters: TicketFilters;
@@ -57,11 +58,13 @@ export function TicketsSeasonMatchDynamicsWidget({
     [filteredViews, series],
   );
 
+  const selectedMatchIdsKey = ticketFilters.matchId.join(",");
+
   useEffect(() => {
     setHiddenSeries(new Set());
     setHoveredSeries(null);
     setChartZoomControl(null);
-  }, [series, quickFilter, searchQuery]);
+  }, [series, quickFilter, searchQuery, selectedMatchIdsKey]);
 
   const toggleSeries = (matchId: string) => {
     setHiddenSeries((current) => {
@@ -100,7 +103,7 @@ export function TicketsSeasonMatchDynamicsWidget({
           />
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="min-w-0">
         <div className="mb-3 flex flex-wrap gap-2">
           {SEASON_MATCH_QUICK_FILTERS.map((option) => (
             <button

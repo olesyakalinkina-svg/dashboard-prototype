@@ -6,13 +6,25 @@ import { getEffectiveMerchTimeGrouping } from "@/lib/merch-filter-options";
 import { DashboardHeader } from "@/components/layout/DashboardHeader";
 import { DashboardTabs } from "@/components/layout/DashboardTabs";
 import { FilterBar } from "@/components/layout/FilterBar";
-import { MerchKpiCards, TabKpiCards } from "@/components/widgets/KpiCard";
+import { MerchKpiCards, MatchSalesKpiCards, TabKpiCards } from "@/components/widgets/KpiCard";
 import { ChartSkeleton } from "@/components/ui/ChartSkeleton";
 import {
+  CombinedMatchSalesTable,
   MerchMatchSalesTable,
   MerchSkuSalesTable,
   MatchSalesTable,
 } from "@/components/widgets/DataTableWidget";
+
+const MatchRevenueChart = dynamic(
+  () =>
+    import("@/components/widgets/Charts").then((mod) => ({
+      default: mod.MatchRevenueChart,
+    })),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton height={320} />,
+  },
+);
 
 const TicketsPlanFactWidget = dynamic(
   () =>
@@ -29,6 +41,17 @@ const TicketsSalesChannelsTrendWidget = dynamic(
   () =>
     import("@/components/widgets/TicketsSalesChannelsTrendWidget").then((mod) => ({
       default: mod.TicketsSalesChannelsTrendWidget,
+    })),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton height={360} />,
+  },
+);
+
+const TicketsPriceZoneTrendWidget = dynamic(
+  () =>
+    import("@/components/widgets/TicketsPriceZoneTrendWidget").then((mod) => ({
+      default: mod.TicketsPriceZoneTrendWidget,
     })),
   {
     ssr: false,
@@ -192,11 +215,15 @@ function DashboardContent() {
     ticketsMatchCumulativeSeries,
     ticketsPlanFactTrend,
     ticketsSalesChannelTrend,
+    ticketsPriceZoneTrend,
     subscriptionsPlanFactTrend,
     channelMix,
     topProducts,
     subscriptionTariffStats,
     matchSales,
+    combinedMatchSales,
+    matchSalesKpis,
+    matchRevenueChart,
     ticketTypeSales,
     priceZoneSales,
     orderSourceSales,
@@ -217,7 +244,7 @@ function DashboardContent() {
       <FilterBar />
 
       <main className="min-w-0 space-y-4 p-4 sm:space-y-6 sm:p-6">
-        {activeTab !== "merch" && (
+        {activeTab !== "merch" && activeTab !== "matches" && (
           <TabKpiCards
             tab={activeTab}
             ticketsKpis={ticketsKpis}
@@ -244,16 +271,17 @@ function DashboardContent() {
         {activeTab === "tickets" && (
           <>
             <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
-              <TicketsPlanFactWidget data={ticketsPlanFactTrend} />
-              <TicketsSalesChannelsTrendWidget data={ticketsSalesChannelTrend} />
-            </div>
-            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
               <MatchSalesTable data={matchSales} />
               <TicketsSeasonMatchDynamicsWidget
                 series={ticketsMatchCumulativeSeries}
                 ticketFilters={ticketFilters}
               />
             </div>
+            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
+              <TicketsPlanFactWidget data={ticketsPlanFactTrend} />
+              <TicketsSalesChannelsTrendWidget data={ticketsSalesChannelTrend} />
+            </div>
+            <TicketsPriceZoneTrendWidget data={ticketsPriceZoneTrend} />
             <TicketsBreakdownWidget
               ticketTypeSales={ticketTypeSales}
               priceZoneSales={priceZoneSales}
@@ -295,6 +323,14 @@ function DashboardContent() {
               <MerchProductCategoriesChart data={merchProductCategoryRevenue} />
               <TopProductsChart data={topProducts} />
             </div>
+          </>
+        )}
+
+        {activeTab === "matches" && (
+          <>
+            <MatchSalesKpiCards matchSalesKpis={matchSalesKpis} />
+            <MatchRevenueChart data={matchRevenueChart} />
+            <CombinedMatchSalesTable data={combinedMatchSales} />
           </>
         )}
       </main>

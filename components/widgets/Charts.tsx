@@ -18,6 +18,7 @@ import {
 } from "recharts";
 import { useMemo, useState } from "react";
 import clsx from "clsx";
+import { ChartScrollContainer } from "@/components/charts/ChartScrollContainer";
 import {
   ChartZoomHint,
   ChartZoomReferenceArea,
@@ -66,6 +67,7 @@ import type {
   TimeGrouping,
   TopProductPoint,
   WeeklyPoint,
+  MatchRevenuePoint,
 } from "@/types/dashboard";
 
 function formatCompactCurrency(value: number): string {
@@ -312,13 +314,15 @@ export function MerchSalesStackedChart({
         </div>
         {isZoomed && <ChartZoomResetButton onClick={resetZoom} />}
       </CardHeader>
-      <CardContent className="flex h-full flex-col">
+      <CardContent className="flex min-w-0 h-full flex-col">
         {chartData.length === 0 || activeGroups.length === 0 ? (
           <div className="flex h-[220px] items-center justify-center text-sm text-[var(--muted)]">
             Нет данных по выбранным каналам
           </div>
         ) : (
-          <div className={clsx("h-[220px]", CHART_ZOOM_SURFACE_CLASS)}>
+          <ChartScrollContainer
+            className={clsx("h-[220px]", CHART_ZOOM_SURFACE_CLASS)}
+          >
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={displayData}
@@ -359,7 +363,7 @@ export function MerchSalesStackedChart({
                 ))}
               </BarChart>
             </ResponsiveContainer>
-          </div>
+          </ChartScrollContainer>
         )}
       </CardContent>
     </Card>
@@ -418,13 +422,15 @@ export function MerchSalesSegmentStackedChart({
         </div>
         {isZoomed && <ChartZoomResetButton onClick={resetZoom} />}
       </CardHeader>
-      <CardContent className="flex h-full flex-col">
+      <CardContent className="flex min-w-0 h-full flex-col">
         {chartData.length === 0 || activeSegments.length === 0 ? (
           <div className="flex h-[220px] items-center justify-center text-sm text-[var(--muted)]">
             Нет данных по выбранным фильтрам
           </div>
         ) : (
-          <div className={clsx("h-[220px]", CHART_ZOOM_SURFACE_CLASS)}>
+          <ChartScrollContainer
+            className={clsx("h-[220px]", CHART_ZOOM_SURFACE_CLASS)}
+          >
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={displayData}
@@ -465,7 +471,7 @@ export function MerchSalesSegmentStackedChart({
                 ))}
               </BarChart>
             </ResponsiveContainer>
-          </div>
+          </ChartScrollContainer>
         )}
       </CardContent>
     </Card>
@@ -497,7 +503,9 @@ export function WeeklyTrendChart({
 
   return (
     <ChartWidget title={title}>
-      <div className={clsx("h-full", CHART_ZOOM_SURFACE_CLASS)}>
+      <ChartScrollContainer
+        className={clsx("h-full", CHART_ZOOM_SURFACE_CLASS)}
+      >
         {isZoomed && (
           <div className="mb-2 flex justify-end">
             <ChartZoomResetButton onClick={resetZoom} />
@@ -532,7 +540,7 @@ export function WeeklyTrendChart({
             />
           </LineChart>
         </ResponsiveContainer>
-      </div>
+      </ChartScrollContainer>
     </ChartWidget>
   );
 }
@@ -1150,5 +1158,112 @@ export function OrderSourceSalesChart({
         })}
       </div>
     </ChartWidget>
+  );
+}
+
+export function MatchRevenueChart({
+  data,
+  className,
+}: {
+  data: MatchRevenuePoint[];
+  className?: string;
+}) {
+  const chartData = useMemo(
+    () =>
+      data.map((point) => ({
+        match: point.match,
+        tickets: point.tickets,
+        merch: point.merch,
+        total: point.tickets + point.merch,
+      })),
+    [data],
+  );
+
+  const {
+    displayData,
+    isZoomed,
+    resetZoom,
+    selectionArea,
+    yDomain,
+    chartHandlers,
+  } = useChartAreaZoom(chartData, ["tickets", "merch"], [data], {
+    yAggregate: "sum",
+  });
+
+  return (
+    <Card className={clsx("min-w-0", className)}>
+      <CardHeader>
+        <div className="min-w-0">
+          <CardTitle>Выручка по матчам</CardTitle>
+          <ChartZoomHint visible={!isZoomed} />
+        </div>
+        {isZoomed && <ChartZoomResetButton onClick={resetZoom} />}
+      </CardHeader>
+      <CardContent className="flex min-w-0 h-full flex-col">
+        {chartData.length === 0 ? (
+          <div className="flex h-[280px] items-center justify-center text-sm text-[var(--muted)]">
+            Нет данных по выбранным фильтрам
+          </div>
+        ) : (
+          <ChartScrollContainer
+            className={clsx("h-[280px]", CHART_ZOOM_SURFACE_CLASS)}
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={displayData}
+                margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                {...chartHandlers}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#E5E5E7" />
+                <XAxis
+                  dataKey="match"
+                  tick={{ fontSize: 9, fill: "#8B8B8E" }}
+                  interval={0}
+                  angle={-35}
+                  textAnchor="end"
+                  height={72}
+                />
+                <YAxis
+                  domain={yDomain}
+                  tick={{ fontSize: 10, fill: "#8B8B8E" }}
+                  width={48}
+                  tickFormatter={(value) =>
+                    value >= 1_000_000
+                      ? `${(value / 1_000_000).toFixed(1)}M`
+                      : value >= 1_000
+                        ? `${Math.round(value / 1_000)}K`
+                        : String(value)
+                  }
+                />
+                <Tooltip
+                  formatter={(value: number, name: string) => [
+                    formatCurrency(value),
+                    name === "tickets" ? "Билеты" : "Мерч",
+                  ]}
+                />
+                <Legend
+                  formatter={(value) => (value === "tickets" ? "Билеты" : "Мерч")}
+                />
+                <ChartZoomReferenceArea selectionArea={selectionArea} />
+                <Bar
+                  dataKey="tickets"
+                  name="tickets"
+                  stackId="revenue"
+                  fill="#EF4444"
+                  isAnimationActive={false}
+                />
+                <Bar
+                  dataKey="merch"
+                  name="merch"
+                  stackId="revenue"
+                  fill="#5282FF"
+                  isAnimationActive={false}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartScrollContainer>
+        )}
+      </CardContent>
+    </Card>
   );
 }

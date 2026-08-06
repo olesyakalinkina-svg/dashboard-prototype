@@ -14,6 +14,9 @@ export const SEASON_MATCH_CHART_MIN_WIDTH = 760;
 export const SEASON_MATCH_CHART_DAY_WIDTH = 44;
 export const SEASON_MATCH_MAX_BRIGHT_LINES = 10;
 export const SEASON_MATCH_PLAN_LEGEND_LABEL = "План продаж";
+export const SEASON_MATCH_COMPARISON_COLOR = "#9CA3AF";
+export const SEASON_MATCH_COMPARISON_LEGEND_LABEL =
+  "Предыдущие матчи того же класса";
 
 const CONTRAST_LINE_COLORS = [
   "#E41A1C",
@@ -108,13 +111,21 @@ function getCurrentFactRevenue(item: TicketMatchCumulativeSeries): number {
   return endPoint?.revenue ?? 0;
 }
 
+export function isSeasonMatchComparisonMode(
+  series: TicketMatchCumulativeSeries[],
+): boolean {
+  return series.some((item) => item.seriesRole === "selected");
+}
+
 export function buildSeasonMatchSeriesViews(
   series: TicketMatchCumulativeSeries[],
   options: { useContrastColors?: boolean } = {},
 ): TicketsSeasonMatchSeriesView[] {
   const useContrastColors = options.useContrastColors ?? true;
+  const comparisonMode = isSeasonMatchComparisonMode(series);
+  let colorIndex = 0;
 
-  return series.map((item, index) => {
+  return series.map((item) => {
     const opponent = parseOpponentFromLabel(item.label);
     const matchDate =
       parseMatchDateFromLabel(item.label) ||
@@ -127,6 +138,20 @@ export function buildSeasonMatchSeriesViews(
       (left, right) => left.dateKey - right.dateKey,
     );
     const salesStartDateKey = sortedPoints[0]?.dateKey ?? item.matchDateKey;
+    const isComparison = item.seriesRole === "comparison";
+    const isSelected = item.seriesRole === "selected";
+
+    let color = item.color;
+    if (comparisonMode) {
+      color = isComparison
+        ? SEASON_MATCH_COMPARISON_COLOR
+        : isSelected
+          ? CONTRAST_LINE_COLORS[0]
+          : SEASON_MATCH_COMPARISON_COLOR;
+    } else if (useContrastColors) {
+      color = CONTRAST_LINE_COLORS[colorIndex % CONTRAST_LINE_COLORS.length];
+      colorIndex += 1;
+    }
 
     return {
       matchId: item.matchId,
@@ -134,11 +159,10 @@ export function buildSeasonMatchSeriesViews(
       matchDate,
       matchDateKey: item.matchDateKey,
       legendLabel: `${opponent} — ${matchDate}`,
-      color: useContrastColors
-        ? CONTRAST_LINE_COLORS[index % CONTRAST_LINE_COLORS.length]
-        : item.color,
+      color,
       league: item.league,
       season: item.season,
+      matchClass: item.matchClass,
       planRevenue: item.planRevenue,
       eventCompleted: item.eventCompleted,
       hasFactSales: item.hasFactSales,
@@ -149,6 +173,8 @@ export function buildSeasonMatchSeriesViews(
       completionPct,
       deviationPct,
       status: computeSeasonMatchStatus(completionPct),
+      isSelected,
+      isComparison,
     };
   });
 }
@@ -283,9 +309,32 @@ export function getSeasonMatchLineOpacity(
     hidden: boolean;
     hoveredMatchId: string | null;
     brightMatchIds: Set<string>;
+    comparisonMode?: boolean;
   },
 ): number {
   if (options.hidden) return 0;
+
+  if (view.isComparison) {
+    if (options.hoveredMatchId != null) {
+      return options.hoveredMatchId === view.matchId ? 0.9 : 0.2;
+    }
+    return 0.55;
+  }
+
+  if (view.isSelected) {
+    if (options.hoveredMatchId != null) {
+      return options.hoveredMatchId === view.matchId ? 1 : 0.25;
+    }
+    return 1;
+  }
+
+  if (options.comparisonMode) {
+    if (options.hoveredMatchId != null) {
+      return options.hoveredMatchId === view.matchId ? 1 : 0.25;
+    }
+    return 1;
+  }
+
   if (options.hoveredMatchId != null) {
     return options.hoveredMatchId === view.matchId ? 1 : 0.12;
   }
@@ -297,13 +346,20 @@ export function getSeasonMatchStrokeWidth(
   view: TicketsSeasonMatchSeriesView,
   hoveredMatchId: string | null,
 ): number {
-  if (hoveredMatchId === view.matchId) return 3.5;
-  return 2;
+  if (hoveredMatchId === view.matchId) {
+    return view.isSelected ? 3.5 : 3;
+  }
+  if (view.isSelected) return 2.5;
+  return view.isComparison ? 1.5 : 2;
 }
 
 export function pickBrightSeasonMatchIds(
   views: TicketsSeasonMatchSeriesView[],
 ): Set<string> {
+  if (views.some((view) => view.isSelected)) {
+    return new Set(views.map((view) => view.matchId));
+  }
+
   if (views.length <= SEASON_MATCH_MAX_BRIGHT_LINES) {
     return new Set(views.map((view) => view.matchId));
   }

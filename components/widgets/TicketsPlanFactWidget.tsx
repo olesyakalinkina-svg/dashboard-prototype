@@ -17,6 +17,7 @@ import {
   getMerchTrendXAxisProps,
 } from "@/components/widgets/Charts";
 import { useFilterState } from "@/context/FilterContext";
+import { ChartScrollContainer } from "@/components/charts/ChartScrollContainer";
 import {
   ChartZoomHint,
   ChartZoomReferenceArea,
@@ -116,8 +117,8 @@ export function TicketsPlanFactWidget({
           </div>
         </div>
       </CardHeader>
-      <CardContent className="flex flex-1 flex-col">
-        <div
+      <CardContent className="flex min-w-0 flex-1 flex-col">
+        <ChartScrollContainer
           className={clsx(
             "min-h-[280px] flex-1 sm:min-h-[360px]",
             CHART_ZOOM_SURFACE_CLASS,
@@ -160,7 +161,7 @@ export function TicketsPlanFactWidget({
               />
             </LineChart>
           </ResponsiveContainer>
-        </div>
+        </ChartScrollContainer>
       </CardContent>
     </Card>
   );
