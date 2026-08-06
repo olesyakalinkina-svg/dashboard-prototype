@@ -109,8 +109,8 @@ export function TicketsSeasonMatchDynamicsWidget({
           />
         </div>
       </CardHeader>
-      <CardContent className="min-w-0">
-        <div className="mb-3 flex flex-wrap gap-2">
+      <CardContent className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="mb-3 flex shrink-0 flex-wrap gap-2">
           {SEASON_MATCH_QUICK_FILTERS.map((option) => (
             <button
               key={option.value}
@@ -130,27 +130,27 @@ export function TicketsSeasonMatchDynamicsWidget({
 
         {series.length === 0 ? (
           <div
-            className="flex items-center justify-center text-sm text-[var(--muted)]"
+            className="flex shrink-0 items-center justify-center text-sm text-[var(--muted)]"
             style={{ height: chartHeight }}
           >
             Нет матчей по выбранным фильтрам
           </div>
         ) : filteredViews.length === 0 ? (
           <div
-            className="flex items-center justify-center text-sm text-[var(--muted)]"
+            className="flex shrink-0 items-center justify-center text-sm text-[var(--muted)]"
             style={{ height: chartHeight }}
           >
             Нет матчей по выбранному фильтру
           </div>
         ) : chartRows.length === 0 ? (
           <div
-            className="flex items-center justify-center text-sm text-[var(--muted)]"
+            className="flex shrink-0 items-center justify-center text-sm text-[var(--muted)]"
             style={{ height: chartHeight }}
           >
             Нет данных для построения графика
           </div>
         ) : (
-          <div style={{ height: chartHeight }}>
+          <div className="shrink-0" style={{ height: chartHeight }}>
             <TicketsSeasonMatchChart
               rows={chartRows}
               views={filteredViews}

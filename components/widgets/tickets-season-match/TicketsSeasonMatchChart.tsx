@@ -186,13 +186,6 @@ export function TicketsSeasonMatchChart({
               tick={{ fontSize: 11, fill: "#8B8B8E" }}
               width={52}
               tickFormatter={formatSeasonMatchYAxisTick}
-              label={{
-                value: "Продажи билетов, тыс. ₽",
-                angle: -90,
-                position: "insideLeft",
-                offset: 8,
-                style: { fontSize: 11, fill: "#8B8B8E", fontWeight: 500 },
-              }}
             />
             <Tooltip
               content={<TicketsSeasonMatchTooltip views={visibleViews} />}

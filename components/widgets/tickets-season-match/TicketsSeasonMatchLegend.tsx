@@ -73,7 +73,7 @@ export function TicketsSeasonMatchLegend({
         onMouseEnter={() => onHoverSeries(view.matchId)}
         onMouseLeave={() => onHoverSeries(null)}
         className={clsx(
-          "inline-flex max-w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-[10px] transition-opacity",
+          "flex w-full min-w-0 items-center gap-2 rounded px-1.5 py-1.5 text-left text-sm transition-opacity lg:text-base",
           isHidden && "opacity-40",
           isHovered && "bg-[var(--background)]",
           view.isSelected && "font-medium",
@@ -81,7 +81,7 @@ export function TicketsSeasonMatchLegend({
       >
         <span
           className={clsx(
-            "h-0.5 w-3 shrink-0 rounded-full",
+            "h-1 w-5 shrink-0 rounded-full lg:h-1.5 lg:w-6",
             view.isComparison && "opacity-70",
           )}
           style={{ backgroundColor: view.color }}
@@ -94,26 +94,26 @@ export function TicketsSeasonMatchLegend({
   };
 
   return (
-    <div className="mt-3 hidden border-t border-[var(--border)] pt-3 md:block">
-      <div className="max-h-28 overflow-y-auto">
-        <div className="grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {comparisonMode ? (
-            <>
-              {primaryViews.map(renderLegendItem)}
-              {comparisonViews.length > 0 && (
-                <div className="col-span-full text-[10px] text-[var(--muted)]">
-                  {SEASON_MATCH_COMPARISON_LEGEND_LABEL}
-                </div>
-              )}
-              {comparisonViews.map(renderLegendItem)}
-            </>
-          ) : (
-            views.map(renderLegendItem)
-          )}
-          <div className="inline-flex items-center gap-1.5 px-1 py-0.5 text-[10px] text-[var(--muted)]">
-            <span className="inline-block h-2.5 w-2.5 rounded-full border-[3px] border-[#64748B] bg-white" />
-            <span>{SEASON_MATCH_PLAN_LEGEND_LABEL}</span>
-          </div>
+    <div className="mt-4 hidden min-h-0 flex-1 flex-col border-t border-[var(--border)] pt-4 md:flex">
+      <div
+        className="grid w-full flex-1 auto-rows-min grid-cols-2 content-start gap-x-5 gap-y-3 lg:grid-cols-3 xl:grid-cols-4"
+      >
+        {comparisonMode ? (
+          <>
+            {primaryViews.map(renderLegendItem)}
+            {comparisonViews.length > 0 && (
+              <div className="col-span-full pt-1 text-sm text-[var(--muted)] lg:text-base">
+                {SEASON_MATCH_COMPARISON_LEGEND_LABEL}
+              </div>
+            )}
+            {comparisonViews.map(renderLegendItem)}
+          </>
+        ) : (
+          views.map(renderLegendItem)
+        )}
+        <div className="flex w-full min-w-0 items-center gap-2 px-1.5 py-1.5 text-sm text-[var(--muted)] lg:text-base">
+          <span className="inline-block h-3.5 w-3.5 shrink-0 rounded-full border-[3.5px] border-[#64748B] bg-white lg:h-4 lg:w-4 lg:border-4" />
+          <span>{SEASON_MATCH_PLAN_LEGEND_LABEL}</span>
         </div>
       </div>
     </div>
