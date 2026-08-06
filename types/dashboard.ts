@@ -43,6 +43,7 @@ export type PriceZone =
   | "D3"
   | "D4"
   | "VIP";
+export type PriceZoneGroup = "A" | "B" | "C" | "D" | "VIP";
 export type OrderSource = "box_office" | "official_site" | "yandex_afisha";
 export type TimeGrouping = "day" | "week" | "month" | "quarter";
 
@@ -227,6 +228,16 @@ export type CombinedMatchSalesRow = {
   merchReceipts: number;
 };
 
+export type MatchSalesSeasonComparison = {
+  previousSeason: string;
+  totalRevenueChange: number;
+  ticketRevenueChange: number;
+  merchRevenueChange: number;
+  ticketsSoldChange: number;
+  fillRateChange: number;
+  matchCountChange: number;
+};
+
 export type MatchSalesKpiData = {
   totalRevenue: number;
   ticketRevenue: number;
@@ -234,6 +245,7 @@ export type MatchSalesKpiData = {
   ticketsSold: number;
   fillRate: number;
   matchCount: number;
+  seasonComparison?: MatchSalesSeasonComparison;
 };
 
 export type DashboardTab = "subscriptions" | "tickets" | "merch" | "matches";
@@ -393,7 +405,7 @@ export type TicketsSalesChannelTrendPoint = {
 export type TicketsPriceZoneTrendPoint = {
   period: string;
   sortKey: number;
-  zones: Record<PriceZone, number>;
+  groups: Record<PriceZoneGroup, number>;
 };
 
 export type MerchSalesSegmentTrendPoint = {

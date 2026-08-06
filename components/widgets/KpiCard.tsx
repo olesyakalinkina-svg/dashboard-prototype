@@ -116,37 +116,55 @@ export function MatchSalesKpiCards({
 }: {
   matchSalesKpis: MatchSalesKpiData;
 }) {
+  const sc = matchSalesKpis.seasonComparison;
+  const showSeasonComparison = Boolean(sc);
+  const seasonChangeLabel = sc ? `к сезону ${sc.previousSeason}` : undefined;
+
+  const kpiProps = { changeLabel: seasonChangeLabel };
+
   return (
     <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-6 xl:gap-2">
       <KpiCard
         title="Общая выручка"
         value={formatCurrency(matchSalesKpis.totalRevenue)}
-        hideTrend
+        change={sc?.totalRevenueChange}
+        hideTrend={!showSeasonComparison}
+        {...kpiProps}
       />
       <KpiCard
         title="Выручка от билетов"
         value={formatCurrency(matchSalesKpis.ticketRevenue)}
-        hideTrend
+        change={sc?.ticketRevenueChange}
+        hideTrend={!showSeasonComparison}
+        {...kpiProps}
       />
       <KpiCard
         title="Выручка от мерча"
         value={formatCurrency(matchSalesKpis.merchRevenue)}
-        hideTrend
+        change={sc?.merchRevenueChange}
+        hideTrend={!showSeasonComparison}
+        {...kpiProps}
       />
       <KpiCard
         title="Продано билетов"
         value={formatNumber(matchSalesKpis.ticketsSold)}
-        hideTrend
+        change={sc?.ticketsSoldChange}
+        hideTrend={!showSeasonComparison}
+        {...kpiProps}
       />
       <KpiCard
         title="Заполняемость"
         value={formatPercent(matchSalesKpis.fillRate)}
-        hideTrend
+        change={sc?.fillRateChange}
+        hideTrend={!showSeasonComparison}
+        {...kpiProps}
       />
       <KpiCard
         title="Матчей"
         value={formatNumber(matchSalesKpis.matchCount)}
-        hideTrend
+        change={sc?.matchCountChange}
+        hideTrend={!showSeasonComparison}
+        {...kpiProps}
       />
     </div>
   );

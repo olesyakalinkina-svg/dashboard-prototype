@@ -39,7 +39,7 @@ type DateRangePickerProps = {
 const WEEKDAY_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 
 function toIsoDate(date: Date): string {
-  return format(date, "yyyy-MM-dd");
+  return format(startOfDay(date), "yyyy-MM-dd");
 }
 
 function parseRangeDate(iso: string | null): Date | null {
@@ -76,13 +76,18 @@ export function DateRangePicker({
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+        setPendingFrom((pending) => {
+          if (pending) {
+            onChange({ from: pending, to: pending });
+          }
+          return null;
+        });
         setOpen(false);
-        setPendingFrom(null);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [onChange]);
 
   const fromDate = parseRangeDate(value.from);
   const toDate = parseRangeDate(value.to);
@@ -196,7 +201,16 @@ export function DateRangePicker({
   function handleOpen() {
     const anchor = fromDate ?? toDate ?? todayDate;
     setViewMonth(startOfMonth(anchor));
-    setPendingFrom(null);
+    if (open) {
+      setPendingFrom((pending) => {
+        if (pending) {
+          onChange({ from: pending, to: pending });
+        }
+        return null;
+      });
+    } else {
+      setPendingFrom(null);
+    }
     setOpen((prev) => !prev);
   }
 

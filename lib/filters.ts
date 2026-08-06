@@ -5,7 +5,6 @@ import {
   endOfDay,
   format,
   isSameDay,
-  parseISO,
   startOfDay,
   startOfMonth,
   startOfQuarter,
@@ -32,9 +31,12 @@ import {
 import {
   ORDER_SOURCE_LABELS,
   ALL_PRICE_ZONES,
+  ALL_PRICE_ZONE_GROUPS,
   NO_MATCHES_FILTER_VALUE,
   TICKET_TYPE_LABELS,
   TOURNAMENT_STAGE_OPTIONS,
+  getEffectiveTicketTimeGrouping,
+  getPriceZoneGroup,
   getPreviousSeason,
 } from "@/lib/ticket-filter-options";
 import {
@@ -54,7 +56,10 @@ import {
   LEGACY_TICKET_PLAN_AVG_PRICE,
   TICKET_PLAN_AVG_PRICE,
 } from "@/lib/ticket-plan";
-import { isDateInTournamentStage } from "@/lib/season-dates";
+import {
+  isDateInTournamentStage,
+  passesOrderDateRange,
+} from "@/lib/season-dates";
 import {
   matchSalesFiltersToMerchFilters,
   matchSalesFiltersToTicketFilters,
@@ -76,6 +81,7 @@ import type {
   MatchRevenuePoint,
   MatchSalesFilters,
   MatchSalesKpiData,
+  MatchSalesSeasonComparison,
   CombinedMatchSalesRow,
   MerchFilters,
   MerchMatchSalesRow,
@@ -87,6 +93,7 @@ import type {
   TicketsSalesChannelTrendPoint,
   TicketsPriceZoneTrendPoint,
   PriceZone,
+  PriceZoneGroup,
   MerchSalesPoint,
   MerchSalesSegment,
   MerchSalesSegmentTrendPoint,
@@ -179,17 +186,7 @@ function passesMerchOrderDate(
   tx: Transaction,
   orderDateRange: MerchFilters["orderDateRange"],
 ): boolean {
-  const { from, to } = orderDateRange;
-  if (!from && !to) return true;
-  if (from) {
-    const fromDate = startOfDay(parseISO(from));
-    if (tx.date < fromDate) return false;
-  }
-  if (to) {
-    const toDate = endOfDay(parseISO(to));
-    if (tx.date > toDate) return false;
-  }
-  return true;
+  return passesOrderDateRange(tx.date, orderDateRange);
 }
 
 function getDateCutoff(days: number): Date {
@@ -659,7 +656,7 @@ export function filterMerchTransactions(
   merchFilters: MerchFilters,
   options?: { useSeasonRange?: boolean },
 ): Transaction[] {
-  const useSeasonRange = options?.useSeasonRange ?? false;
+  const useSeasonRange = options?.useSeasonRange ?? true;
   if (filterPassCache) {
     const key = merchFilterCacheKey(filters, merchFilters, useSeasonRange);
     const cached = filterPassCache.merch.get(key);
@@ -1669,6 +1666,7 @@ export function computeTicketsPlanFactTrend(
   filters: DashboardFilters,
   ticketFilters: TicketFilters,
 ): PlanFactTrendPoint[] {
+  const timeGrouping = getEffectiveTicketTimeGrouping(ticketFilters);
   const factRevenueMap = new Map<string, { sortKey: number; value: number }>();
   const factTicketsMap = new Map<string, { sortKey: number; value: number }>();
   const planRevenueMap = new Map<string, { sortKey: number; value: number }>();
@@ -1678,13 +1676,13 @@ export function computeTicketsPlanFactTrend(
     addPlanFactValue(
       factRevenueMap,
       tx.date,
-      ticketFilters.timeGrouping,
+      timeGrouping,
       tx.amount,
     );
     addPlanFactValue(
       factTicketsMap,
       tx.date,
-      ticketFilters.timeGrouping,
+      timeGrouping,
       tx.quantity,
     );
   }
@@ -1709,13 +1707,13 @@ export function computeTicketsPlanFactTrend(
       addPlanFactValue(
         planTicketsMap,
         saleDay,
-        ticketFilters.timeGrouping,
+        timeGrouping,
         dailyPlanTickets,
       );
       addPlanFactValue(
         planRevenueMap,
         saleDay,
-        ticketFilters.timeGrouping,
+        timeGrouping,
         dailyPlanRevenue,
       );
     }
@@ -2158,7 +2156,7 @@ export function computeTicketsSalesChannelTrend(
   ticketFilters: TicketFilters,
 ): TicketsSalesChannelTrendPoint[] {
   const txs = filterTicketTransactions(filters, ticketFilters);
-  const timeGrouping = ticketFilters.timeGrouping;
+  const timeGrouping = getEffectiveTicketTimeGrouping(ticketFilters);
   const activeSources =
     ticketFilters.orderSource !== "all"
       ? [ticketFilters.orderSource]
@@ -2210,46 +2208,50 @@ export function computeTicketsPriceZoneTrend(
   ticketFilters: TicketFilters,
 ): TicketsPriceZoneTrendPoint[] {
   const txs = filterTicketTransactions(filters, ticketFilters);
-  const timeGrouping = ticketFilters.timeGrouping;
-  const activeZones: PriceZone[] =
+  const timeGrouping = getEffectiveTicketTimeGrouping(ticketFilters);
+  const activeGroups: PriceZoneGroup[] =
     ticketFilters.priceZone !== "all"
-      ? [ticketFilters.priceZone]
-      : ALL_PRICE_ZONES;
+      ? [getPriceZoneGroup(ticketFilters.priceZone)]
+      : ALL_PRICE_ZONE_GROUPS;
 
   const periodMap = new Map<
     string,
-    { sortKey: number; zones: Map<PriceZone, number> }
+    { sortKey: number; groups: Map<PriceZoneGroup, number> }
   >();
 
   for (const tx of txs) {
     if (tx.ticketType === "parking" || !tx.priceZone) continue;
-    if (!activeZones.includes(tx.priceZone)) continue;
+    const group = getPriceZoneGroup(tx.priceZone);
+    if (!activeGroups.includes(group)) continue;
 
     const { period, sortKey } = periodKeyAndSort(tx.date, timeGrouping);
     const entry =
       periodMap.get(period) ??
       ({
         sortKey,
-        zones: new Map(
-          activeZones.map((zone) => [zone, 0] as const),
+        groups: new Map(
+          activeGroups.map((g) => [g, 0] as const),
         ),
-      } as { sortKey: number; zones: Map<PriceZone, number> });
+      } as { sortKey: number; groups: Map<PriceZoneGroup, number> });
 
     const delta = tx.isReturn ? -tx.amount : tx.amount;
-    entry.zones.set(
-      tx.priceZone,
-      (entry.zones.get(tx.priceZone) ?? 0) + delta,
+    entry.groups.set(
+      group,
+      (entry.groups.get(group) ?? 0) + delta,
     );
     periodMap.set(period, entry);
   }
 
   return Array.from(periodMap.entries())
-    .map(([period, { sortKey, zones }]) => ({
+    .map(([period, { sortKey, groups }]) => ({
       period,
       sortKey,
-      zones: Object.fromEntries(
-        activeZones.map((zone) => [zone, Math.max(0, zones.get(zone) ?? 0)]),
-      ) as Record<PriceZone, number>,
+      groups: Object.fromEntries(
+        activeGroups.map((group) => [
+          group,
+          Math.max(0, groups.get(group) ?? 0),
+        ]),
+      ) as Record<PriceZoneGroup, number>,
     }))
     .sort((a, b) => a.sortKey - b.sortKey);
 }
@@ -2905,10 +2907,19 @@ export function computeCombinedMatchSalesTable(
   return rows.sort((a, b) => b.date.getTime() - a.date.getTime());
 }
 
-export function computeMatchSalesKpis(
+type MatchSalesKpiMetrics = {
+  totalRevenue: number;
+  ticketRevenue: number;
+  merchRevenue: number;
+  ticketsSold: number;
+  fillRate: number;
+  matchCount: number;
+};
+
+function computeMatchSalesKpiMetrics(
   filters: DashboardFilters,
   matchSalesFilters: MatchSalesFilters,
-): MatchSalesKpiData {
+): MatchSalesKpiMetrics {
   const rows = computeCombinedMatchSalesTable(filters, matchSalesFilters);
 
   const ticketRevenue = rows.reduce((sum, row) => sum + row.ticketRevenue, 0);
@@ -2925,6 +2936,55 @@ export function computeMatchSalesKpis(
     ticketsSold,
     fillRate,
     matchCount: rows.length,
+  };
+}
+
+function buildMatchSalesSeasonComparison(
+  filters: DashboardFilters,
+  current: MatchSalesKpiMetrics,
+  matchSalesFilters: MatchSalesFilters,
+): MatchSalesSeasonComparison | undefined {
+  if (matchSalesFilters.season === "all") {
+    return undefined;
+  }
+
+  const previousSeason = getPreviousSeason(matchSalesFilters.season);
+  if (!previousSeason) return undefined;
+
+  const prevFilters: MatchSalesFilters = {
+    ...matchSalesFilters,
+    season: previousSeason,
+  };
+  const prevMetrics = computeMatchSalesKpiMetrics(filters, prevFilters);
+
+  return {
+    previousSeason,
+    totalRevenueChange: pctChange(current.totalRevenue, prevMetrics.totalRevenue),
+    ticketRevenueChange: pctChange(
+      current.ticketRevenue,
+      prevMetrics.ticketRevenue,
+    ),
+    merchRevenueChange: pctChange(current.merchRevenue, prevMetrics.merchRevenue),
+    ticketsSoldChange: pctChange(current.ticketsSold, prevMetrics.ticketsSold),
+    fillRateChange: pctChange(current.fillRate, prevMetrics.fillRate),
+    matchCountChange: pctChange(current.matchCount, prevMetrics.matchCount),
+  };
+}
+
+export function computeMatchSalesKpis(
+  filters: DashboardFilters,
+  matchSalesFilters: MatchSalesFilters,
+): MatchSalesKpiData {
+  const metrics = computeMatchSalesKpiMetrics(filters, matchSalesFilters);
+  const seasonComparison = buildMatchSalesSeasonComparison(
+    filters,
+    metrics,
+    matchSalesFilters,
+  );
+
+  return {
+    ...metrics,
+    seasonComparison,
   };
 }
 

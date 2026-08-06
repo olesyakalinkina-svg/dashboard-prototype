@@ -7,8 +7,8 @@ import type { DashboardTab } from "@/types/dashboard";
 const TABS: { id: DashboardTab; label: string }[] = [
   { id: "tickets", label: "Билеты" },
   { id: "merch", label: "Мерч" },
-  { id: "matches", label: "Матчи" },
   { id: "subscriptions", label: "Абонементы" },
+  { id: "matches", label: "Матчи" },
 ];
 
 export function DashboardTabs() {

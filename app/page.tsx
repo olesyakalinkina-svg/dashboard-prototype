@@ -281,12 +281,12 @@ function DashboardContent() {
               <TicketsPlanFactWidget data={ticketsPlanFactTrend} />
               <TicketsSalesChannelsTrendWidget data={ticketsSalesChannelTrend} />
             </div>
-            <TicketsPriceZoneTrendWidget data={ticketsPriceZoneTrend} />
             <TicketsBreakdownWidget
               ticketTypeSales={ticketTypeSales}
               priceZoneSales={priceZoneSales}
               orderSourceSales={orderSourceSales}
             />
+            <TicketsPriceZoneTrendWidget data={ticketsPriceZoneTrend} />
           </>
         )}
 

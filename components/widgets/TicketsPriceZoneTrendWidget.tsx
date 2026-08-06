@@ -26,12 +26,18 @@ import {
 import { useFilterState } from "@/context/FilterContext";
 import { useChartAreaZoom } from "@/hooks/useChartAreaZoom";
 import {
-  ALL_PRICE_ZONES,
-  PRICE_ZONE_COLORS,
+  ALL_PRICE_ZONE_GROUPS,
+  PRICE_ZONE_GROUP_COLORS,
+  getEffectiveTicketTimeGrouping,
+  getPriceZoneGroup,
 } from "@/lib/ticket-filter-options";
 import { formatCurrency } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import type { PriceZone, TicketsPriceZoneTrendPoint, TimeGrouping } from "@/types/dashboard";
+import type {
+  PriceZoneGroup,
+  TicketsPriceZoneTrendPoint,
+  TimeGrouping,
+} from "@/types/dashboard";
 
 const TIME_GROUPING_OPTIONS: { value: TimeGrouping; label: string }[] = [
   { value: "day", label: "Дни" },
@@ -76,29 +82,29 @@ export function TicketsPriceZoneTrendWidget({
   data: TicketsPriceZoneTrendPoint[];
 }) {
   const { ticketFilters, setTicketFilters } = useFilterState();
-  const timeGrouping = ticketFilters.timeGrouping;
+  const timeGrouping = getEffectiveTicketTimeGrouping(ticketFilters);
 
-  const activeZones = useMemo(() => {
+  const activeGroups = useMemo(() => {
     if (ticketFilters.priceZone !== "all") {
-      return [ticketFilters.priceZone];
+      return [getPriceZoneGroup(ticketFilters.priceZone)];
     }
 
-    const zoneSet = new Set<PriceZone>();
+    const groupSet = new Set<PriceZoneGroup>();
     for (const point of data) {
-      for (const [zone, value] of Object.entries(point.zones)) {
+      for (const [group, value] of Object.entries(point.groups)) {
         if (value > 0) {
-          zoneSet.add(zone as PriceZone);
+          groupSet.add(group as PriceZoneGroup);
         }
       }
     }
-    return ALL_PRICE_ZONES.filter((zone) => zoneSet.has(zone));
+    return ALL_PRICE_ZONE_GROUPS.filter((group) => groupSet.has(group));
   }, [ticketFilters.priceZone, data]);
 
   const chartData = useMemo(
     () =>
       data.map((point) => ({
         period: getMerchTrendPeriodLabel(point, timeGrouping),
-        ...point.zones,
+        ...point.groups,
       })),
     [data, timeGrouping],
   );
@@ -110,10 +116,10 @@ export function TicketsPriceZoneTrendWidget({
     selectionArea,
     yDomain,
     chartHandlers,
-  } = useChartAreaZoom(chartData, activeZones, [data, timeGrouping, activeZones]);
+  } = useChartAreaZoom(chartData, activeGroups, [data, timeGrouping, activeGroups]);
 
   return (
-    <Card className="flex h-full min-w-0 flex-col">
+    <Card className="min-w-0">
       <CardHeader>
         <div className="min-w-0">
           <CardTitle>Динамика продаж по секторам</CardTitle>
@@ -140,15 +146,15 @@ export function TicketsPriceZoneTrendWidget({
           </div>
         </div>
       </CardHeader>
-      <CardContent className="flex min-w-0 flex-1 flex-col">
-        {chartData.length === 0 || activeZones.length === 0 ? (
-          <div className="flex min-h-[280px] flex-1 items-center justify-center text-sm text-[var(--muted)] sm:min-h-[360px]">
+      <CardContent className="min-w-0">
+        {chartData.length === 0 || activeGroups.length === 0 ? (
+          <div className="flex h-[280px] items-center justify-center text-sm text-[var(--muted)] sm:h-[360px]">
             Нет данных по выбранным секторам
           </div>
         ) : (
           <ChartScrollContainer
             className={clsx(
-              "min-h-[280px] flex-1 sm:min-h-[360px]",
+              "h-[280px] sm:h-[360px]",
               CHART_ZOOM_SURFACE_CLASS,
             )}
           >
@@ -178,13 +184,13 @@ export function TicketsPriceZoneTrendWidget({
                 <Tooltip content={<ZoneTrendTooltip />} />
                 <Legend wrapperStyle={{ fontSize: 11 }} iconSize={10} />
                 <ChartZoomReferenceArea selectionArea={selectionArea} />
-                {activeZones.map((zone) => (
+                {activeGroups.map((group) => (
                   <Line
-                    key={zone}
+                    key={group}
                     type="monotone"
-                    dataKey={zone}
-                    name={zone}
-                    stroke={PRICE_ZONE_COLORS[zone]}
+                    dataKey={group}
+                    name={group}
+                    stroke={PRICE_ZONE_GROUP_COLORS[group]}
                     strokeWidth={2}
                     dot={false}
                     isAnimationActive={false}

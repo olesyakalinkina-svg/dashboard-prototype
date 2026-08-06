@@ -45,6 +45,7 @@ import {
 import {
   buildMatchFilterOptions,
   DEFAULT_TICKET_FILTERS,
+  getEffectiveTicketTimeGrouping,
 } from "@/lib/ticket-filter-options";
 import { DEFAULT_MERCH_FILTERS } from "@/lib/merch-filter-options";
 import { DEFAULT_MATCH_SALES_FILTERS } from "@/lib/match-sales-filter-options";
@@ -396,7 +397,16 @@ export function FilterProvider({ children }: { children: ReactNode }) {
 
   const setTicketFilters = useCallback((patch: Partial<TicketFilters>) => {
     startTransition(() => {
-      setTicketFiltersState((prev) => ({ ...prev, ...patch }));
+      setTicketFiltersState((prev) => {
+        const next = { ...prev, ...patch };
+        const effectiveTimeGrouping = getEffectiveTicketTimeGrouping(next);
+        // Persist month→day only; other groupings stay so they restore when
+        // purchase-date or single-match overrides are cleared.
+        if (effectiveTimeGrouping === "day" && next.timeGrouping === "month") {
+          next.timeGrouping = "day";
+        }
+        return next;
+      });
     });
   }, []);
 
@@ -591,7 +601,13 @@ export function FilterProvider({ children }: { children: ReactNode }) {
       filters,
       ticketFiltersForData,
       merchFiltersForData,
+      merchFiltersForData.orderDateRange.from,
+      merchFiltersForData.orderDateRange.to,
+      ticketFiltersForData.transactionDateRange.from,
+      ticketFiltersForData.transactionDateRange.to,
       matchSalesFiltersForData,
+      matchSalesFiltersForData.purchaseDateRange.from,
+      matchSalesFiltersForData.purchaseDateRange.to,
       subscriptionFilters,
       activeTab,
     ],

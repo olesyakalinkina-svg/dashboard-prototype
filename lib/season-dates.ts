@@ -90,6 +90,20 @@ export function isDateInTournamentStage(
   });
 }
 
+/** Whether a transaction date falls within an order/transaction date range. */
+export function passesOrderDateRange(
+  date: Date,
+  range: MerchOrderDateRange,
+): boolean {
+  const { from, to } = range;
+  if (!from && !to) return true;
+
+  const day = format(startOfDay(date), "yyyy-MM-dd");
+  if (from && day < from) return false;
+  if (to && day > to) return false;
+  return true;
+}
+
 /** Clamp an order/transaction date range to season calendar bounds. */
 export function clampDateRangeToBounds(
   range: MerchOrderDateRange,

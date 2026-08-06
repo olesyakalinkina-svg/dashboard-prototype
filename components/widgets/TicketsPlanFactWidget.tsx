@@ -26,6 +26,7 @@ import {
 } from "@/components/charts/ChartZoom";
 import { useChartAreaZoom } from "@/hooks/useChartAreaZoom";
 import { formatCurrency } from "@/lib/format";
+import { getEffectiveTicketTimeGrouping } from "@/lib/ticket-filter-options";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import type { PlanFactTrendPoint, TimeGrouping } from "@/types/dashboard";
 
@@ -68,7 +69,7 @@ export function TicketsPlanFactWidget({
   data: PlanFactTrendPoint[];
 }) {
   const { ticketFilters, setTicketFilters } = useFilterState();
-  const timeGrouping = ticketFilters.timeGrouping;
+  const timeGrouping = getEffectiveTicketTimeGrouping(ticketFilters);
 
   const chartData = useMemo(
     () =>

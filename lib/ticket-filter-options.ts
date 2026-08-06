@@ -7,6 +7,7 @@ import type {
   MatchClass,
   OrderSource,
   PriceZone,
+  PriceZoneGroup,
   TicketFilters,
   TicketType,
   TimeGrouping,
@@ -29,6 +30,21 @@ export const ALL_PRICE_ZONES: PriceZone[] = [
   "D4",
   "VIP",
 ];
+
+export const ALL_PRICE_ZONE_GROUPS: PriceZoneGroup[] = [
+  "A",
+  "B",
+  "C",
+  "D",
+  "VIP",
+];
+
+export function getPriceZoneGroup(zone: PriceZone): PriceZoneGroup {
+  if (zone === "A" || zone === "VIP") return zone;
+  if (zone.startsWith("B")) return "B";
+  if (zone.startsWith("C")) return "C";
+  return "D";
+}
 
 export const DEFAULT_TICKET_TRANSACTION_DATE_RANGE: TicketFilters["transactionDateRange"] =
   {
@@ -57,6 +73,40 @@ export const DEFAULT_TICKET_FILTERS: TicketFilters = {
   transactionDateRange: DEFAULT_TICKET_TRANSACTION_DATE_RANGE,
   timeGrouping: "month",
 };
+
+export function hasTransactionDateRangeFilter(
+  transactionDateRange: TicketFilters["transactionDateRange"],
+): boolean {
+  return (
+    transactionDateRange.from !== null || transactionDateRange.to !== null
+  );
+}
+
+/**
+ * Single-match ticket sales fit in ~10–16 days; monthly grouping collapses to
+ * one bucket and Recharts cannot draw a line from a single point.
+ * Purchase-date filter always uses daily buckets for meaningful trend lines.
+ */
+export function getEffectiveTicketTimeGrouping(
+  ticketFilters: Pick<
+    TicketFilters,
+    "matchId" | "timeGrouping" | "transactionDateRange"
+  >,
+): TimeGrouping {
+  if (hasTransactionDateRangeFilter(ticketFilters.transactionDateRange)) {
+    return "day";
+  }
+
+  const singleMatchSelected =
+    ticketFilters.matchId.length === 1 &&
+    ticketFilters.matchId[0] !== NO_MATCHES_FILTER_VALUE;
+
+  if (singleMatchSelected && ticketFilters.timeGrouping === "month") {
+    return "day";
+  }
+
+  return ticketFilters.timeGrouping;
+}
 
 export function buildMatchFilterOptions(
   matchList: Match[],
@@ -225,5 +275,13 @@ export const PRICE_ZONE_COLORS: Record<PriceZone, string> = {
   D2: "#C2410C",
   D3: "#FB923C",
   D4: "#FDBA74",
+  VIP: "#7C3AED",
+};
+
+export const PRICE_ZONE_GROUP_COLORS: Record<PriceZoneGroup, string> = {
+  A: "#DC2626",
+  B: "#0284C7",
+  C: "#059669",
+  D: "#C2410C",
   VIP: "#7C3AED",
 };

@@ -29,6 +29,7 @@ import {
   ALL_ORDER_SOURCES,
   ORDER_SOURCE_COLORS,
   ORDER_SOURCE_LABELS,
+  getEffectiveTicketTimeGrouping,
 } from "@/lib/ticket-filter-options";
 import { formatCurrency } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -77,7 +78,7 @@ export function TicketsSalesChannelsTrendWidget({
   data: TicketsSalesChannelTrendPoint[];
 }) {
   const { ticketFilters, setTicketFilters } = useFilterState();
-  const timeGrouping = ticketFilters.timeGrouping;
+  const timeGrouping = getEffectiveTicketTimeGrouping(ticketFilters);
 
   const activeSources = useMemo(() => {
     if (ticketFilters.orderSource !== "all") {

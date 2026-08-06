@@ -30,6 +30,8 @@ import {
   getMatchPlanRevenue,
   getMatchTicketPlanProfile,
   getKhlPlanAvgPrice,
+  getMhlPlanAvgPrice,
+  getVhlPlanAvgPrice,
   LEGACY_TICKET_PLAN_AVG_PRICE,
   MAIN_ARENA_CAPACITY,
   MHL_ARENA_CAPACITY,
@@ -215,6 +217,28 @@ const KHL_MATCH_CLASS_BY_OPPONENT: Record<string, MatchClass> = {
   Авангард: "class_1",
   ЦСКА: "class_2",
   СКА: "class_1",
+};
+
+const VHL_MATCH_CLASS_BY_OPPONENT: Record<string, MatchClass> = {
+  Торос: "class_1",
+  Нефтяник: "class_1",
+  Рубин: "class_2",
+  Ижсталь: "class_2",
+  Химик: "class_2",
+  Звезда: "class_3",
+  "СКА-ВМФ": "class_3",
+  Дизель: "class_3",
+};
+
+const MHL_MATCH_CLASS_BY_OPPONENT: Record<string, MatchClass> = {
+  "Красная Армия": "class_1",
+  Алмаз: "class_1",
+  Чайка: "class_2",
+  "СКА-1946": "class_2",
+  "МХК Спартак": "class_2",
+  Капитан: "class_3",
+  Локо: "class_3",
+  Молот: "class_3",
 };
 
 const CURRENT_SEASON_SCHEDULES: LeagueSchedule[] = [
@@ -457,31 +481,39 @@ function seededRandom(seed: number): () => number {
 const rand = seededRandom(42);
 
 function getBaseMatchClass(opponent: string, league: League): MatchClass {
-  if (league !== "KHL") return "class_3";
-  return KHL_MATCH_CLASS_BY_OPPONENT[opponent] ?? "class_2";
+  switch (league) {
+    case "VHL":
+      return VHL_MATCH_CLASS_BY_OPPONENT[opponent] ?? "class_2";
+    case "MHL":
+      return MHL_MATCH_CLASS_BY_OPPONENT[opponent] ?? "class_2";
+    default:
+      return KHL_MATCH_CLASS_BY_OPPONENT[opponent] ?? "class_2";
+  }
 }
 
-/** KHL matches in the playoff window: later half become class «Плей-офф». */
+/** Matches in the playoff window: later half become class «Плей-офф». */
 function assignPlayoffClasses(matches: Match[]): void {
   const seasonBounds = new Map(
     SEASON_DEFINITIONS.map((def) => [def.season, def.end] as const),
   );
 
   for (const [season, seasonEnd] of seasonBounds) {
-    const candidates = matches
-      .filter(
-        (match) =>
-          match.league === "KHL" &&
-          match.season === season &&
-          isInPlayoffWindow(match.date, seasonEnd),
-      )
-      .sort((left, right) => left.date.getTime() - right.date.getTime());
+    for (const league of ["KHL", "VHL", "MHL"] as const) {
+      const candidates = matches
+        .filter(
+          (match) =>
+            match.league === league &&
+            match.season === season &&
+            isInPlayoffWindow(match.date, seasonEnd),
+        )
+        .sort((left, right) => left.date.getTime() - right.date.getTime());
 
-    if (candidates.length === 0) continue;
+      if (candidates.length === 0) continue;
 
-    const playoffCount = Math.max(1, Math.ceil(candidates.length / 2));
-    for (const match of candidates.slice(-playoffCount)) {
-      match.matchClass = "playoff";
+      const playoffCount = Math.max(1, Math.ceil(candidates.length / 2));
+      for (const match of candidates.slice(-playoffCount)) {
+        match.matchClass = "playoff";
+      }
     }
   }
 }
@@ -768,9 +800,15 @@ function getLeagueZonePrice(
 ): number {
   switch (league) {
     case "VHL":
-      return Math.round(ZONE_PRICES[zone] * (1100 / TICKET_PLAN_AVG_PRICE));
+      return Math.round(
+        ZONE_PRICES[zone] *
+          (getVhlPlanAvgPrice(matchClass) / TICKET_PLAN_AVG_PRICE),
+      );
     case "MHL":
-      return Math.round(ZONE_PRICES[zone] * (700 / TICKET_PLAN_AVG_PRICE));
+      return Math.round(
+        ZONE_PRICES[zone] *
+          (getMhlPlanAvgPrice(matchClass) / TICKET_PLAN_AVG_PRICE),
+      );
     default:
       return Math.round(
         ZONE_PRICES[zone] *
