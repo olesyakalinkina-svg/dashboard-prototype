@@ -3,7 +3,7 @@
 import { RefreshCw } from "lucide-react";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { useFilterState } from "@/context/FilterContext";
-import { MOCK_TODAY } from "@/lib/mock/hockey";
+import { MOCK_TODAY } from "@/lib/mock/constants";
 import { Button } from "@/components/ui/Button";
 
 export function DashboardHeader() {

@@ -8,12 +8,38 @@ import { DashboardTabs } from "@/components/layout/DashboardTabs";
 import { FilterBar } from "@/components/layout/FilterBar";
 import { MerchKpiCards, MatchSalesKpiCards, TabKpiCards } from "@/components/widgets/KpiCard";
 import { ChartSkeleton } from "@/components/ui/ChartSkeleton";
-import {
-  CombinedMatchSalesTable,
-  MerchMatchSalesTable,
-  MerchSkuSalesTable,
-  ResponsiveMatchSalesTable,
-} from "@/components/widgets/DataTableWidget";
+
+const ResponsiveMatchSalesTable = dynamic(
+  () =>
+    import("@/components/widgets/DataTableWidget").then((mod) => ({
+      default: mod.ResponsiveMatchSalesTable,
+    })),
+  { loading: () => <ChartSkeleton height={360} /> },
+);
+
+const CombinedMatchSalesTable = dynamic(
+  () =>
+    import("@/components/widgets/DataTableWidget").then((mod) => ({
+      default: mod.CombinedMatchSalesTable,
+    })),
+  { loading: () => <ChartSkeleton height={360} /> },
+);
+
+const MerchMatchSalesTable = dynamic(
+  () =>
+    import("@/components/widgets/DataTableWidget").then((mod) => ({
+      default: mod.MerchMatchSalesTable,
+    })),
+  { loading: () => <ChartSkeleton height={360} /> },
+);
+
+const MerchSkuSalesTable = dynamic(
+  () =>
+    import("@/components/widgets/DataTableWidget").then((mod) => ({
+      default: mod.MerchSkuSalesTable,
+    })),
+  { loading: () => <ChartSkeleton height={360} /> },
+);
 
 const MatchRevenueChart = dynamic(
   () =>

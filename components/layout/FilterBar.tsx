@@ -1,10 +1,39 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useFilterState } from "@/context/FilterContext";
-import { TicketsFilterBar } from "@/components/layout/TicketsFilterBar";
-import { MerchFilterBar } from "@/components/layout/MerchFilterBar";
-import { MatchSalesFilterBar } from "@/components/layout/MatchSalesFilterBar";
-import { SubscriptionsFilterBar } from "@/components/layout/SubscriptionsFilterBar";
+
+const TicketsFilterBar = dynamic(
+  () =>
+    import("@/components/layout/TicketsFilterBar").then((mod) => ({
+      default: mod.TicketsFilterBar,
+    })),
+  { ssr: false },
+);
+
+const MerchFilterBar = dynamic(
+  () =>
+    import("@/components/layout/MerchFilterBar").then((mod) => ({
+      default: mod.MerchFilterBar,
+    })),
+  { ssr: false },
+);
+
+const MatchSalesFilterBar = dynamic(
+  () =>
+    import("@/components/layout/MatchSalesFilterBar").then((mod) => ({
+      default: mod.MatchSalesFilterBar,
+    })),
+  { ssr: false },
+);
+
+const SubscriptionsFilterBar = dynamic(
+  () =>
+    import("@/components/layout/SubscriptionsFilterBar").then((mod) => ({
+      default: mod.SubscriptionsFilterBar,
+    })),
+  { ssr: false },
+);
 
 export function FilterBar() {
   const { activeTab } = useFilterState();

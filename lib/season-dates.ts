@@ -5,8 +5,8 @@ import {
   MOCK_TODAY,
   SEASON_END,
   SEASON_START,
-  getPlayoffWindowStart,
-} from "@/lib/mock/hockey";
+} from "@/lib/mock/constants";
+import { getPlayoffWindowStart } from "@/lib/mock/hockey-generator";
 import type { MerchOrderDateRange, TournamentStage } from "@/types/dashboard";
 
 const SEASON_DATE_BOUNDS: Record<string, { min: Date; max: Date }> = {

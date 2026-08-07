@@ -36,7 +36,7 @@ import {
   clampDateRangeToBounds,
   getPurchaseDateBounds,
 } from "@/lib/season-dates";
-import { MOCK_TODAY } from "@/lib/mock/hockey";
+import { MOCK_TODAY } from "@/lib/mock/constants";
 import { countActiveTicketFilters } from "@/lib/filter-count";
 import { useMemo, type ReactNode } from "react";
 

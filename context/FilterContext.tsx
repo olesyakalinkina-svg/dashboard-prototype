@@ -53,6 +53,7 @@ import {
 } from "@/lib/merch-filter-options";
 import { DEFAULT_MATCH_SALES_FILTERS } from "@/lib/match-sales-filter-options";
 import { DEFAULT_SUBSCRIPTION_FILTERS } from "@/lib/subscription-filter-options";
+import { isMockDataReady, loadMockData } from "@/lib/mock/data-store";
 import {
   computeSeasonBenchmark,
   getInitialSeasonBenchmarkParams,
@@ -505,10 +506,31 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     useState<SubscriptionFilters>(DEFAULT_SUBSCRIPTION_FILTERS);
   const [activeTab, setActiveTabState] = useState<DashboardTab>("tickets");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [dataReady, setDataReady] = useState(isMockDataReady());
+  const [dataError, setDataError] = useState<string | null>(null);
 
   useEffect(() => {
     setLastUpdated(new Date());
   }, []);
+
+  useEffect(() => {
+    if (dataReady) return;
+    let cancelled = false;
+    loadMockData()
+      .then(() => {
+        if (!cancelled) setDataReady(true);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setDataError(
+            error instanceof Error ? error.message : "Failed to load dashboard data",
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dataReady]);
 
   const setDateRange = useCallback((dateRange: DateRangePreset) => {
     startTransition(() => {
@@ -601,10 +623,13 @@ export function FilterProvider({ children }: { children: ReactNode }) {
 
   const ticketMatchOptions = useMemo(
     () =>
-      buildMatchFilterOptions(
-        filterMatchesByTicketFilters({ ...ticketFilters, matchId: [] }),
-      ),
+      dataReady
+        ? buildMatchFilterOptions(
+            filterMatchesByTicketFilters({ ...ticketFilters, matchId: [] }),
+          )
+        : [],
     [
+      dataReady,
       ticketFilters.season,
       ticketFilters.league,
       ticketFilters.tournamentStage,
@@ -616,10 +641,13 @@ export function FilterProvider({ children }: { children: ReactNode }) {
 
   const merchMatchOptions = useMemo(
     () =>
-      buildMatchFilterOptions(
-        filterMatchesByMerchFilters({ ...merchFilters, matchId: [] }),
-      ),
+      dataReady
+        ? buildMatchFilterOptions(
+            filterMatchesByMerchFilters({ ...merchFilters, matchId: [] }),
+          )
+        : [],
     [
+      dataReady,
       merchFilters.season,
       merchFilters.league,
       merchFilters.tournamentStage,
@@ -629,10 +657,16 @@ export function FilterProvider({ children }: { children: ReactNode }) {
 
   const matchSalesMatchOptions = useMemo(
     () =>
-      buildMatchFilterOptions(
-        filterMatchesByMatchSalesFilters({ ...matchSalesFilters, matchId: [] }),
-      ),
+      dataReady
+        ? buildMatchFilterOptions(
+            filterMatchesByMatchSalesFilters({
+              ...matchSalesFilters,
+              matchId: [],
+            }),
+          )
+        : [],
     [
+      dataReady,
       matchSalesFilters.season,
       matchSalesFilters.league,
       matchSalesFilters.tournamentStage,
@@ -774,37 +808,37 @@ export function FilterProvider({ children }: { children: ReactNode }) {
 
   const ticketsTabCachedData = useMemo(
     () =>
-      activeTab === "tickets"
+      dataReady && activeTab === "tickets"
         ? computeTicketsTabDataCached(filters, ticketFiltersForStableData)
         : null,
-    [activeTab, filters, ticketFiltersForStableData],
+    [dataReady, activeTab, filters, ticketFiltersForStableData],
   );
 
   const merchTabCachedData = useMemo(
     () =>
-      activeTab === "merch"
+      dataReady && activeTab === "merch"
         ? computeMerchTabDataCached(filters, merchFiltersForStableData)
         : null,
-    [activeTab, filters, merchFiltersForStableData],
+    [dataReady, activeTab, filters, merchFiltersForStableData],
   );
 
   const subscriptionsTabCachedData = useMemo(
     () =>
-      activeTab === "subscriptions"
+      dataReady && activeTab === "subscriptions"
         ? computeSubscriptionsTabDataCached(
             filters,
             subscriptionFiltersForStableData,
           )
         : null,
-    [activeTab, filters, subscriptionFiltersForStableData],
+    [dataReady, activeTab, filters, subscriptionFiltersForStableData],
   );
 
   const matchesTabData = useMemo(
     () =>
-      activeTab === "matches"
+      dataReady && activeTab === "matches"
         ? computeMatchesTabData(filters, matchSalesFiltersForData)
         : null,
-    [activeTab, filters, matchSalesFiltersForData],
+    [dataReady, activeTab, filters, matchSalesFiltersForData],
   );
 
   const effectiveTicketTimeGrouping = getEffectiveTicketTimeGrouping(
@@ -886,7 +920,20 @@ export function FilterProvider({ children }: { children: ReactNode }) {
   return (
     <FilterStateContext.Provider value={stateValue}>
       <FilterDataContext.Provider value={dataValue}>
-        {children}
+        {!dataReady ? (
+          <div className="flex min-h-screen items-center justify-center bg-[var(--background)] p-6">
+            {dataError ? (
+              <p className="text-sm text-red-600">{dataError}</p>
+            ) : (
+              <div className="flex flex-col items-center gap-3">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--foreground)]" />
+                <p className="text-sm text-[var(--muted)]">Загрузка данных…</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          children
+        )}
       </FilterDataContext.Provider>
     </FilterStateContext.Provider>
   );

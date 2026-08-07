@@ -22,7 +22,7 @@ import {
   clampDateRangeToBounds,
   getPurchaseDateBounds,
 } from "@/lib/season-dates";
-import { MOCK_TODAY } from "@/lib/mock/hockey";
+import { MOCK_TODAY } from "@/lib/mock/constants";
 import { countActiveMerchFilters } from "@/lib/filter-count";
 import type {
   League,

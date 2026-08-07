@@ -16,17 +16,17 @@ import {
   TICKET_SALES_WINDOW_MAX_DAYS,
   getMatchTicketSalesWindowDays,
 } from "@/lib/ticket-sales-window";
+import { MOCK_TODAY } from "@/lib/mock/constants";
 import {
   getFirstPlayoffMatchDate,
   getPlayoffSubscriptionSalesWindow,
-  matchById,
-  matches,
-  MOCK_TODAY,
+  getMatchById,
+  getMatches,
+  getSubscriptions,
+  getTransactions,
   PREV_SEASON_START,
   SUBSCRIPTIONS_PERIOD_END,
   SUBSCRIPTIONS_PERIOD_START,
-  subscriptions,
-  transactions,
 } from "@/lib/mock/hockey";
 import {
   ORDER_SOURCE_LABELS,
@@ -205,7 +205,7 @@ function getRegularSubscriptionPeriod(): SubscriptionDateRange {
 }
 
 function getPlayoffSubscriptionPeriod(season: string): SubscriptionDateRange | null {
-  const firstPlayoffMatch = getFirstPlayoffMatchDate(matches, season);
+  const firstPlayoffMatch = getFirstPlayoffMatchDate(getMatches(), season);
   if (!firstPlayoffMatch) return null;
 
   const window = getPlayoffSubscriptionSalesWindow(firstPlayoffMatch);
@@ -240,7 +240,7 @@ function getSubscriptionsTrendDisplayPeriod(
   const seasons =
     subscriptionFilters?.season && subscriptionFilters.season !== "all"
       ? [subscriptionFilters.season]
-      : Array.from(new Set(subscriptions.map((sub) => sub.season)));
+      : Array.from(new Set(getSubscriptions().map((sub) => sub.season)));
 
   for (const season of seasons) {
     const playoffPeriod = getPlayoffSubscriptionPeriod(season);
@@ -332,7 +332,7 @@ function buildSubscriptionsSparkline<T>(
 }
 
 function getTicketsSeasonCutoff(season: TicketFilters["season"] = "all"): Date {
-  const seasonMatches = matches.filter((match) =>
+  const seasonMatches = getMatches().filter((match) =>
     season === "all" ? true : match.season === season,
   );
 
@@ -372,7 +372,7 @@ function passesMerchTournamentStage(
   if (merchFilters.tournamentStage === "all") return true;
 
   if (tx.matchId) {
-    const match = matchById.get(tx.matchId);
+    const match = getMatchById().get(tx.matchId);
     return Boolean(match && matchesTournamentStage(match, merchFilters.tournamentStage));
   }
 
@@ -467,7 +467,7 @@ export function filterMatchesByMerchFilters(
 ) {
   const cutoff = dateRange ? getDateCutoff(dateRange) : null;
 
-  return matches.filter((match) => {
+  return getMatches().filter((match) => {
     if (cutoff && match.date < cutoff && match.eventCompleted) return false;
     if (merchFilters.season !== "all" && match.season !== merchFilters.season) {
       return false;
@@ -682,7 +682,7 @@ function filterMerchTransactionsImpl(
   );
   const allowedMatchIds = new Set(allowedMatches.map((m) => m.id));
 
-  return transactions.filter((tx) => {
+  return getTransactions().filter((tx) => {
     if (tx.date < cutoff || tx.date > endOfDay(MOCK_TODAY)) return false;
     if (tx.stream !== "merch") return false;
     if (!passesMerchSalesChannels(tx, merchFilters.salesChannels)) return false;
@@ -708,7 +708,7 @@ export function filterMatchesByTicketFilters(
       ? new Set(ticketFilters.matchId)
       : undefined;
 
-  return matches.filter((match) => {
+  return getMatches().filter((match) => {
     if (cutoff && match.date < cutoff && match.eventCompleted) return false;
     if (ticketFilters.season !== "all" && match.season !== ticketFilters.season) {
       return false;
@@ -752,7 +752,7 @@ function isTicketTransactionAllowed(
   if (tx.stream !== "tickets" || !tx.matchId) return false;
   if (!allowedMatchIds.has(tx.matchId)) return false;
   if (ticketFilters?.tournamentStage && ticketFilters.tournamentStage !== "all") {
-    const match = matchById.get(tx.matchId);
+    const match = getMatchById().get(tx.matchId);
     if (!match || !matchesTournamentStage(match, ticketFilters.tournamentStage)) {
       return false;
     }
@@ -783,7 +783,7 @@ function filterTicketTransactionsImpl(
   const allowedMatches = filterMatchesByTicketFilters(ticketFilters);
   const allowedMatchIds = new Set(allowedMatches.map((m) => m.id));
 
-  return transactions.filter((tx) => {
+  return getTransactions().filter((tx) => {
     if (tx.date < cutoff || tx.date > endOfDay(MOCK_TODAY)) return false;
     return passesTicketFilters(tx, ticketFilters, allowedMatchIds);
   });
@@ -791,7 +791,7 @@ function filterTicketTransactionsImpl(
 
 function filterMatches(filters: DashboardFilters) {
   const cutoff = getDateCutoff(filters.dateRange);
-  return matches.filter((m) => {
+  return getMatches().filter((m) => {
     if (m.date < cutoff || m.date > endOfDay(MOCK_TODAY)) return false;
     if (filters.matchId !== "all" && m.id !== filters.matchId) return false;
     return true;
@@ -804,7 +804,7 @@ export function filterTransactions(
 ): Transaction[] {
   const cutoff = getDateCutoff(filters.dateRange);
 
-  return transactions.filter((tx) => {
+  return getTransactions().filter((tx) => {
     if (tx.date < cutoff || tx.date > endOfDay(MOCK_TODAY)) return false;
     if (stream && tx.stream !== stream) return false;
     if (filters.matchId !== "all" && tx.matchId !== filters.matchId) return false;
@@ -816,7 +816,7 @@ export function filterSubscriptions(
   _filters: DashboardFilters,
   subscriptionFilters?: SubscriptionFilters,
 ): Subscription[] {
-  return subscriptions.filter((sub) => {
+  return getSubscriptions().filter((sub) => {
     if (!subscriptionMatchesSalesWindow(sub, subscriptionFilters)) return false;
     if (!subscriptionFilters) return true;
     if (
@@ -963,7 +963,7 @@ function filterTicketTransactionsTodayImpl(
   const allowedMatchIds = new Set(allowedMatches.map((m) => m.id));
   const now = MOCK_TODAY;
 
-  return transactions.filter((tx) => {
+  return getTransactions().filter((tx) => {
     if (!isSameDay(tx.date, now)) return false;
     return passesTicketFilters(tx, ticketFilters, allowedMatchIds);
   });
@@ -993,7 +993,7 @@ function previousPeriodTicketTransactionsImpl(
   const allowedMatches = filterMatchesByTicketFilters(ticketFilters);
   const allowedMatchIds = new Set(allowedMatches.map((m) => m.id));
 
-  return transactions.filter((tx) => {
+  return getTransactions().filter((tx) => {
     if (tx.date < prevCutoff || tx.date >= midCutoff) return false;
     return passesTicketFilters(tx, ticketFilters, allowedMatchIds);
   });
@@ -1006,7 +1006,7 @@ function previousPeriodTransactions(
   const prevCutoff = getDateCutoff(filters.dateRange * 2);
   const midCutoff = getDateCutoff(filters.dateRange);
 
-  return transactions.filter((tx) => {
+  return getTransactions().filter((tx) => {
     if (tx.date < prevCutoff || tx.date >= midCutoff) return false;
     if (tx.stream !== stream) return false;
     if (filters.matchId !== "all" && tx.matchId !== filters.matchId) return false;
@@ -1022,7 +1022,7 @@ function previousPeriodSubscriptions(
   const prevEnd = endOfDay(subDays(periodStart, 1));
   const prevStart = startOfDay(subDays(prevEnd, periodDays - 1));
 
-  return subscriptions.filter((sub) => {
+  return getSubscriptions().filter((sub) => {
     if (sub.purchasedAt < prevStart || sub.purchasedAt > prevEnd) return false;
     if (!subscriptionFilters) return true;
     if (
@@ -2875,7 +2875,7 @@ export function computeCombinedMatchSalesTable(
 
     const ticket = ticketByMatch.get(matchId);
     const merch = merchByMatch.get(matchId);
-    const match = matchById.get(matchId);
+    const match = getMatchById().get(matchId);
     if (!match) continue;
 
     const ticketRevenue = ticket?.revenue ?? 0;
@@ -3018,10 +3018,10 @@ export function filterTicketTransactionsForSeasonBenchmark(
   const allowedMatchIds = new Set(allowedMatches.map((m) => m.id));
   const cutoff = getTicketsSeasonCutoff(seasonId);
 
-  return transactions.filter((tx) => {
+  return getTransactions().filter((tx) => {
     if (tx.date < cutoff || tx.date > endOfDay(MOCK_TODAY)) return false;
     return passesTicketFilters(tx, benchmarkFilters, allowedMatchIds);
   });
 }
 
-export { matchById };
+export { getMatchById };

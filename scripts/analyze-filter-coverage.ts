@@ -3,7 +3,19 @@
  * Usage: npx tsx scripts/analyze-filter-coverage.ts
  */
 
-import { matches, transactions, subscriptions } from "../lib/mock/hockey";
+import { getMatches, getSubscriptions, getTransactions } from "../lib/mock/hockey";
+import { initMockDataSync } from "../lib/mock/data-store";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const raw = JSON.parse(
+  readFileSync(join(process.cwd(), "lib/mock/data/hockey-mock.json"), "utf-8"),
+);
+initMockDataSync(raw);
+
+const matches = getMatches();
+const transactions = getTransactions();
+const subscriptions = getSubscriptions();
 import {
   buildCriticalComboCases,
   buildMatchSalesFilterCases,
