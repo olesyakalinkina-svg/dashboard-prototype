@@ -8,7 +8,6 @@ import {
   useEffect,
   useMemo,
   useState,
-  startTransition,
   type ReactNode,
 } from "react";
 import {
@@ -533,88 +532,64 @@ export function FilterProvider({ children }: { children: ReactNode }) {
   }, [dataReady]);
 
   const setDateRange = useCallback((dateRange: DateRangePreset) => {
-    startTransition(() => {
-      setFilters((prev) => ({ ...prev, dateRange }));
-    });
+    setFilters((prev) => ({ ...prev, dateRange }));
   }, []);
 
   const setMatchId = useCallback((matchId: string | "all") => {
-    startTransition(() => {
-      setFilters((prev) => ({ ...prev, matchId }));
-    });
+    setFilters((prev) => ({ ...prev, matchId }));
   }, []);
 
   const setTicketFilters = useCallback((patch: Partial<TicketFilters>) => {
-    startTransition(() => {
-      setTicketFiltersState((prev) => {
-        const next = { ...prev, ...patch };
-        const effectiveTimeGrouping = getEffectiveTicketTimeGrouping(next);
-        // Persist month→day only; other groupings stay so they restore when
-        // purchase-date or single-match overrides are cleared.
-        if (effectiveTimeGrouping === "day" && next.timeGrouping === "month") {
-          next.timeGrouping = "day";
-        }
-        return next;
-      });
+    setTicketFiltersState((prev) => {
+      const next = { ...prev, ...patch };
+      const effectiveTimeGrouping = getEffectiveTicketTimeGrouping(next);
+      // Persist month→day only; other groupings stay so they restore when
+      // purchase-date or single-match overrides are cleared.
+      if (effectiveTimeGrouping === "day" && next.timeGrouping === "month") {
+        next.timeGrouping = "day";
+      }
+      return next;
     });
   }, []);
 
   const setMerchFilters = useCallback((patch: Partial<MerchFilters>) => {
-    startTransition(() => {
-      setMerchFiltersState((prev) => ({ ...prev, ...patch }));
-    });
+    setMerchFiltersState((prev) => ({ ...prev, ...patch }));
   }, []);
 
   const setMatchSalesFilters = useCallback((patch: Partial<MatchSalesFilters>) => {
-    startTransition(() => {
-      setMatchSalesFiltersState((prev) => ({ ...prev, ...patch }));
-    });
+    setMatchSalesFiltersState((prev) => ({ ...prev, ...patch }));
   }, []);
 
   const setSubscriptionFilters = useCallback((patch: Partial<SubscriptionFilters>) => {
-    startTransition(() => {
-      setSubscriptionFiltersState((prev) => ({ ...prev, ...patch }));
-    });
+    setSubscriptionFiltersState((prev) => ({ ...prev, ...patch }));
   }, []);
 
   const resetFilters = useCallback(() => {
-    startTransition(() => {
-      setFilters(defaultFilters);
-    });
+    setFilters(defaultFilters);
   }, []);
 
   const resetTicketFilters = useCallback(() => {
-    startTransition(() => {
-      setFilters(defaultFilters);
-      setTicketFiltersState(DEFAULT_TICKET_FILTERS);
-    });
+    setFilters(defaultFilters);
+    setTicketFiltersState(DEFAULT_TICKET_FILTERS);
   }, []);
 
   const resetMerchFilters = useCallback(() => {
-    startTransition(() => {
-      setFilters(defaultFilters);
-      setMerchFiltersState(DEFAULT_MERCH_FILTERS);
-    });
+    setFilters(defaultFilters);
+    setMerchFiltersState(DEFAULT_MERCH_FILTERS);
   }, []);
 
   const resetMatchSalesFilters = useCallback(() => {
-    startTransition(() => {
-      setFilters(defaultFilters);
-      setMatchSalesFiltersState(DEFAULT_MATCH_SALES_FILTERS);
-    });
+    setFilters(defaultFilters);
+    setMatchSalesFiltersState(DEFAULT_MATCH_SALES_FILTERS);
   }, []);
 
   const resetSubscriptionFilters = useCallback(() => {
-    startTransition(() => {
-      setFilters(defaultFilters);
-      setSubscriptionFiltersState(DEFAULT_SUBSCRIPTION_FILTERS);
-    });
+    setFilters(defaultFilters);
+    setSubscriptionFiltersState(DEFAULT_SUBSCRIPTION_FILTERS);
   }, []);
 
   const setActiveTab = useCallback((tab: DashboardTab) => {
-    startTransition(() => {
-      setActiveTabState(tab);
-    });
+    setActiveTabState(tab);
   }, []);
 
   const refresh = useCallback(() => {
@@ -676,81 +651,111 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     ],
   );
 
-  const deferredTicketMatchIds = useDeferredValue(ticketFilters.matchId);
-  const deferredMerchMatchIds = useDeferredValue(merchFilters.matchId);
-  const deferredMatchSalesMatchIds = useDeferredValue(matchSalesFilters.matchId);
+  const deferredFilters = useDeferredValue(filters);
+  const deferredTicketFilters = useDeferredValue(ticketFilters);
+  const deferredMerchFilters = useDeferredValue(merchFilters);
+  const deferredMatchSalesFilters = useDeferredValue(matchSalesFilters);
+  const deferredSubscriptionFilters = useDeferredValue(subscriptionFilters);
 
   const ticketFiltersForStableData = useMemo(
-    () => ({ ...ticketFilters, matchId: deferredTicketMatchIds }),
+    () => ({
+      ...deferredTicketFilters,
+      matchId: deferredTicketFilters.matchId,
+      transactionDateRange: {
+        ...deferredTicketFilters.transactionDateRange,
+      },
+    }),
     [
-      ticketFilters.season,
-      ticketFilters.league,
-      ticketFilters.tournamentStage,
-      ticketFilters.matchClass,
-      ticketFilters.arena,
-      ticketFilters.eventCompleted,
-      deferredTicketMatchIds,
-      ticketFilters.ticketType,
-      ticketFilters.priceZone,
-      ticketFilters.orderSource,
-      ticketFilters.transactionDateRange.from,
-      ticketFilters.transactionDateRange.to,
+      deferredTicketFilters.season,
+      deferredTicketFilters.league,
+      deferredTicketFilters.tournamentStage,
+      deferredTicketFilters.matchClass,
+      deferredTicketFilters.arena,
+      deferredTicketFilters.eventCompleted,
+      deferredTicketFilters.matchId,
+      deferredTicketFilters.ticketType,
+      deferredTicketFilters.priceZone,
+      deferredTicketFilters.orderSource,
+      deferredTicketFilters.transactionDateRange.from,
+      deferredTicketFilters.transactionDateRange.to,
     ],
   );
 
   const ticketFiltersForData = useMemo(
     () => ({
       ...ticketFiltersForStableData,
-      timeGrouping: ticketFilters.timeGrouping,
+      timeGrouping: deferredTicketFilters.timeGrouping,
     }),
-    [ticketFiltersForStableData, ticketFilters.timeGrouping],
+    [ticketFiltersForStableData, deferredTicketFilters.timeGrouping],
   );
 
   const merchFiltersForStableData = useMemo(
-    () => ({ ...merchFilters, matchId: deferredMerchMatchIds }),
+    () => ({
+      ...deferredMerchFilters,
+      matchId: deferredMerchFilters.matchId,
+      salesChannels: deferredMerchFilters.salesChannels,
+      orderDateRange: { ...deferredMerchFilters.orderDateRange },
+    }),
     [
-      merchFilters.season,
-      merchFilters.league,
-      merchFilters.tournamentStage,
-      merchFilters.matchClass,
-      deferredMerchMatchIds,
-      merchFilters.salesChannels,
-      merchFilters.orderDateRange.from,
-      merchFilters.orderDateRange.to,
+      deferredMerchFilters.season,
+      deferredMerchFilters.league,
+      deferredMerchFilters.tournamentStage,
+      deferredMerchFilters.matchClass,
+      deferredMerchFilters.matchId,
+      deferredMerchFilters.salesChannels,
+      deferredMerchFilters.orderDateRange.from,
+      deferredMerchFilters.orderDateRange.to,
     ],
   );
 
   const merchFiltersForData = useMemo(
     () => ({
       ...merchFiltersForStableData,
-      timeGrouping: merchFilters.timeGrouping,
+      timeGrouping: deferredMerchFilters.timeGrouping,
     }),
-    [merchFiltersForStableData, merchFilters.timeGrouping],
+    [merchFiltersForStableData, deferredMerchFilters.timeGrouping],
   );
 
   const subscriptionFiltersForStableData = useMemo(
-    () => ({ ...subscriptionFilters }),
+    () => ({ ...deferredSubscriptionFilters }),
     [
-      subscriptionFilters.season,
-      subscriptionFilters.league,
-      subscriptionFilters.tournamentStage,
-      subscriptionFilters.arena,
-      subscriptionFilters.ticketType,
-      subscriptionFilters.priceZone,
+      deferredSubscriptionFilters.season,
+      deferredSubscriptionFilters.league,
+      deferredSubscriptionFilters.tournamentStage,
+      deferredSubscriptionFilters.arena,
+      deferredSubscriptionFilters.ticketType,
+      deferredSubscriptionFilters.priceZone,
     ],
   );
 
   const subscriptionFiltersForData = useMemo(
     () => ({
       ...subscriptionFiltersForStableData,
-      timeGrouping: subscriptionFilters.timeGrouping,
+      timeGrouping: deferredSubscriptionFilters.timeGrouping,
     }),
-    [subscriptionFiltersForStableData, subscriptionFilters.timeGrouping],
+    [
+      subscriptionFiltersForStableData,
+      deferredSubscriptionFilters.timeGrouping,
+    ],
   );
 
   const matchSalesFiltersForData = useMemo(
-    () => ({ ...matchSalesFilters, matchId: deferredMatchSalesMatchIds }),
-    [matchSalesFilters, deferredMatchSalesMatchIds],
+    () => ({
+      ...deferredMatchSalesFilters,
+      matchId: deferredMatchSalesFilters.matchId,
+      purchaseDateRange: { ...deferredMatchSalesFilters.purchaseDateRange },
+    }),
+    [
+      deferredMatchSalesFilters.season,
+      deferredMatchSalesFilters.league,
+      deferredMatchSalesFilters.tournamentStage,
+      deferredMatchSalesFilters.matchClass,
+      deferredMatchSalesFilters.arena,
+      deferredMatchSalesFilters.eventCompleted,
+      deferredMatchSalesFilters.matchId,
+      deferredMatchSalesFilters.purchaseDateRange.from,
+      deferredMatchSalesFilters.purchaseDateRange.to,
+    ],
   );
 
   const stateValue = useMemo<FilterStateContextValue>(
@@ -809,36 +814,44 @@ export function FilterProvider({ children }: { children: ReactNode }) {
   const ticketsTabCachedData = useMemo(
     () =>
       dataReady && activeTab === "tickets"
-        ? computeTicketsTabDataCached(filters, ticketFiltersForStableData)
+        ? computeTicketsTabDataCached(
+            deferredFilters,
+            ticketFiltersForStableData,
+          )
         : null,
-    [dataReady, activeTab, filters, ticketFiltersForStableData],
+    [dataReady, activeTab, deferredFilters, ticketFiltersForStableData],
   );
 
   const merchTabCachedData = useMemo(
     () =>
       dataReady && activeTab === "merch"
-        ? computeMerchTabDataCached(filters, merchFiltersForStableData)
+        ? computeMerchTabDataCached(deferredFilters, merchFiltersForStableData)
         : null,
-    [dataReady, activeTab, filters, merchFiltersForStableData],
+    [dataReady, activeTab, deferredFilters, merchFiltersForStableData],
   );
 
   const subscriptionsTabCachedData = useMemo(
     () =>
       dataReady && activeTab === "subscriptions"
         ? computeSubscriptionsTabDataCached(
-            filters,
+            deferredFilters,
             subscriptionFiltersForStableData,
           )
         : null,
-    [dataReady, activeTab, filters, subscriptionFiltersForStableData],
+    [
+      dataReady,
+      activeTab,
+      deferredFilters,
+      subscriptionFiltersForStableData,
+    ],
   );
 
   const matchesTabData = useMemo(
     () =>
       dataReady && activeTab === "matches"
-        ? computeMatchesTabData(filters, matchSalesFiltersForData)
+        ? computeMatchesTabData(deferredFilters, matchSalesFiltersForData)
         : null,
-    [dataReady, activeTab, filters, matchSalesFiltersForData],
+    [dataReady, activeTab, deferredFilters, matchSalesFiltersForData],
   );
 
   const effectiveTicketTimeGrouping = getEffectiveTicketTimeGrouping(

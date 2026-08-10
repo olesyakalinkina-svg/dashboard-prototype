@@ -160,9 +160,19 @@ export function MobileFilterDraftProvider({
   const ticketMatchOptions = useMemo(
     () =>
       buildMatchFilterOptions(
-        filterMatchesByTicketFilters({ ...draft.ticketFilters, matchId: [] }),
+        filterMatchesByTicketFilters({
+          ...draft.ticketFilters,
+          matchId: [],
+        }),
       ),
-    [draft.ticketFilters],
+    [
+      draft.ticketFilters.season,
+      draft.ticketFilters.league,
+      draft.ticketFilters.tournamentStage,
+      draft.ticketFilters.matchClass,
+      draft.ticketFilters.arena,
+      draft.ticketFilters.eventCompleted,
+    ],
   );
 
   const merchMatchOptions = useMemo(
@@ -170,7 +180,12 @@ export function MobileFilterDraftProvider({
       buildMatchFilterOptions(
         filterMatchesByMerchFilters({ ...draft.merchFilters, matchId: [] }),
       ),
-    [draft.merchFilters],
+    [
+      draft.merchFilters.season,
+      draft.merchFilters.league,
+      draft.merchFilters.tournamentStage,
+      draft.merchFilters.matchClass,
+    ],
   );
 
   const matchSalesMatchOptions = useMemo(
@@ -181,7 +196,14 @@ export function MobileFilterDraftProvider({
           matchId: [],
         }),
       ),
-    [draft.matchSalesFilters],
+    [
+      draft.matchSalesFilters.season,
+      draft.matchSalesFilters.league,
+      draft.matchSalesFilters.tournamentStage,
+      draft.matchSalesFilters.matchClass,
+      draft.matchSalesFilters.arena,
+      draft.matchSalesFilters.eventCompleted,
+    ],
   );
 
   const applyDraft = useCallback(() => {
