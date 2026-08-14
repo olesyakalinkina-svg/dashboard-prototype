@@ -48,12 +48,12 @@ All analytical views live in the `bi` schema and mirror KPIs and charts from `li
 | Table | Description |
 |-------|-------------|
 | `club` | Hockey club (e.g. Металлург Магнитогорск) |
-| `arena` | Venues with capacity, linked to `club` |
+| `arena` | Venues: `main` (12 000) and `secondary` (3 000), `code` matches mock `arena` |
 | `opponent` | Away teams |
-| `match` | Home games: `id`, `arena_id`, `opponent_id`, `match_date`, `attendance`, `status` |
+| `match` | Home games: `season`, `league` (KHL/VHL/MHL), `tournament_stage`, `match_class`, per-match `capacity` (MHL 6300 on main arena), `ticket_sales_window_days`, plus date/attendance/status |
 | `revenue_stream` | Lookup: `tickets`, `merch`, `subscriptions` |
 | `sales_channel` | `online`, `arena`, `kiosk` |
-| `sector` | Seating zones (A, B, C, VIP) |
+| `sector` | Price zones `A`, `B1`–`B4`, `C1`–`C4`, `D1`–`D4`, `VIP`, with `zone_group` A/B/C/D/VIP |
 | `product_category` | Product groups per revenue stream |
 | `product` | SKUs: tickets, merch items (`base_price`, optional `sector_id`) |
 | `subscription_plan` | Abonement tariffs (match count, price, validity) |
@@ -67,8 +67,8 @@ All analytical views live in the `bi` schema and mirror KPIs and charts from `li
 
 | Table | Description |
 |-------|-------------|
-| `sale` | Ticket and merch sales: amount, quantity, loyalty discount, links to `match_id`, `product_id`, `stream_id`, `channel_id`, optional `promotion_id` |
-| `subscription` | Abonement purchase: plan, price, validity, `matches_total` / `matches_used`, channel, status |
+| `sale` | Ticket and merch sales: amount, quantity, loyalty discount, `ticket_type` (`arena` / `parking`), links to `match_id`, `product_id`, `sector_id`, optional `promotion_id` |
+| `subscription` | Abonement purchase: plan, price, validity, `season` / `league` / `tournament_stage` / `ticket_type` / `sector_id`, `matches_total` / `matches_used`, channel, status |
 | `subscription_redemption` | One row per abonement use at a `match_id` |
 
 ### Key relationships
@@ -83,14 +83,16 @@ All analytical views live in the `bi` schema and mirror KPIs and charts from `li
 
 | View | Dashboard tab | Purpose |
 |------|---------------|---------|
-| `v_revenue_unified` | All | Unified fact: sales + subscription purchases |
+| `v_revenue_unified` | All | Unified fact: sales + subscription purchases (season, league, zone_group, ticket_type) |
 | `v_tickets_kpi`, `v_tickets_kpi_summary` | Билеты | Revenue, tickets sold, avg price, loyalty discount, today |
-| `v_sector_sales` | Билеты | Sales by price zone (pie chart) |
+| `v_sector_sales` | Билеты | Sales by price zone and zone group |
+| `v_match_catalog` | All | Match dimension: season, league, stage, class, arena |
 | `v_match_revenue` | Билеты / Мерч | Revenue per match by stream |
 | `v_merch_by_match` | Мерч | Merch revenue per match |
 | `v_top_products` | Мерч | Top merch SKUs |
 | `v_channel_mix` | All tabs | Revenue share by channel per stream |
 | `v_subscription_stats` | Абонементы | Sold, revenue, utilization per plan |
+| `v_subscription_by_season` | Абонементы | Sold and revenue by season, league, zone |
 | `v_subscription_redemptions_by_match` | Абонементы | Redemptions per match |
 | `v_weekly_revenue` | — | Weekly breakdown: tickets, merch, subscriptions |
 | `v_daily_kpi` | — | Daily totals for BI tools |
@@ -102,10 +104,10 @@ All analytical views live in the `bi` schema and mirror KPIs and charts from `li
 | File | Role |
 |------|------|
 | `01_schema.sql` | DDL: tables, indexes, `populate_dim_date()` |
-| `02_seed.sql` | Reference data: clubs, matches, products, plans, promotions |
-| `03_seed_facts.sql` | Generated sales, subscriptions, redemptions |
+| `02_seed.sql` | Reference data: club, arenas, opponents (KHL/VHL/MHL), 14 price zones, products, plans, promotions |
+| `03_seed_facts.sql` | Generated matches (from mock JSON) + sales, subscriptions, redemptions |
 | `04_views.sql` | Analytical views |
-| `generate-seed.mjs` | Regenerates `03_seed_facts.sql` from same logic as `lib/mock/hockey.ts` |
+| `generate-seed.mjs` | Regenerates `03_seed_facts.sql` from `lib/mock/data/hockey-mock.json` |
 | `manual-init.sql` | Runs all scripts in order (used by Docker init) |
 | `reset.ps1` | Full reset: generate seed → recreate Docker volume → verify |
 | `reset-local.ps1` | Reset against local PostgreSQL (no Docker) |
@@ -158,4 +160,11 @@ SELECT * FROM v_subscription_stats;
 
 ## Alignment with the UI
 
-The Next.js dashboard (`app/page.tsx`) uses in-memory mock data from `lib/mock/hockey.ts` by default. The database schema and views are designed to match the same entities and metrics when you connect a BI tool or replace mocks with SQL queries.
+The Next.js dashboard (`app/page.tsx`) uses in-memory mock data from `lib/mock/hockey.ts` by default. The database schema matches the same dimensions as the mocks:
+
+- seasons `2024/25` and `2025/26`
+- leagues KHL, VHL, MHL (VHL on secondary arena 3000; MHL on main arena at 6300 seats)
+- price zones A, B1–B4, C1–C4, D1–D4, VIP (`sector.zone_group` for A/B/C/D/VIP rollups)
+- ticket type `arena` vs `parking`
+
+Use `v_match_catalog`, `v_sector_sales`, and `v_subscription_by_season` to slice the same way as the UI filters.

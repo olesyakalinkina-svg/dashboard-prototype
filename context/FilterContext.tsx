@@ -52,11 +52,8 @@ import {
 } from "@/lib/merch-filter-options";
 import { DEFAULT_MATCH_SALES_FILTERS } from "@/lib/match-sales-filter-options";
 import { DEFAULT_SUBSCRIPTION_FILTERS } from "@/lib/subscription-filter-options";
-import { isMockDataReady, loadMockData } from "@/lib/mock/data-store";
-import {
-  computeSeasonBenchmark,
-  getInitialSeasonBenchmarkParams,
-} from "@/lib/season-benchmark";
+import { loadMockData } from "@/lib/mock/data-store";
+import { DashboardLoading } from "@/components/layout/DashboardLoading";
 import type {
   ChannelMixPoint,
   DashboardFilters,
@@ -89,7 +86,6 @@ import type {
   TicketsPriceZoneTrendPoint,
   TicketTypeSalesPoint,
   TicketsKpiData,
-  SeasonBenchmarkResult,
   TimeGrouping,
   TopProductPoint,
 } from "@/types/dashboard";
@@ -165,7 +161,6 @@ type FilterDataContextValue = {
   ticketsPlanFactTrend: PlanFactTrendPoint[];
   ticketsSalesChannelTrend: TicketsSalesChannelTrendPoint[];
   ticketsPriceZoneTrend: TicketsPriceZoneTrendPoint[];
-  ticketsSeasonBenchmark: SeasonBenchmarkResult;
   subscriptionsPlanFactTrend: SubscriptionsPlanFactTrendPoint[];
   channelMix: ChannelMixPoint[];
   topProducts: TopProductPoint[];
@@ -193,36 +188,6 @@ const defaultFilters: DashboardFilters = {
   stream: "all",
   matchId: "all",
   promotionId: "all",
-};
-
-const EMPTY_TICKETS_SEASON_BENCHMARK: SeasonBenchmarkResult = {
-  current: {
-    seasonId: "",
-    seasonName: "",
-    seasonStartDate: "",
-    seasonEndDate: "",
-    status: "upcoming",
-    comparisonDate: "",
-    elapsedDays: 0,
-    revenueToDate: 0,
-  },
-  benchmark: {
-    seasonId: "",
-    seasonName: "",
-    seasonStartDate: "",
-    seasonEndDate: "",
-    status: "upcoming",
-    comparisonDate: "",
-    elapsedDays: 0,
-    revenueToDate: 0,
-  },
-  commonComparisonDays: 0,
-  absoluteDeviation: 0,
-  percentageDeviation: null,
-  chartData: [],
-  warnings: [],
-  dateRangeFilterExcluded: false,
-  canUseFullSeasonMode: false,
 };
 
 const EMPTY_TICKETS_KPIS: TicketsKpiData = {
@@ -280,9 +245,6 @@ function computeTicketsTabDataCached(
   ticketFilters: TicketFilters,
 ): TicketsTabCachedData {
   return runWithFilterCache(() => {
-    const { benchmarkSeasonId, mode } =
-      getInitialSeasonBenchmarkParams(ticketFilters);
-
     const trendsByGrouping = {} as Record<TimeGrouping, TicketsTrendSlice>;
     for (const grouping of TREND_TIME_GROUPINGS) {
       const withGrouping = { ...ticketFilters, timeGrouping: grouping };
@@ -304,12 +266,6 @@ function computeTicketsTabDataCached(
         ticketsMatchCumulativeSeries: computeTicketsMatchCumulativeSeries(
           filters,
           ticketFilters,
-        ),
-        ticketsSeasonBenchmark: computeSeasonBenchmark(
-          filters,
-          ticketFilters,
-          benchmarkSeasonId,
-          mode,
         ),
         subscriptionsPlanFactTrend: [],
         channelMix: [],
@@ -368,7 +324,6 @@ function computeMerchTabDataCached(
         ticketsPlanFactTrend: [],
         ticketsSalesChannelTrend: [],
         ticketsPriceZoneTrend: [],
-        ticketsSeasonBenchmark: EMPTY_TICKETS_SEASON_BENCHMARK,
         subscriptionsPlanFactTrend: [],
         channelMix: [],
         topProducts: computeTopProducts(filters, merchFilters),
@@ -422,7 +377,6 @@ function computeSubscriptionsTabDataCached(
         ticketsPlanFactTrend: [],
         ticketsSalesChannelTrend: [],
         ticketsPriceZoneTrend: [],
-        ticketsSeasonBenchmark: EMPTY_TICKETS_SEASON_BENCHMARK,
         channelMix: computeChannelMix(
           filters,
           "subscriptions",
@@ -465,7 +419,6 @@ function computeMatchesTabData(
     ticketsPlanFactTrend: [],
     ticketsSalesChannelTrend: [],
     ticketsPriceZoneTrend: [],
-    ticketsSeasonBenchmark: EMPTY_TICKETS_SEASON_BENCHMARK,
     subscriptionsPlanFactTrend: [],
     channelMix: [],
     topProducts: [],
@@ -505,19 +458,17 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     useState<SubscriptionFilters>(DEFAULT_SUBSCRIPTION_FILTERS);
   const [activeTab, setActiveTabState] = useState<DashboardTab>("tickets");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [dataReady, setDataReady] = useState(isMockDataReady());
+  // Always false on the first render so SSR HTML matches client hydration.
+  const [dataReady, setDataReady] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
 
   useEffect(() => {
-    setLastUpdated(new Date());
-  }, []);
-
-  useEffect(() => {
-    if (dataReady) return;
     let cancelled = false;
     loadMockData()
       .then(() => {
-        if (!cancelled) setDataReady(true);
+        if (cancelled) return;
+        setDataReady(true);
+        setLastUpdated(new Date());
       })
       .catch((error: unknown) => {
         if (!cancelled) {
@@ -529,7 +480,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [dataReady]);
+  }, []);
 
   const setDateRange = useCallback((dateRange: DateRangePreset) => {
     setFilters((prev) => ({ ...prev, dateRange }));
@@ -899,7 +850,6 @@ export function FilterProvider({ children }: { children: ReactNode }) {
       ticketsPlanFactTrend: [],
       ticketsSalesChannelTrend: [],
       ticketsPriceZoneTrend: [],
-      ticketsSeasonBenchmark: EMPTY_TICKETS_SEASON_BENCHMARK,
       subscriptionsPlanFactTrend: [],
       channelMix: [],
       topProducts: [],
@@ -934,16 +884,13 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     <FilterStateContext.Provider value={stateValue}>
       <FilterDataContext.Provider value={dataValue}>
         {!dataReady ? (
-          <div className="flex min-h-screen items-center justify-center bg-[var(--background)] p-6">
-            {dataError ? (
+          dataError ? (
+            <div className="flex min-h-screen items-center justify-center bg-[var(--background)] p-6">
               <p className="text-sm text-red-600">{dataError}</p>
-            ) : (
-              <div className="flex flex-col items-center gap-3">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--foreground)]" />
-                <p className="text-sm text-[var(--muted)]">Загрузка данных…</p>
-              </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <DashboardLoading />
+          )
         ) : (
           children
         )}

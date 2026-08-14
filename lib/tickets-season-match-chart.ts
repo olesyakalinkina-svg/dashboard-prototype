@@ -19,6 +19,12 @@ export const SEASON_MATCH_CHART_DAY_WIDTH = 44;
 /** Y-axis width (52) + chart left margin (4). */
 export const SEASON_MATCH_CHART_LEFT_GUTTER = 56;
 export const SEASON_MATCH_CHART_RIGHT_GUTTER = 20;
+export const SEASON_MATCH_CHART_TOP_GUTTER = 20;
+export const SEASON_MATCH_CHART_BOTTOM_GUTTER = 40;
+export const SEASON_MATCH_PLAN_LABEL_WIDTH = 76;
+export const SEASON_MATCH_PLAN_LABEL_HEIGHT = 14;
+export const SEASON_MATCH_PLAN_LABEL_GAP = 4;
+export const SEASON_MATCH_PLAN_LABEL_OFFSET = 18;
 export const SEASON_MATCH_MAX_BRIGHT_LINES = 10;
 export const SEASON_MATCH_PLAN_LEGEND_LABEL = "План продаж";
 export const SEASON_MATCH_COMPARISON_COLOR = "#9CA3AF";
@@ -523,6 +529,59 @@ export function pickBrightSeasonMatchIds(
       .slice(0, SEASON_MATCH_MAX_BRIGHT_LINES)
       .map((view) => view.matchId),
   );
+}
+
+export type SeasonMatchPlanLabelCandidate = {
+  matchId: string;
+  x: number;
+  y: number;
+  priority: number;
+};
+
+export function pickVisibleSeasonMatchPlanLabelIds(
+  candidates: SeasonMatchPlanLabelCandidate[],
+): Set<string> {
+  const placed: Array<{
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
+  }> = [];
+  const visible = new Set<string>();
+
+  const sorted = [...candidates].sort((left, right) => right.priority - left.priority);
+
+  for (const candidate of sorted) {
+    const left = candidate.x - SEASON_MATCH_PLAN_LABEL_WIDTH / 2;
+    const right = candidate.x + SEASON_MATCH_PLAN_LABEL_WIDTH / 2;
+    const bottom = candidate.y - SEASON_MATCH_PLAN_LABEL_OFFSET;
+    const top = bottom - SEASON_MATCH_PLAN_LABEL_HEIGHT;
+    const overlaps = placed.some(
+      (box) =>
+        left < box.right + SEASON_MATCH_PLAN_LABEL_GAP &&
+        right > box.left - SEASON_MATCH_PLAN_LABEL_GAP &&
+        top < box.bottom + SEASON_MATCH_PLAN_LABEL_GAP &&
+        bottom > box.top - SEASON_MATCH_PLAN_LABEL_GAP,
+    );
+    if (overlaps) continue;
+    placed.push({ left, right, top, bottom });
+    visible.add(candidate.matchId);
+  }
+
+  return visible;
+}
+
+export function getSeasonMatchPlanMarkerY(
+  value: number,
+  yMax: number,
+  chartHeight: number,
+): number {
+  const plotHeight = Math.max(
+    1,
+    chartHeight - SEASON_MATCH_CHART_TOP_GUTTER - SEASON_MATCH_CHART_BOTTOM_GUTTER,
+  );
+  const ratio = yMax > 0 ? Math.min(1, Math.max(0, value / yMax)) : 0;
+  return SEASON_MATCH_CHART_TOP_GUTTER + (1 - ratio) * plotHeight;
 }
 
 export const SEASON_MATCH_QUICK_FILTERS: {

@@ -7,7 +7,7 @@ export const CHART_ZOOM_SURFACE_CLASS = "chart-zoom-surface cursor-crosshair sel
 export function ChartZoomHint({ visible }: { visible: boolean }) {
   if (!visible) return null;
   return (
-    <p className="chart-zoom-hint mt-0.5 text-[11px] text-[var(--muted)]">
+    <p className="chart-zoom-hint mt-0.5 hidden text-[11px] text-[var(--muted)] md:block">
       Выделите область мышью для приближения · двойной клик — сброс
     </p>
   );

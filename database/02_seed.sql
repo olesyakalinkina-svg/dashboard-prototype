@@ -1,20 +1,22 @@
 -- =============================================================================
 -- Reference data & dimension seed for hockey club BI database
--- Run after schema.sql; sales/subscriptions loaded via generate-seed.mjs
+-- Run after schema.sql; matches + sales/subscriptions loaded via generate-seed.mjs
+-- Aligned with lib/mock/hockey-generator.ts (seasons 2024/25–2025/26, KHL/VHL/MHL, 15 price zones)
 -- =============================================================================
 
 SET search_path TO bi, public;
 
-SELECT populate_dim_date(CURRENT_DATE - INTERVAL '120 days', CURRENT_DATE + INTERVAL '30 days');
+SELECT populate_dim_date('2024-08-01', '2026-06-15');
 
 INSERT INTO club (id, name, city, league) VALUES
     (1, 'Металлург Магнитогорск', 'Магнитогорск', 'KHL');
 
-INSERT INTO arena (id, club_id, name, capacity) VALUES
-    (1, 1, 'Арена «Металлург»', 12000),
-    (2, 1, 'Тренировочная арена', 3000);
+INSERT INTO arena (id, club_id, name, capacity, code) VALUES
+    (1, 1, 'Арена «Металлург»', 12000, 'main'),
+    (2, 1, 'Тренировочная арена', 3000, 'secondary');
 
 INSERT INTO opponent (id, name) VALUES
+    -- KHL
     (1,  'СКА'),
     (2,  'ЦСКА'),
     (3,  'Авангард'),
@@ -24,13 +26,31 @@ INSERT INTO opponent (id, name) VALUES
     (7,  'Металлург'),
     (8,  'Салават Юлаев'),
     (9,  'Динамо Минск'),
-    (16, 'Динамо Мск'),
     (10, 'Спартак'),
     (11, 'Сибирь'),
     (12, 'Амур'),
     (13, 'Сочи'),
     (14, 'Торпедо'),
-    (15, 'Шанхай');
+    (15, 'Динамо Мск'),
+    (16, 'Шанхай'),
+    -- VHL
+    (17, 'Торос'),
+    (18, 'Нефтяник'),
+    (19, 'Рубин'),
+    (20, 'Ижсталь'),
+    (21, 'Химик'),
+    (22, 'Звезда'),
+    (23, 'СКА-ВМФ'),
+    (24, 'Дизель'),
+    -- MHL
+    (25, 'Красная Армия'),
+    (26, 'Алмаз'),
+    (27, 'Чайка'),
+    (28, 'СКА-1946'),
+    (29, 'МХК Спартак'),
+    (30, 'Капитан'),
+    (31, 'Локо'),
+    (32, 'Молот');
 
 INSERT INTO revenue_stream (id, code, name) VALUES
     (1, 'tickets',       'Билеты'),
@@ -42,46 +62,67 @@ INSERT INTO sales_channel (id, code, name) VALUES
     (2, 'arena',  'Касса арены'),
     (3, 'kiosk',  'Киоск / POS');
 
-INSERT INTO sector (id, code, name, sort_order) VALUES
-    (1, 'A',   'Сектор A',   1),
-    (2, 'B',   'Сектор B',   2),
-    (3, 'C',   'Сектор C',   3),
-    (4, 'VIP', 'VIP-ложа',   4);
+-- Price zones from types/dashboard.ts PriceZone (A, B1–B4, C1–C4, D1–D4, VIP)
+INSERT INTO sector (id, code, name, zone_group, sort_order) VALUES
+    (1,  'A',   'Сектор A',   'A',   1),
+    (2,  'B1',  'Сектор B1',  'B',   2),
+    (3,  'B2',  'Сектор B2',  'B',   3),
+    (4,  'B3',  'Сектор B3',  'B',   4),
+    (5,  'B4',  'Сектор B4',  'B',   5),
+    (6,  'C1',  'Сектор C1',  'C',   6),
+    (7,  'C2',  'Сектор C2',  'C',   7),
+    (8,  'C3',  'Сектор C3',  'C',   8),
+    (9,  'C4',  'Сектор C4',  'C',   9),
+    (10, 'D1',  'Сектор D1',  'D',   10),
+    (11, 'D2',  'Сектор D2',  'D',   11),
+    (12, 'D3',  'Сектор D3',  'D',   12),
+    (13, 'D4',  'Сектор D4',  'D',   13),
+    (14, 'VIP', 'VIP-ложа',   'VIP', 14);
 
 INSERT INTO product_category (id, stream_id, name) VALUES
     (1, 1, 'Разовые билеты'),
-    (2, 1, 'Пакеты'),
+    (2, 1, 'Парковка'),
     (3, 2, 'Одежда'),
     (4, 2, 'Аксессуары'),
     (5, 2, 'Сувениры'),
     (6, 3, 'Сезонные абонементы'),
     (7, 3, 'Пакетные абонементы');
 
+-- Ticket zone prices: legacy × TICKET_PLAN_AVG_PRICE / LEGACY_TICKET_PLAN_AVG_PRICE (310/1750)
 INSERT INTO product (id, category_id, sku, name, base_price, sector_id) VALUES
-    -- Tickets
-    (1,  1, 'TKT-A-STD',   'Обычный билет сектор A',      2500.00, 1),
-    (2,  1, 'TKT-B-STD',   'Обычный билет сектор B',      1800.00, 2),
-    (3,  1, 'TKT-C-STD',   'Обычный билет сектор C',      1200.00, 3),
-    (4,  1, 'TKT-VIP-BOX', 'VIP-билет ложа',              8500.00, 4),
-    (5,  2, 'TKT-FAM-4',   'Семейный пакет (4 места)',    6000.00, 2),
+    (1,  1, 'TKT-A',      'Билет сектор A',     443.00, 1),
+    (2,  1, 'TKT-B1',     'Билет сектор B1',    390.00, 2),
+    (3,  1, 'TKT-B2',     'Билет сектор B2',    372.00, 3),
+    (4,  1, 'TKT-B3',     'Билет сектор B3',    354.00, 4),
+    (5,  1, 'TKT-B4',     'Билет сектор B4',    337.00, 5),
+    (6,  1, 'TKT-C1',     'Билет сектор C1',    283.00, 6),
+    (7,  1, 'TKT-C2',     'Билет сектор C2',    266.00, 7),
+    (8,  1, 'TKT-C3',     'Билет сектор C3',    248.00, 8),
+    (9,  1, 'TKT-C4',     'Билет сектор C4',    230.00, 9),
+    (10, 1, 'TKT-D1',     'Билет сектор D1',    195.00, 10),
+    (11, 1, 'TKT-D2',     'Билет сектор D2',    177.00, 11),
+    (12, 1, 'TKT-D3',     'Билет сектор D3',    159.00, 12),
+    (13, 1, 'TKT-D4',     'Билет сектор D4',    142.00, 13),
+    (14, 1, 'TKT-VIP',    'VIP-билет ложа',    1506.00, 14),
+    (15, 2, 'TKT-PARK',   'Парковка',           500.00, NULL),
     -- Merch
-    (10, 3, 'MRC-SHIRT-H', 'Футболка домашняя',           3500.00, NULL),
-    (11, 3, 'MRC-SHIRT-A', 'Футболка гостевая',           3500.00, NULL),
-    (12, 4, 'MRC-SCARF',   'Шарф клубный',                1500.00, NULL),
-    (13, 4, 'MRC-CAP',     'Кепка с логотипом',           2200.00, NULL),
-    (14, 5, 'MRC-STICK',   'Хоккейная клюшка mini',       2800.00, NULL),
-    (15, 3, 'MRC-KIDS',    'Детская форма',               4000.00, NULL),
-    (16, 5, 'MRC-MUG',     'Термокружка',                 1200.00, NULL);
+    (20, 3, 'MRC-SHIRT-H', 'Футболка домашняя',           3500.00, NULL),
+    (21, 3, 'MRC-SHIRT-A', 'Футболка гостевая',           3500.00, NULL),
+    (22, 4, 'MRC-SCARF',   'Шарф клубный',                1500.00, NULL),
+    (23, 4, 'MRC-CAP',     'Кепка с логотипом',           2200.00, NULL),
+    (24, 5, 'MRC-STICK',   'Хоккейная клюшка mini',       2800.00, NULL),
+    (25, 3, 'MRC-KIDS',    'Детская форма',               4000.00, NULL),
+    (26, 5, 'MRC-MUG',     'Термокружка',                 1200.00, NULL);
 
 SELECT setval('product_id_seq', 100);
 
 INSERT INTO subscription_plan (id, code, name, match_count, price, valid_days, sector_id, description) VALUES
-    (1, 'SUB-5-A',    'Абонемент на 5 матчей (сектор A)',  5,  10000.00, 90,  1, '5 домашних матчей, сектор A'),
-    (2, 'SUB-5-B',    'Абонемент на 5 матчей (сектор B)',  5,   7500.00, 90,  2, '5 домашних матчей, сектор B'),
-    (3, 'SUB-10-A',   'Абонемент на 10 матчей',           10,  18000.00, 180, 1, '10 домашних матчей'),
-    (4, 'SUB-SEASON', 'Сезонный абонемент',               30,  85000.00, 365, 1, 'Все домашние матчи сезона'),
-    (5, 'SUB-VIP',    'VIP-сезонный абонемент',           30, 250000.00, 365, 4, 'VIP-ложа на все домашние матчи'),
-    (6, 'SUB-STUD',   'Студенческий абонемент',           10,   6000.00, 180, 3, '10 матчей, сектор C, по студ. билету');
+    (1, 'SUB-5-A',    'Абонемент на 5 матчей (сектор A)',  5,  10000.00, 90,  1,  '5 домашних матчей, сектор A'),
+    (2, 'SUB-5-B',    'Абонемент на 5 матчей (сектор B)',  5,   7500.00, 90,  2,  '5 домашних матчей, зона B'),
+    (3, 'SUB-10-A',   'Абонемент на 10 матчей',           10,  18000.00, 180, 1,  '10 домашних матчей'),
+    (4, 'SUB-SEASON', 'Сезонный абонемент',               30,  85000.00, 365, 1,  'Все домашние матчи сезона'),
+    (5, 'SUB-VIP',    'VIP-сезонный абонемент',           30, 250000.00, 365, 14, 'VIP-ложа на все домашние матчи'),
+    (6, 'SUB-STUD',   'Студенческий абонемент',           10,   6000.00, 180, 6,  '10 матчей, сектор C1, по студ. билету');
 
 INSERT INTO customer_segment (id, code, name) VALUES
     (1, 'regular',  'Обычный болельщик'),
@@ -100,32 +141,5 @@ INSERT INTO promotion (id, name, start_date, end_date, target_stream, reach, con
     ('promo-8', 'Студенческий билет −30%',         CURRENT_DATE - 20, CURRENT_DATE,      'tickets',       33000,  890,   420000),
     ('promo-9', 'Абонемент: +1 матч в подарок',    CURRENT_DATE - 30, CURRENT_DATE + 15, 'subscriptions', 18000,  420,  3200000);
 
--- Matches (aligned with lib/mock/hockey.ts)
-INSERT INTO match (id, arena_id, opponent_id, match_date, attendance, status) VALUES
-    ('match-1',  1,  1, CURRENT_DATE - 90, 7980,  'completed'),
-    ('match-2',  1,  2, CURRENT_DATE - 84, 9240,  'completed'),
-    ('match-3',  1,  3, CURRENT_DATE - 78, 6720,  'completed'),
-    ('match-4',  1,  4, CURRENT_DATE - 72, 9870,  'completed'),
-    ('match-5',  1,  5, CURRENT_DATE - 66, 7350,  'completed'),
-    ('match-6',  1,  6, CURRENT_DATE - 60, 8820,  'completed'),
-    ('match-7',  1,  7, CURRENT_DATE - 54, 9450,  'completed'),
-    ('match-8',  1,  8, CURRENT_DATE - 48, 6930,  'completed'),
-    ('match-9',  1,  9, CURRENT_DATE - 42, 8190,  'completed'),
-    ('match-10', 1, 10, CURRENT_DATE - 36, 9660,  'completed'),
-    ('match-11', 1, 11, CURRENT_DATE - 30, 7140,  'completed'),
-    ('match-12', 1, 12, CURRENT_DATE - 24, 8610,  'completed'),
-    ('match-13', 1, 13, CURRENT_DATE - 18, 9030,  'completed'),
-    ('match-14', 1, 14, CURRENT_DATE - 12, 7560,  'completed'),
-    ('match-15', 1, 15, CURRENT_DATE -  6, 9870,  'completed'),
-    ('match-16', 1, 16, '2026-05-15', 0,  'scheduled');
-
-INSERT INTO promotion_match (promotion_id, match_id) VALUES
-    ('promo-1', 'match-1'), ('promo-1', 'match-2'),
-    ('promo-2', 'match-3'), ('promo-2', 'match-4'), ('promo-2', 'match-5'),
-    ('promo-3', 'match-6'), ('promo-3', 'match-7'),
-    ('promo-4', 'match-8'), ('promo-4', 'match-9'), ('promo-4', 'match-10'),
-    ('promo-6', 'match-11'), ('promo-6', 'match-12'),
-    ('promo-7', 'match-13'), ('promo-7', 'match-14'),
-    ('promo-8', 'match-14'), ('promo-8', 'match-15'),
-    ('promo-9', 'match-1'), ('promo-9', 'match-2'), ('promo-9', 'match-3'),
-    ('promo-9', 'match-4'), ('promo-9', 'match-5');
+-- Matches and promotion_match are generated from lib/mock/data/hockey-mock.json
+-- by database/generate-seed.mjs into 03_seed_facts.sql

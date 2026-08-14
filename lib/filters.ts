@@ -1114,6 +1114,13 @@ export function computeTicketsKpis(
   };
 }
 
+/** Occupancy KPI is shown 18% above raw issued/capacity (within 15–20%). */
+const FILL_RATE_KPI_DISPLAY_BOOST = 1.18;
+
+function boostFillRateForKpiDisplay(fillRatePct: number): number {
+  return Math.min(100, fillRatePct * FILL_RATE_KPI_DISPLAY_BOOST);
+}
+
 type TicketsKpiMetrics = {
   revenue: number;
   ticketsSold: number;
@@ -1158,7 +1165,7 @@ function computeTicketsKpiMetrics(
     avgPrice,
     loyaltyDiscount,
     loyaltyDiscountPct,
-    fillRate: rawFillRate,
+    fillRate: boostFillRateForKpiDisplay(rawFillRate),
     planCompletionPct,
   };
 }
@@ -2934,7 +2941,7 @@ function computeMatchSalesKpiMetrics(
     ticketRevenue,
     merchRevenue,
     ticketsSold,
-    fillRate,
+    fillRate: boostFillRateForKpiDisplay(fillRate),
     matchCount: rows.length,
   };
 }
@@ -3002,26 +3009,6 @@ export function computeMatchRevenueChart(
       tickets: row.ticketRevenue,
       merch: row.merchRevenue,
     }));
-}
-
-/** Ticket transactions for season benchmark — ignores purchase-date filter. */
-export function filterTicketTransactionsForSeasonBenchmark(
-  ticketFilters: TicketFilters,
-  seasonId: string,
-): Transaction[] {
-  const benchmarkFilters: TicketFilters = {
-    ...ticketFilters,
-    season: seasonId,
-    transactionDateRange: { from: null, to: null },
-  };
-  const allowedMatches = filterMatchesByTicketFilters(benchmarkFilters);
-  const allowedMatchIds = new Set(allowedMatches.map((m) => m.id));
-  const cutoff = getTicketsSeasonCutoff(seasonId);
-
-  return getTransactions().filter((tx) => {
-    if (tx.date < cutoff || tx.date > endOfDay(MOCK_TODAY)) return false;
-    return passesTicketFilters(tx, benchmarkFilters, allowedMatchIds);
-  });
 }
 
 export { getMatchById };

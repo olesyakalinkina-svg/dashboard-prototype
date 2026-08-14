@@ -22,10 +22,13 @@ import {
   formatSeasonMatchYAxisTick,
   getSeasonMatchChartScrollLeft,
   getSeasonMatchChartWidth,
+  getSeasonMatchDateXPosition,
   getSeasonMatchLineOpacity,
+  getSeasonMatchPlanMarkerY,
   getSeasonMatchStrokeWidth,
   getSeasonMatchYDomainKeys,
   pickBrightSeasonMatchIds,
+  pickVisibleSeasonMatchPlanLabelIds,
   seasonMatchFactKey,
   seasonMatchPlanKey,
   SEASON_MATCH_CHART_MOBILE_MAX_WIDTH,
@@ -128,6 +131,47 @@ export function TicketsSeasonMatchChart({
   }, [displayData, isMobileViewport, viewportWidth]);
 
   const xTicks = buildSeasonMatchXAxisTicks(displayData, { grouping: timeGrouping });
+
+  const labeledPlanMatchIds = useMemo(() => {
+    if (viewportWidth < 768) {
+      return new Set<string>();
+    }
+
+    const yMax = yDomain[1] ?? 1;
+    const candidates = visibleViews.flatMap((view) => {
+      const planKey = seasonMatchPlanKey(view.matchId);
+      const row = displayData.find((entry) => entry[planKey] != null);
+      if (!row) return [];
+
+      const value = row[planKey];
+      if (typeof value !== "number") return [];
+
+      let priority = value;
+      if (hoveredSeries === view.matchId) priority += 1_000_000_000;
+      else if (view.isSelected) priority += 100_000_000;
+      else if (brightMatchIds.has(view.matchId)) priority += 10_000_000;
+
+      return [
+        {
+          matchId: view.matchId,
+          x: getSeasonMatchDateXPosition(row.dateKey, displayData, chartWidth),
+          y: getSeasonMatchPlanMarkerY(value, yMax, chartHeight),
+          priority,
+        },
+      ];
+    });
+
+    return pickVisibleSeasonMatchPlanLabelIds(candidates);
+  }, [
+    brightMatchIds,
+    chartHeight,
+    chartWidth,
+    displayData,
+    hoveredSeries,
+    viewportWidth,
+    visibleViews,
+    yDomain,
+  ]);
 
   const formatAxisLabel = (value: number) =>
     formatSeasonMatchAxisLabel(Number(value), displayData);
@@ -277,6 +321,7 @@ export function TicketsSeasonMatchChart({
                       color={view.color}
                       matchId={view.matchId}
                       visible={opacity > 0.15}
+                      showLabel={labeledPlanMatchIds.has(view.matchId)}
                     />
                   )}
                   activeDot={false}

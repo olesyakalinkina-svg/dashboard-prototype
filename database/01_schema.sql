@@ -24,7 +24,9 @@ CREATE TABLE arena (
     id          SMALLSERIAL PRIMARY KEY,
     club_id     SMALLINT NOT NULL REFERENCES club (id),
     name        TEXT NOT NULL,
-    capacity    INTEGER NOT NULL CHECK (capacity > 0)
+    capacity    INTEGER NOT NULL CHECK (capacity > 0),
+    code        TEXT NOT NULL UNIQUE
+        CHECK (code IN ('main', 'secondary'))
 );
 
 CREATE TABLE opponent (
@@ -39,11 +41,24 @@ CREATE TABLE match (
     match_date  DATE NOT NULL,
     attendance  INTEGER NOT NULL CHECK (attendance >= 0),
     status      TEXT NOT NULL DEFAULT 'completed'
-        CHECK (status IN ('scheduled', 'completed', 'cancelled'))
+        CHECK (status IN ('scheduled', 'completed', 'cancelled')),
+    season      TEXT NOT NULL,
+    league      TEXT NOT NULL
+        CHECK (league IN ('KHL', 'VHL', 'MHL')),
+    tournament_stage TEXT NOT NULL DEFAULT 'regular'
+        CHECK (tournament_stage IN ('regular', 'playoff')),
+    match_class TEXT NOT NULL DEFAULT 'class_2'
+        CHECK (match_class IN ('class_1', 'class_2', 'class_3', 'playoff')),
+    ticket_sales_window_days SMALLINT NOT NULL DEFAULT 14
+        CHECK (ticket_sales_window_days BETWEEN 1 AND 60),
+    capacity    INTEGER NOT NULL CHECK (capacity > 0)
 );
 
 CREATE INDEX idx_match_date ON match (match_date);
 CREATE INDEX idx_match_opponent ON match (opponent_id);
+CREATE INDEX idx_match_season ON match (season);
+CREATE INDEX idx_match_league ON match (league);
+CREATE INDEX idx_match_season_league ON match (season, league);
 
 CREATE TABLE revenue_stream (
     id          SMALLSERIAL PRIMARY KEY,
@@ -61,6 +76,8 @@ CREATE TABLE sector (
     id          SMALLSERIAL PRIMARY KEY,
     code        TEXT NOT NULL UNIQUE,
     name        TEXT NOT NULL,
+    zone_group  TEXT NOT NULL
+        CHECK (zone_group IN ('A', 'B', 'C', 'D', 'VIP')),
     sort_order  SMALLINT NOT NULL DEFAULT 0
 );
 
@@ -160,6 +177,8 @@ CREATE TABLE sale (
     customer_id     UUID REFERENCES customer (id),
     promotion_id    TEXT REFERENCES promotion (id),
     sector_id       SMALLINT REFERENCES sector (id),
+    ticket_type     TEXT
+        CHECK (ticket_type IS NULL OR ticket_type IN ('arena', 'parking')),
     quantity        INTEGER NOT NULL CHECK (quantity > 0),
     unit_price      NUMERIC(12, 2) NOT NULL CHECK (unit_price >= 0),
     amount          NUMERIC(14, 2) NOT NULL CHECK (amount >= 0),
@@ -172,6 +191,8 @@ CREATE INDEX idx_sale_date_key ON sale (date_key);
 CREATE INDEX idx_sale_stream ON sale (stream_id);
 CREATE INDEX idx_sale_match ON sale (match_id);
 CREATE INDEX idx_sale_promotion ON sale (promotion_id);
+CREATE INDEX idx_sale_sector ON sale (sector_id);
+CREATE INDEX idx_sale_ticket_type ON sale (ticket_type);
 
 CREATE TABLE subscription (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -186,12 +207,22 @@ CREATE TABLE subscription (
     matches_used    SMALLINT NOT NULL DEFAULT 0 CHECK (matches_used >= 0),
     channel_id      SMALLINT NOT NULL REFERENCES sales_channel (id),
     status          TEXT NOT NULL DEFAULT 'active'
-        CHECK (status IN ('active', 'expired', 'cancelled', 'fully_used'))
+        CHECK (status IN ('active', 'expired', 'cancelled', 'fully_used')),
+    season          TEXT NOT NULL,
+    league          TEXT NOT NULL
+        CHECK (league IN ('KHL', 'VHL', 'MHL')),
+    tournament_stage TEXT NOT NULL DEFAULT 'regular'
+        CHECK (tournament_stage IN ('regular', 'playoff')),
+    arena_id        SMALLINT REFERENCES arena (id),
+    ticket_type     TEXT NOT NULL DEFAULT 'arena'
+        CHECK (ticket_type IN ('arena', 'parking')),
+    sector_id       SMALLINT REFERENCES sector (id)
 );
 
 CREATE INDEX idx_subscription_purchased ON subscription (purchased_at);
 CREATE INDEX idx_subscription_plan ON subscription (plan_id);
 CREATE INDEX idx_subscription_status ON subscription (status);
+CREATE INDEX idx_subscription_season_league ON subscription (season, league);
 
 CREATE TABLE subscription_redemption (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),

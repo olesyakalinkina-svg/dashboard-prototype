@@ -23,7 +23,14 @@ SELECT
     m.id AS match_id,
     o.name AS opponent,
     m.match_date,
+    m.season,
+    m.league,
+    m.tournament_stage,
+    m.match_class,
+    m.capacity AS match_capacity,
     sec.code AS sector,
+    sec.zone_group,
+    s.ticket_type,
     s.quantity,
     s.unit_price,
     s.amount,
@@ -59,7 +66,14 @@ SELECT
     NULL,
     NULL,
     NULL,
+    sub.season,
+    sub.league,
+    sub.tournament_stage,
+    NULL::TEXT,
+    NULL::INTEGER,
     sec.code,
+    sec.zone_group,
+    sub.ticket_type,
     1,
     sub.price,
     sub.price,
@@ -71,7 +85,7 @@ FROM subscription sub
 JOIN dim_date d ON d.date_key = sub.date_key
 JOIN subscription_plan sp ON sp.id = sub.plan_id
 JOIN sales_channel sc ON sc.id = sub.channel_id
-LEFT JOIN sector sec ON sec.id = sp.sector_id;
+LEFT JOIN sector sec ON sec.id = COALESCE(sub.sector_id, sp.sector_id);
 
 -- Weekly revenue by stream (WeeklyRevenueChart)
 CREATE OR REPLACE VIEW v_weekly_revenue AS
@@ -91,23 +105,26 @@ SELECT
     COALESCE('vs ' || opponent, 'Без матча') AS match_label,
     match_id,
     match_date,
+    season,
+    league,
     COALESCE(SUM(amount) FILTER (WHERE stream = 'tickets'), 0) AS tickets,
     COALESCE(SUM(amount) FILTER (WHERE stream = 'merch'), 0)   AS merch,
     COALESCE(SUM(amount), 0)                                   AS total
 FROM v_revenue_unified
 WHERE match_id IS NOT NULL
-GROUP BY match_id, opponent, match_date
+GROUP BY match_id, opponent, match_date, season, league
 ORDER BY match_date;
 
 -- Ticket sales by sector (SectorPieChart)
 CREATE OR REPLACE VIEW v_sector_sales AS
 SELECT
     COALESCE(sector, '—') AS sector,
+    zone_group,
     SUM(amount) AS value,
     SUM(quantity) AS tickets_sold
 FROM v_revenue_unified
 WHERE stream = 'tickets' AND sector IS NOT NULL
-GROUP BY sector
+GROUP BY sector, zone_group
 ORDER BY value DESC;
 
 -- Merch by match
@@ -129,9 +146,17 @@ SELECT
     m.id AS match_id,
     m.match_date,
     o.name AS opponent,
+    m.season,
+    m.league,
+    m.tournament_stage,
+    m.match_class,
+    a.code AS arena,
     m.attendance,
-    a.capacity,
-    ROUND(m.attendance::NUMERIC / a.capacity * 100, 1) AS fill_rate_pct
+    COALESCE(m.capacity, a.capacity) AS capacity,
+    ROUND(
+        m.attendance::NUMERIC / NULLIF(COALESCE(m.capacity, a.capacity), 0) * 100,
+        1
+    ) AS fill_rate_pct
 FROM match m
 JOIN opponent o ON o.id = m.opponent_id
 JOIN arena a ON a.id = m.arena_id
@@ -213,6 +238,49 @@ FROM v_revenue_unified
 WHERE stream = 'merch'
 GROUP BY stream, product_name, sku
 ORDER BY revenue DESC;
+
+-- Match catalog (filters: season, league, stage, class, arena)
+CREATE OR REPLACE VIEW v_match_catalog AS
+SELECT
+    m.id AS match_id,
+    m.match_date,
+    o.name AS opponent,
+    m.season,
+    m.league,
+    m.tournament_stage,
+    m.match_class,
+    m.status,
+    a.code AS arena,
+    a.name AS arena_name,
+    m.attendance,
+    m.capacity,
+    m.ticket_sales_window_days
+FROM match m
+JOIN opponent o ON o.id = m.opponent_id
+JOIN arena a ON a.id = m.arena_id
+ORDER BY m.match_date;
+
+-- Subscriptions by season / league / price zone
+CREATE OR REPLACE VIEW v_subscription_by_season AS
+SELECT
+    sub.season,
+    sub.league,
+    sub.tournament_stage,
+    sub.ticket_type,
+    sec.code AS price_zone,
+    sec.zone_group,
+    COUNT(sub.id) AS subscriptions_sold,
+    SUM(sub.price) AS total_revenue
+FROM subscription sub
+LEFT JOIN sector sec ON sec.id = sub.sector_id
+GROUP BY
+    sub.season,
+    sub.league,
+    sub.tournament_stage,
+    sub.ticket_type,
+    sec.code,
+    sec.zone_group
+ORDER BY sub.season, sub.league, total_revenue DESC NULLS LAST;
 
 -- Abonement redemptions per match
 CREATE OR REPLACE VIEW v_subscription_redemptions_by_match AS
