@@ -582,7 +582,7 @@ const CURRENT_SEASON_KHL_MATCH_DATES: Record<string, Date> = {
   "Трактор": new Date(2025, 9, 29),
   "Металлург": new Date(2025, 10, 7),
   "Салават Юлаев": new Date(2025, 11, 1),
-  "Динамо Мск": new Date(2026, 0, 5),
+  "Динамо Мск": new Date(2026, 4, 15),
 };
 
 function applyCurrentSeasonKhlMatchDates(matches: Match[]): void {
