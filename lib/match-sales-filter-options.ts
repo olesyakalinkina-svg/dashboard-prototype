@@ -3,7 +3,10 @@ import type {
   MerchFilters,
   TicketFilters,
 } from "@/types/dashboard";
-import { ALL_MERCH_SALES_POINTS } from "@/lib/merch-filter-options";
+import {
+  ALL_MERCH_PRODUCT_CATEGORIES,
+  ALL_MERCH_SALES_POINTS,
+} from "@/lib/merch-filter-options";
 
 export const DEFAULT_MATCH_SALES_PURCHASE_DATE_RANGE: MatchSalesFilters["purchaseDateRange"] =
   {
@@ -51,6 +54,7 @@ export function matchSalesFiltersToMerchFilters(
     matchClass: filters.matchClass,
     matchId: filters.matchId,
     salesChannels: [...ALL_MERCH_SALES_POINTS],
+    productCategories: [...ALL_MERCH_PRODUCT_CATEGORIES],
     orderDateRange: filters.purchaseDateRange,
     timeGrouping: "week",
   };

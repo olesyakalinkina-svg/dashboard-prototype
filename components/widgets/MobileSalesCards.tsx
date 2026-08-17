@@ -4,13 +4,39 @@ import clsx from "clsx";
 import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { RowsExcelButton } from "@/components/ui/ExcelDownloadButton";
 import {
   formatCurrency,
   formatDate,
   formatNumber,
   formatPercent,
 } from "@/lib/format";
+import type { ExcelValue } from "@/lib/excel-export";
 import type { MatchSalesRow } from "@/types/dashboard";
+
+const MATCH_SALES_EXCEL_HEADERS = [
+  "Мероприятие",
+  "Дата",
+  "Выручка",
+  "Средняя цена",
+  "Продано",
+  "Бесплатно",
+  "Оформлено",
+  "Скидка ПЛ",
+];
+
+function getMatchSalesExcelRows(rows: MatchSalesRow[]): ExcelValue[][] {
+  return rows.map((row) => [
+    row.eventLabel,
+    formatDate(row.date),
+    row.revenue,
+    row.avgPrice,
+    row.ticketsSold,
+    row.freeTickets,
+    row.issuedTickets,
+    Math.round(row.loyaltyDiscountPct * 10) / 10,
+  ]);
+}
 
 export function MobileSalesCards({ data }: { data: MatchSalesRow[] }) {
   const [search, setSearch] = useState("");
@@ -36,18 +62,25 @@ export function MobileSalesCards({ data }: { data: MatchSalesRow[] }) {
     <Card className="min-w-0">
       <CardHeader>
         <CardTitle>Продажи</CardTitle>
-        <div className="relative mt-2 w-full">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
-              setPage(0);
-            }}
-            placeholder="Поиск по мероприятию"
-            className="h-10 w-full rounded-md border border-[var(--border)] bg-[var(--background)] py-2 pl-9 pr-3 text-sm"
+        <div className="flex w-full items-center gap-2">
+          <RowsExcelButton
+            fileName="Продажи"
+            headers={MATCH_SALES_EXCEL_HEADERS}
+            rows={getMatchSalesExcelRows(filtered)}
           />
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(0);
+              }}
+              placeholder="Поиск по мероприятию"
+              className="h-10 w-full rounded-md border border-[var(--border)] bg-[var(--background)] py-2 pl-9 pr-3 text-sm"
+            />
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">

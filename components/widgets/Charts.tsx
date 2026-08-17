@@ -31,13 +31,10 @@ import { InlineBarCell } from "@/components/ui/InlineBarCell";
 import { Select } from "@/components/ui/Select";
 import {
   ALL_MERCH_SALES_GROUPS,
-  ALL_MERCH_SALES_SEGMENTS,
   MERCH_SALES_GROUP_CHANNELS,
   MERCH_SALES_GROUP_COLORS,
   MERCH_SALES_GROUP_LABELS,
   MERCH_SALES_POINT_COLORS,
-  MERCH_SALES_SEGMENT_COLORS,
-  MERCH_SALES_SEGMENT_LABELS,
 } from "@/lib/merch-filter-options";
 import { ALL_PRICE_ZONES } from "@/lib/ticket-filter-options";
 import {
@@ -65,8 +62,6 @@ import type {
   MerchProductCategoryPoint,
   MerchSalesGroup,
   MerchSalesPoint,
-  MerchSalesSegment,
-  MerchSalesSegmentTrendPoint,
   OrderSource,
   OrderSourceSalesPoint,
   PriceZoneSalesPoint,
@@ -368,114 +363,6 @@ export function MerchSalesStackedChart({
                     name={MERCH_SALES_GROUP_LABELS[group]}
                     stackId="sales"
                     fill={MERCH_SALES_GROUP_COLORS[group]}
-                    isAnimationActive={false}
-                  />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartScrollContainer>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-export function MerchSalesSegmentStackedChart({
-  data,
-  className,
-  timeGrouping = "month",
-}: {
-  data: MerchSalesSegmentTrendPoint[];
-  className?: string;
-  timeGrouping?: TimeGrouping;
-}) {
-  const chartData = useMemo(() => {
-    const rows = data.map((point) => ({
-      period: getMerchTrendPeriodLabel(point, timeGrouping),
-      offline: point.segments.offline,
-      online: point.segments.online,
-      matchday: point.segments.matchday,
-    }));
-
-    if (timeGrouping === "month") {
-      return rows.filter(
-        (row) => row.offline > 0 || row.online > 0 || row.matchday > 0,
-      );
-    }
-
-    return rows;
-  }, [data, timeGrouping]);
-
-  const activeSegments = useMemo(() => {
-    return ALL_MERCH_SALES_SEGMENTS.filter((segment) =>
-      chartData.some((row) => row[segment] > 0),
-    );
-  }, [chartData]);
-
-  const {
-    displayData,
-    isZoomed,
-    resetZoom,
-    selectionArea,
-    yDomain,
-    chartHandlers,
-  } = useChartAreaZoom(chartData, activeSegments, [data, timeGrouping], {
-    yAggregate: "sum",
-  });
-
-  return (
-    <Card className={clsx("min-w-0", className)}>
-      <CardHeader>
-        <div className="min-w-0">
-          <CardTitle>Продажи по сегментам</CardTitle>
-          <ChartZoomHint visible={!isZoomed} />
-        </div>
-        {isZoomed && <ChartZoomResetButton onClick={resetZoom} />}
-      </CardHeader>
-      <CardContent className="flex min-w-0 h-full flex-col">
-        {chartData.length === 0 || activeSegments.length === 0 ? (
-          <div className="flex h-[220px] items-center justify-center text-sm text-[var(--muted)]">
-            Нет данных по выбранным фильтрам
-          </div>
-        ) : (
-          <ChartScrollContainer
-            className={clsx("h-[220px]", CHART_ZOOM_SURFACE_CLASS)}
-          >
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={displayData}
-                margin={{
-                  top: 8,
-                  right: 8,
-                  left: 0,
-                  bottom: 0,
-                }}
-                {...chartHandlers}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#E5E5E7" />
-                <XAxis {...getMerchTrendXAxisProps(timeGrouping)} />
-                <YAxis
-                  domain={yDomain}
-                  tick={{ fontSize: 10, fill: "#8B8B8E" }}
-                  width={48}
-                  tickFormatter={(value) =>
-                    value >= 1_000_000
-                      ? `${(value / 1_000_000).toFixed(1)}M`
-                      : value >= 1_000
-                        ? `${Math.round(value / 1_000)}K`
-                        : String(value)
-                  }
-                />
-                <Tooltip content={<MerchSalesStackedTooltip />} />
-                <Legend {...MERCH_STACKED_CHART_LEGEND_PROPS} />
-                <ChartZoomReferenceArea selectionArea={selectionArea} />
-                {activeSegments.map((segment) => (
-                  <Bar
-                    key={segment}
-                    dataKey={segment}
-                    name={MERCH_SALES_SEGMENT_LABELS[segment]}
-                    stackId="segments"
-                    fill={MERCH_SALES_SEGMENT_COLORS[segment]}
                     isAnimationActive={false}
                   />
                 ))}

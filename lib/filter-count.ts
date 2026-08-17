@@ -1,5 +1,9 @@
 import { DEFAULT_MATCH_SALES_FILTERS } from "@/lib/match-sales-filter-options";
-import { ALL_MERCH_SALES_POINTS, DEFAULT_MERCH_FILTERS } from "@/lib/merch-filter-options";
+import {
+  ALL_MERCH_PRODUCT_CATEGORIES,
+  ALL_MERCH_SALES_POINTS,
+  DEFAULT_MERCH_FILTERS,
+} from "@/lib/merch-filter-options";
 import { DEFAULT_SUBSCRIPTION_FILTERS } from "@/lib/subscription-filter-options";
 import {
   DEFAULT_TICKET_FILTERS,
@@ -82,6 +86,15 @@ export function countActiveMerchFilters(filters: MerchFilters): number {
     filters.salesChannels.length !== ALL_MERCH_SALES_POINTS.length ||
     filters.salesChannels.some(
       (channel) => !ALL_MERCH_SALES_POINTS.includes(channel),
+    )
+  ) {
+    count += 1;
+  }
+
+  if (
+    filters.productCategories.length !== ALL_MERCH_PRODUCT_CATEGORIES.length ||
+    filters.productCategories.some(
+      (category) => !ALL_MERCH_PRODUCT_CATEGORIES.includes(category),
     )
   ) {
     count += 1;

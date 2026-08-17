@@ -2,6 +2,7 @@ import {
   ALL_MERCH_PRODUCT_CATEGORIES,
   ALL_MERCH_SALES_POINTS,
   DEFAULT_MERCH_FILTERS,
+  MERCH_PRODUCT_CATEGORY_LABELS,
 } from "@/lib/merch-filter-options";
 import { DEFAULT_MATCH_SALES_FILTERS } from "@/lib/match-sales-filter-options";
 import { DEFAULT_SUBSCRIPTION_FILTERS } from "@/lib/subscription-filter-options";
@@ -23,9 +24,9 @@ import {
   computeMatchRevenueChart,
   computeMatchSalesKpis,
   computeMerchKpis,
+  computeMerchPlanFactTrend,
   computeMerchProductCategoryRevenue,
   computeMerchSalesChannelRevenue,
-  computeMerchTrend,
   computeOrderSourceSales,
   computePriceZoneSales,
   computeSubscriptionsKpis,
@@ -109,10 +110,12 @@ function assertMerchData(
 
   const channels = computeMerchSalesChannelRevenue(filters, merchFilters);
   const categories = computeMerchProductCategoryRevenue(filters, merchFilters);
+  const sales = computeMerchPlanFactTrend(filters, merchFilters);
 
   return (
     channels.some((row) => row.value > 0) &&
-    categories.some((row) => row.value > 0)
+    categories.some((row) => row.value > 0) &&
+    sales.some((point) => point.factRevenue > 0 && point.planRevenue > 0)
   );
 }
 
@@ -339,20 +342,12 @@ export function buildMerchFilterCases(): FilterCoverageCase[] {
   }
 
   for (const cat of ALL_MERCH_PRODUCT_CATEGORIES) {
-    cases.push({
-      tab: "merch",
-      filter: "productCategory",
-      option: cat,
-      apply: () => {},
-      hasData: () => {
-        const txs = filterMerchTransactions(
-          DEFAULT_DASHBOARD_FILTERS,
-          DEFAULT_MERCH_FILTERS,
-          { useSeasonRange: true },
-        );
-        return txs.some((tx) => tx.productCategory === cat);
-      },
-    });
+    cases.push(
+      merchCase("productCategory", MERCH_PRODUCT_CATEGORY_LABELS[cat], {
+        ...DEFAULT_MERCH_FILTERS,
+        productCategories: [cat],
+      }),
+    );
   }
 
   cases.push({
@@ -363,6 +358,16 @@ export function buildMerchFilterCases(): FilterCoverageCase[] {
     hasData: () => false,
     excluded:
       "Empty multi-select is intentional — no sales channels selected means no data",
+  });
+
+  cases.push({
+    tab: "merch",
+    filter: "productCategory",
+    option: "(empty selection)",
+    apply: () => {},
+    hasData: () => false,
+    excluded:
+      "Empty multi-select is intentional — no product categories selected means no data",
   });
 
   return cases;
@@ -522,8 +527,10 @@ export function buildTimeGroupingCases(): TimeGroupingCase[] {
           ...DEFAULT_MERCH_FILTERS,
           timeGrouping: opt.value,
         };
-        const trend = computeMerchTrend(DEFAULT_DASHBOARD_FILTERS, filters);
-        return trend.some((point) => point.value > 0);
+        const trend = computeMerchPlanFactTrend(DEFAULT_DASHBOARD_FILTERS, filters);
+        return trend.some(
+          (point) => point.factRevenue > 0 && point.planRevenue > 0,
+        );
       },
     })),
     ...TREND_TIME_GROUPING_OPTIONS.map((opt) => ({

@@ -8,6 +8,7 @@ import { MultiSelect } from "@/components/ui/MultiSelect";
 import { Select } from "@/components/ui/Select";
 import {
   LEAGUE_OPTIONS,
+  MERCH_PRODUCT_CATEGORY_OPTIONS,
   MERCH_SALES_POINT_OPTIONS,
   TREND_TIME_GROUPING_OPTIONS,
   getEffectiveMerchTimeGrouping,
@@ -28,6 +29,7 @@ import type {
   League,
   MatchClass,
   MerchFilters,
+  MerchProductCategory,
   MerchSalesPoint,
   TimeGrouping,
   TournamentStage,
@@ -158,6 +160,17 @@ export function MerchFilterBar() {
           onChange={(value) =>
             update("salesChannels", value as MerchSalesPoint[])
           }
+          className="sm:min-w-[220px]"
+        />
+
+        <MultiSelect
+          label="Категория товара"
+          options={MERCH_PRODUCT_CATEGORY_OPTIONS}
+          value={merchFilters.productCategories}
+          onChange={(value) =>
+            update("productCategories", value as MerchProductCategory[])
+          }
+          selectAllLabel="Все категории"
           className="sm:min-w-[220px]"
         />
 

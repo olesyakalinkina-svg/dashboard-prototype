@@ -67,6 +67,7 @@ function snapshotDraftFilters(live: ReturnType<typeof useFilterState>): DraftFil
     merchFilters: {
       ...live.merchFilters,
       salesChannels: [...live.merchFilters.salesChannels],
+      productCategories: [...live.merchFilters.productCategories],
       matchId: [...live.merchFilters.matchId],
     },
     matchSalesFilters: {
@@ -135,6 +136,7 @@ export function MobileFilterDraftProvider({
       merchFilters: {
         ...DEFAULT_MERCH_FILTERS,
         salesChannels: [...DEFAULT_MERCH_FILTERS.salesChannels],
+        productCategories: [...DEFAULT_MERCH_FILTERS.productCategories],
       },
     }));
   }, []);

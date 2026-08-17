@@ -203,10 +203,10 @@ const MerchProductCategoriesChart = dynamic(
   },
 );
 
-const MerchSalesSegmentStackedChart = dynamic(
+const MerchSalesWidget = dynamic(
   () =>
-    import("@/components/widgets/Charts").then((mod) => ({
-      default: mod.MerchSalesSegmentStackedChart,
+    import("@/components/widgets/MerchSalesWidget").then((mod) => ({
+      default: mod.MerchSalesWidget,
     })),
   {
     ssr: false,
@@ -249,7 +249,7 @@ function DashboardContent() {
     merchMatchSales,
     merchSalesChannelRevenue,
     merchSalesChannelTrend,
-    merchSalesSegmentTrend,
+    merchPlanFactTrend,
     merchProductCategoryRevenue,
     merchProductCategoryTrend,
     merchSkuSales,
@@ -316,10 +316,7 @@ function DashboardContent() {
           <>
             <MerchKpiCards merchKpis={merchKpis} />
             <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
-              <MerchSalesSegmentStackedChart
-                data={merchSalesSegmentTrend}
-                timeGrouping={merchChartTimeGrouping}
-              />
+              <MerchSalesWidget data={merchPlanFactTrend} />
               <TopProductsChart data={topProducts} />
             </div>
             <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-2">

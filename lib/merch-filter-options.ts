@@ -3,7 +3,6 @@ import type {
   MerchProductCategory,
   MerchSalesGroup,
   MerchSalesPoint,
-  MerchSalesSegment,
   TimeGrouping,
   Transaction,
 } from "@/types/dashboard";
@@ -61,24 +60,6 @@ export const MERCH_SALES_GROUP_COLORS: Record<MerchSalesGroup, string> = {
   arena: "#00BFA5",
   trk: "#FF7043",
   online: "#7B61FF",
-};
-
-export const ALL_MERCH_SALES_SEGMENTS: MerchSalesSegment[] = [
-  "offline",
-  "online",
-  "matchday",
-];
-
-export const MERCH_SALES_SEGMENT_LABELS: Record<MerchSalesSegment, string> = {
-  offline: "Офлайн-продажи",
-  online: "Онлайн-продажи",
-  matchday: "Матчдей",
-};
-
-export const MERCH_SALES_SEGMENT_COLORS: Record<MerchSalesSegment, string> = {
-  offline: "#5282FF",
-  online: "#7B61FF",
-  matchday: "#00BFA5",
 };
 
 export const ALL_MERCH_PRODUCT_CATEGORIES: MerchProductCategory[] = [
@@ -158,6 +139,7 @@ export const DEFAULT_MERCH_FILTERS: MerchFilters = {
   matchClass: "all",
   matchId: [],
   salesChannels: [...ALL_MERCH_SALES_POINTS],
+  productCategories: [...ALL_MERCH_PRODUCT_CATEGORIES],
   orderDateRange: DEFAULT_MERCH_ORDER_DATE_RANGE,
   timeGrouping: "week",
 };

@@ -5,6 +5,7 @@ import {
   endOfDay,
   format,
   isSameDay,
+  parseISO,
   startOfDay,
   startOfMonth,
   startOfQuarter,
@@ -45,9 +46,7 @@ import {
   getMerchProductCategory,
   MERCH_PRODUCT_CATEGORY_LABELS,
   MERCH_SALES_POINT_LABELS,
-  ALL_MERCH_SALES_SEGMENTS,
   getEffectiveMerchTimeGrouping,
-  MERCH_SALES_SEGMENT_LABELS,
 } from "@/lib/merch-filter-options";
 import { getMerchListAmount } from "@/lib/merch-catalog";
 import {
@@ -57,6 +56,7 @@ import {
   TICKET_PLAN_AVG_PRICE,
 } from "@/lib/ticket-plan";
 import {
+  getPurchaseDateBounds,
   isDateInTournamentStage,
   passesOrderDateRange,
 } from "@/lib/season-dates";
@@ -95,8 +95,6 @@ import type {
   PriceZone,
   PriceZoneGroup,
   MerchSalesPoint,
-  MerchSalesSegment,
-  MerchSalesSegmentTrendPoint,
   MerchSkuSalesRow,
   OrderSource,
   OrderSourceSalesPoint,
@@ -177,6 +175,7 @@ function merchFilterCacheKey(
     merchFilters.matchClass,
     merchFilters.matchId.join(","),
     merchFilters.salesChannels.join(","),
+    merchFilters.productCategories.join(","),
     merchFilters.orderDateRange.from ?? "",
     merchFilters.orderDateRange.to ?? "",
   ].join("|");
@@ -503,6 +502,16 @@ function passesMerchSalesChannels(
   return Boolean(tx.merchSalesPoint && salesChannels.includes(tx.merchSalesPoint));
 }
 
+function passesMerchProductCategories(
+  tx: Transaction,
+  productCategories: MerchFilters["productCategories"],
+): boolean {
+  if (productCategories.length === 0) return false;
+  if (productCategories.length >= ALL_MERCH_PRODUCT_CATEGORIES.length) return true;
+  const category = getMerchProductCategory(tx);
+  return Boolean(category && productCategories.includes(category));
+}
+
 
 const MERCH_MATCH_TABLE_EXCLUDED_POINTS = new Set<MerchSalesPoint>([
   "online_store",
@@ -510,77 +519,69 @@ const MERCH_MATCH_TABLE_EXCLUDED_POINTS = new Set<MerchSalesPoint>([
   "mall_continent",
 ]);
 
-const MATCHDAY_ARENA_POINTS = new Set<MerchSalesPoint>([
-  "flagship",
-  "arena_north",
-  "arena_south",
-]);
+const MERCH_PLAN_EXECUTION_RATE = 0.93;
 
-const OFFLINE_MERCH_POINTS = new Set<MerchSalesPoint>([
-  "flagship",
-  "arena_north",
-  "arena_south",
-  "mall_raduga",
-  "mall_continent",
-]);
+function getMerchTrendDisplayPeriod(merchFilters: MerchFilters): {
+  start: Date;
+  end: Date;
+} {
+  const bounds = getPurchaseDateBounds(merchFilters.season);
+  let start = startOfDay(bounds.min);
+  let end = startOfDay(bounds.max);
 
-function buildArenaMatchDayTimestamps(merchFilters: MerchFilters): Set<number> {
-  const timestamps = new Set<number>();
-  for (const match of filterMatchesByMerchFilters(merchFilters)) {
-    if (match.eventCompleted) {
-      timestamps.add(startOfDay(match.date).getTime());
+  if (merchFilters.orderDateRange.from) {
+    const fromDate = startOfDay(parseISO(merchFilters.orderDateRange.from));
+    if (fromDate > start) start = fromDate;
+  }
+  if (merchFilters.orderDateRange.to) {
+    const toDate = startOfDay(parseISO(merchFilters.orderDateRange.to));
+    if (toDate < end) end = toDate;
+  }
+  if (end < start) end = start;
+  return { start, end };
+}
+
+function getMerchPeriodBuckets(
+  merchFilters: MerchFilters,
+  grouping: TimeGrouping,
+): Date[] {
+  const { start: periodStart, end: periodEnd } =
+    getMerchTrendDisplayPeriod(merchFilters);
+  const buckets: Date[] = [];
+
+  if (grouping === "day") {
+    let current = startOfDay(periodStart);
+    while (current <= periodEnd) {
+      buckets.push(current);
+      current = addDays(current, 1);
     }
+    return buckets;
   }
-  return timestamps;
-}
 
-function buildMatchDateById(merchFilters: MerchFilters): Map<string, Date> {
-  const map = new Map<string, Date>();
-  for (const match of filterMatchesByMerchFilters(merchFilters)) {
-    map.set(match.id, match.date);
-  }
-  return map;
-}
-
-function isMerchTransactionOnMatchDay(
-  tx: Transaction,
-  matchDatesById: Map<string, Date>,
-  arenaMatchDayTimestamps: Set<number>,
-): boolean {
-  if (tx.matchId) {
-    const matchDate = matchDatesById.get(tx.matchId);
-    if (matchDate && isSameDay(tx.date, matchDate)) {
-      return true;
+  if (grouping === "month") {
+    let current = startOfMonth(periodStart);
+    while (current <= periodEnd) {
+      buckets.push(current);
+      current = addMonths(current, 1);
     }
-  }
-  return arenaMatchDayTimestamps.has(startOfDay(tx.date).getTime());
-}
-
-function classifyMerchSalesSegment(
-  tx: Transaction,
-  matchDatesById: Map<string, Date>,
-  arenaMatchDayTimestamps: Set<number>,
-): MerchSalesSegment | null {
-  if (!tx.merchSalesPoint) return null;
-
-  const point = tx.merchSalesPoint;
-
-  if (point === "online_store") {
-    return "online";
+    return buckets;
   }
 
-  if (
-    MATCHDAY_ARENA_POINTS.has(point) &&
-    isMerchTransactionOnMatchDay(tx, matchDatesById, arenaMatchDayTimestamps)
-  ) {
-    return "matchday";
+  if (grouping === "quarter") {
+    let current = startOfQuarter(periodStart);
+    while (current <= periodEnd) {
+      buckets.push(current);
+      current = addMonths(current, 3);
+    }
+    return buckets;
   }
 
-  if (OFFLINE_MERCH_POINTS.has(point)) {
-    return "offline";
+  let current = startOfWeek(periodStart, { locale: ru });
+  while (current <= periodEnd) {
+    buckets.push(current);
+    current = addDays(current, 7);
   }
-
-  return null;
+  return buckets;
 }
 
 type MerchAggregateMetrics = {
@@ -686,6 +687,9 @@ function filterMerchTransactionsImpl(
     if (tx.date < cutoff || tx.date > endOfDay(MOCK_TODAY)) return false;
     if (tx.stream !== "merch") return false;
     if (!passesMerchSalesChannels(tx, merchFilters.salesChannels)) return false;
+    if (!passesMerchProductCategories(tx, merchFilters.productCategories)) {
+      return false;
+    }
     if (!passesMerchOrderDate(tx, merchFilters.orderDateRange)) {
       return false;
     }
@@ -1985,15 +1989,10 @@ export function computeMerchTrend(
   filters: DashboardFilters,
   merchFilters: MerchFilters,
 ): WeeklyPoint[] {
-  const txs = getFilteredMerchTransactions(filters, merchFilters);
-
-  return buildGroupedTrend(
-    txs.map((tx) => ({
-      date: tx.date,
-      value: tx.isReturn ? -tx.amount : tx.amount,
-    })),
-    merchFilters.timeGrouping,
-  );
+  return computeMerchPlanFactTrend(filters, merchFilters).map((point) => ({
+    period: point.period,
+    value: point.factRevenue,
+  }));
 }
 
 export function computeWeeklyTrend(
@@ -2354,59 +2353,95 @@ export function computeMerchSalesChannelRevenue(
   }));
 }
 
-export function computeMerchSalesSegmentTrend(
+export function computeMerchPlanFactTrend(
   filters: DashboardFilters,
   merchFilters: MerchFilters,
-): MerchSalesSegmentTrendPoint[] {
+): PlanFactTrendPoint[] {
   const txs = getFilteredMerchTransactions(filters, merchFilters);
-  const timeGrouping = getEffectiveMerchTimeGrouping(merchFilters);
-  const matchDatesById = buildMatchDateById(merchFilters);
-  const arenaMatchDayTimestamps = buildArenaMatchDayTimestamps(merchFilters);
-
-  const periodMap = new Map<
-    string,
-    { sortKey: number; segments: Map<MerchSalesSegment, number> }
-  >();
+  const grouping = getEffectiveMerchTimeGrouping(merchFilters);
+  const factRevenueMap = new Map<string, { sortKey: number; value: number }>();
+  const factUnitsMap = new Map<string, { sortKey: number; value: number }>();
 
   for (const tx of txs) {
-    const segment = classifyMerchSalesSegment(
-      tx,
-      matchDatesById,
-      arenaMatchDayTimestamps,
-    );
-    if (!segment) continue;
-
-    const { period, sortKey } = periodKeyAndSort(
+    addPlanFactValue(
+      factRevenueMap,
       tx.date,
-      timeGrouping,
+      grouping,
+      tx.isReturn ? -tx.amount : tx.amount,
     );
-    const entry =
-      periodMap.get(period) ??
-      ({
-        sortKey,
-        segments: new Map(
-          ALL_MERCH_SALES_SEGMENTS.map((s) => [s, 0] as const),
-        ),
-      } as { sortKey: number; segments: Map<MerchSalesSegment, number> });
-
-    const delta = tx.isReturn ? -tx.amount : tx.amount;
-    entry.segments.set(
-      segment,
-      (entry.segments.get(segment) ?? 0) + delta,
+    addPlanFactValue(
+      factUnitsMap,
+      tx.date,
+      grouping,
+      tx.isReturn ? -tx.quantity : tx.quantity,
     );
-    periodMap.set(period, entry);
   }
 
-  return Array.from(periodMap.entries())
-    .map(([period, { sortKey, segments }]) => ({
-      period,
+  const totalFactRevenue = Array.from(factRevenueMap.values()).reduce(
+    (sum, entry) => sum + entry.value,
+    0,
+  );
+  const totalFactUnits = Array.from(factUnitsMap.values()).reduce(
+    (sum, entry) => sum + entry.value,
+    0,
+  );
+  const totalPlanRevenue = Math.round(
+    Math.max(0, totalFactRevenue) / MERCH_PLAN_EXECUTION_RATE,
+  );
+  const totalPlanUnits = Math.round(
+    Math.max(0, totalFactUnits) / MERCH_PLAN_EXECUTION_RATE,
+  );
+
+  const bucketDates = getMerchPeriodBuckets(merchFilters, grouping);
+  const factWeights = bucketDates.map((bucketDate) => {
+    const { period } = periodKeyAndSort(bucketDate, grouping);
+    return Math.max(0, factRevenueMap.get(period)?.value ?? 0);
+  });
+  const hasFactDistribution = factWeights.some((weight) => weight > 0);
+  const seasonalWeights = bucketDates.map((_, index) => {
+    const progress = index / Math.max(bucketDates.length - 1, 1);
+    return 0.75 + 0.25 * Math.sin(progress * Math.PI);
+  });
+  const weights = hasFactDistribution
+    ? factWeights.map(
+        (weight, index) =>
+          weight + seasonalWeights[index] * 0.08 * totalPlanRevenue,
+      )
+    : seasonalWeights;
+  const weightSum = weights.reduce((sum, weight) => sum + weight, 0) || 1;
+
+  const planRevenueMap = new Map<string, { sortKey: number; value: number }>();
+  const planUnitsMap = new Map<string, { sortKey: number; value: number }>();
+
+  for (let index = 0; index < bucketDates.length; index += 1) {
+    const { period, sortKey } = periodKeyAndSort(bucketDates[index], grouping);
+    planRevenueMap.set(period, {
       sortKey,
-      segments: Object.fromEntries(
-        ALL_MERCH_SALES_SEGMENTS.map((segment) => [
-          segment,
-          Math.max(0, segments.get(segment) ?? 0),
-        ]),
-      ) as Record<MerchSalesSegment, number>,
+      value: Math.round((weights[index] / weightSum) * totalPlanRevenue),
+    });
+    planUnitsMap.set(period, {
+      sortKey,
+      value: Math.round((weights[index] / weightSum) * totalPlanUnits),
+    });
+  }
+
+  const periods = new Set([...factRevenueMap.keys(), ...planRevenueMap.keys()]);
+
+  return Array.from(periods)
+    .map((period) => ({
+      period,
+      sortKey:
+        factRevenueMap.get(period)?.sortKey ??
+        planRevenueMap.get(period)?.sortKey ??
+        0,
+      planRevenue: Math.round(planRevenueMap.get(period)?.value ?? 0),
+      factRevenue: Math.round(
+        Math.max(0, factRevenueMap.get(period)?.value ?? 0),
+      ),
+      planTickets: Math.round(planUnitsMap.get(period)?.value ?? 0),
+      factTickets: Math.round(
+        Math.max(0, factUnitsMap.get(period)?.value ?? 0),
+      ),
     }))
     .sort((a, b) => a.sortKey - b.sortKey);
 }
@@ -2417,7 +2452,10 @@ export function computeMerchProductCategoryTrend(
 ): MerchProductCategoryTrendPoint[] {
   const txs = getFilteredMerchTransactions(filters, merchFilters);
   const timeGrouping = getEffectiveMerchTimeGrouping(merchFilters);
-  const activeCategories = ALL_MERCH_PRODUCT_CATEGORIES;
+  const activeCategories =
+    merchFilters.productCategories.length > 0
+      ? merchFilters.productCategories
+      : ALL_MERCH_PRODUCT_CATEGORIES;
 
   const periodMap = new Map<
     string,
@@ -2473,7 +2511,12 @@ export function computeMerchProductCategoryRevenue(
     { value: number; units: number }
   >();
 
-  for (const category of ALL_MERCH_PRODUCT_CATEGORIES) {
+  const activeCategories =
+    merchFilters.productCategories.length > 0
+      ? merchFilters.productCategories
+      : ALL_MERCH_PRODUCT_CATEGORIES;
+
+  for (const category of activeCategories) {
     revenueByCategory.set(category, { value: 0, units: 0 });
   }
 
@@ -2492,7 +2535,7 @@ export function computeMerchProductCategoryRevenue(
     revenueByCategory.set(category, existing);
   }
 
-  const rows = ALL_MERCH_PRODUCT_CATEGORIES.map((categoryKey) => ({
+  const rows = activeCategories.map((categoryKey) => ({
     category: MERCH_PRODUCT_CATEGORY_LABELS[categoryKey],
     categoryKey,
     value: Math.max(0, revenueByCategory.get(categoryKey)?.value ?? 0),

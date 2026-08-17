@@ -14,11 +14,11 @@ import {
   computeChannelMix,
   computeMatchSalesTable,
   computeMerchMatchSalesTable,
+  computeMerchPlanFactTrend,
   computeMerchProductCategoryRevenue,
   computeMerchProductCategoryTrend,
   computeMerchSalesChannelRevenue,
   computeMerchSalesChannelTrend,
-  computeMerchSalesSegmentTrend,
   computeMerchSkuSalesTable,
   computeMerchKpis,
   computeOrderSourceSales,
@@ -71,7 +71,6 @@ import type {
   MerchProductCategoryTrendPoint,
   MerchSalesChannelPoint,
   MerchSalesChannelTrendPoint,
-  MerchSalesSegmentTrendPoint,
   MerchSkuSalesRow,
   OrderSourceSalesPoint,
   PlanFactTrendPoint,
@@ -108,7 +107,7 @@ type TicketsTabCachedData = {
 
 type MerchTrendSlice = {
   merchSalesChannelTrend: MerchSalesChannelTrendPoint[];
-  merchSalesSegmentTrend: MerchSalesSegmentTrendPoint[];
+  merchPlanFactTrend: PlanFactTrendPoint[];
   merchProductCategoryTrend: MerchProductCategoryTrendPoint[];
 };
 
@@ -116,7 +115,7 @@ type MerchTabCachedData = {
   base: Omit<
     FilterDataContextValue,
     | "merchSalesChannelTrend"
-    | "merchSalesSegmentTrend"
+    | "merchPlanFactTrend"
     | "merchProductCategoryTrend"
   >;
   trendsByGrouping: Record<TimeGrouping, MerchTrendSlice>;
@@ -175,7 +174,7 @@ type FilterDataContextValue = {
   merchMatchSales: MerchMatchSalesRow[];
   merchSalesChannelRevenue: MerchSalesChannelPoint[];
   merchSalesChannelTrend: MerchSalesChannelTrendPoint[];
-  merchSalesSegmentTrend: MerchSalesSegmentTrendPoint[];
+  merchPlanFactTrend: PlanFactTrendPoint[];
   merchProductCategoryRevenue: MerchProductCategoryPoint[];
   merchProductCategoryTrend: MerchProductCategoryTrendPoint[];
   merchSkuSales: MerchSkuSalesRow[];
@@ -281,7 +280,7 @@ function computeTicketsTabDataCached(
         merchMatchSales: [],
         merchSalesChannelRevenue: [],
         merchSalesChannelTrend: [],
-        merchSalesSegmentTrend: [],
+        merchPlanFactTrend: [],
         merchProductCategoryRevenue: [],
         merchProductCategoryTrend: [],
         merchSkuSales: [],
@@ -304,7 +303,7 @@ function computeMerchTabDataCached(
           filters,
           withGrouping,
         ),
-        merchSalesSegmentTrend: computeMerchSalesSegmentTrend(
+        merchPlanFactTrend: computeMerchPlanFactTrend(
           filters,
           withGrouping,
         ),
@@ -397,7 +396,7 @@ function computeSubscriptionsTabDataCached(
         merchMatchSales: [],
         merchSalesChannelRevenue: [],
         merchSalesChannelTrend: [],
-        merchSalesSegmentTrend: [],
+        merchPlanFactTrend: [],
         merchProductCategoryRevenue: [],
         merchProductCategoryTrend: [],
         merchSkuSales: [],
@@ -439,7 +438,7 @@ function computeMatchesTabData(
     merchMatchSales: [],
     merchSalesChannelRevenue: [],
     merchSalesChannelTrend: [],
-    merchSalesSegmentTrend: [],
+    merchPlanFactTrend: [],
     merchProductCategoryRevenue: [],
     merchProductCategoryTrend: [],
     merchSkuSales: [],
@@ -645,6 +644,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
       ...deferredMerchFilters,
       matchId: deferredMerchFilters.matchId,
       salesChannels: deferredMerchFilters.salesChannels,
+      productCategories: deferredMerchFilters.productCategories,
       orderDateRange: { ...deferredMerchFilters.orderDateRange },
     }),
     [
@@ -654,6 +654,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
       deferredMerchFilters.matchClass,
       deferredMerchFilters.matchId,
       deferredMerchFilters.salesChannels,
+      deferredMerchFilters.productCategories,
       deferredMerchFilters.orderDateRange.from,
       deferredMerchFilters.orderDateRange.to,
     ],
@@ -864,7 +865,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
       merchMatchSales: [],
       merchSalesChannelRevenue: [],
       merchSalesChannelTrend: [],
-      merchSalesSegmentTrend: [],
+      merchPlanFactTrend: [],
       merchProductCategoryRevenue: [],
       merchProductCategoryTrend: [],
       merchSkuSales: [],

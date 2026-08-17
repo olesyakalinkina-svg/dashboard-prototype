@@ -15,6 +15,7 @@ import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { ChevronDown, ChevronUp, Search } from "lucide-react";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { TableExcelButton } from "@/components/ui/ExcelDownloadButton";
 import { getMatchLabel } from "@/lib/mock/hockey";
 import {
   formatCurrency,
@@ -35,11 +36,8 @@ import type {
   CombinedMatchSalesRow,
   MatchSalesRow,
   MerchMatchSalesRow,
-  MerchSalesPoint,
   MerchSkuSalesRow,
-  OrderSource,
   Subscription,
-  TicketType,
   Transaction,
 } from "@/types/dashboard";
 
@@ -83,14 +81,17 @@ function DataTable<T>({
     <Card className="min-w-0">
       <CardHeader>
         <CardTitle>{title}</CardTitle>
-        <div className="relative w-full sm:w-auto">
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
-          <input
-            value={globalFilter}
-            onChange={(e) => setGlobalFilter(e.target.value)}
-            placeholder={searchPlaceholder}
-            className="h-9 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] sm:h-8 sm:w-48"
-          />
+        <div className="flex w-full items-center gap-2 sm:w-auto">
+          <TableExcelButton table={table} fileName={title} />
+          <div className="relative min-w-0 flex-1 sm:w-auto sm:flex-none">
+            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+            <input
+              value={globalFilter}
+              onChange={(e) => setGlobalFilter(e.target.value)}
+              placeholder={searchPlaceholder}
+              className="h-9 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] sm:h-8 sm:w-48"
+            />
+          </div>
         </div>
       </CardHeader>
       <CardContent className="overflow-x-auto">
@@ -321,15 +322,18 @@ export function MatchSalesTable({
   });
 
   const searchInput = (
-        <div className="relative w-full sm:w-auto">
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
-          <input
-            value={globalFilter}
-            onChange={(e) => setGlobalFilter(e.target.value)}
-            placeholder="Поиск по мероприятию..."
-            className="h-9 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] sm:h-8 sm:w-48"
-          />
-        </div>
+    <div className="flex w-full items-center gap-2 sm:w-auto">
+      <TableExcelButton table={table} fileName="Продажи" />
+      <div className="relative min-w-0 flex-1 sm:w-auto sm:flex-none">
+        <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+        <input
+          value={globalFilter}
+          onChange={(e) => setGlobalFilter(e.target.value)}
+          placeholder="Поиск по мероприятию..."
+          className="h-9 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] sm:h-8 sm:w-48"
+        />
+      </div>
+    </div>
   );
 
   const tableContent = (
@@ -411,7 +415,7 @@ export function MatchSalesTable({
       <Card className="flex h-full min-w-0 flex-col">
         <CardHeader>
           <CardTitle>Продажи</CardTitle>
-          <div className="relative w-full sm:w-auto">{searchInput}</div>
+          {searchInput}
         </CardHeader>
         <CardContent className="overflow-x-auto">
           {tableContent}
@@ -469,14 +473,17 @@ function MerchSalesTable<T>({
     <Card className="flex h-full min-w-0 flex-col">
       <CardHeader>
         <CardTitle>{title}</CardTitle>
-        <div className="relative w-full sm:w-auto">
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
-          <input
-            value={globalFilter}
-            onChange={(e) => setGlobalFilter(e.target.value)}
-            placeholder={searchPlaceholder}
-            className="h-9 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] sm:h-8 sm:w-48"
-          />
+        <div className="flex w-full items-center gap-2 sm:w-auto">
+          <TableExcelButton table={table} fileName={title} />
+          <div className="relative min-w-0 flex-1 sm:w-auto sm:flex-none">
+            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+            <input
+              value={globalFilter}
+              onChange={(e) => setGlobalFilter(e.target.value)}
+              placeholder={searchPlaceholder}
+              className="h-9 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] sm:h-8 sm:w-48"
+            />
+          </div>
         </div>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col overflow-x-auto">
@@ -959,12 +966,10 @@ export function TransactionsTable({
       if (variant === "tickets") {
         base.push(
           {
-            accessorKey: "ticketType",
+            id: "ticketType",
+            accessorFn: (row) =>
+              row.ticketType ? TICKET_TYPE_LABELS[row.ticketType] : "—",
             header: "Тип билета",
-            cell: ({ getValue }) => {
-              const value = getValue<TicketType | undefined>();
-              return value ? TICKET_TYPE_LABELS[value] : "—";
-            },
           },
           {
             accessorKey: "priceZone",
@@ -976,29 +981,25 @@ export function TransactionsTable({
 
       base.push(
         {
-          accessorKey: "matchId",
+          id: "match",
+          accessorFn: (row) =>
+            row.matchId ? getMatchLabel(row.matchId) : "—",
           header: "Матч",
-          cell: ({ getValue }) => {
-            const id = getValue<string | null>();
-            return id ? getMatchLabel(id) : "—";
-          },
         },
       );
 
       if (variant === "tickets") {
         base.push({
-          accessorKey: "orderSource",
+          id: "orderSource",
+          accessorFn: (row) =>
+            row.orderSource ? ORDER_SOURCE_LABELS[row.orderSource] : "—",
           header: "Источник заказа",
-          cell: ({ getValue }) => {
-            const value = getValue<OrderSource | undefined>();
-            return value ? ORDER_SOURCE_LABELS[value] : "—";
-          },
         });
       } else {
         base.push({
-          accessorKey: "merchSalesPoint",
+          id: "merchSalesPoint",
+          accessorFn: (row) => getMerchSalesPointLabel(row.merchSalesPoint),
           header: "Канал продаж",
-          cell: ({ getValue }) => getMerchSalesPointLabel(getValue<MerchSalesPoint | undefined>()),
         });
       }
 
@@ -1043,9 +1044,9 @@ export function SubscriptionsTable({ data }: { data: Subscription[] }) {
       },
       {
         id: "usage",
+        accessorFn: (row) => `${row.matchesUsed} / ${row.matchesTotal}`,
         header: "Использовано",
-        cell: ({ row }) =>
-          `${row.original.matchesUsed} / ${row.original.matchesTotal}`,
+        cell: ({ getValue }) => getValue<string>(),
       },
       {
         accessorKey: "validTo",
@@ -1054,17 +1055,15 @@ export function SubscriptionsTable({ data }: { data: Subscription[] }) {
           format(getValue<Date>(), "dd.MM.yyyy", { locale: ru }),
       },
       {
-        accessorKey: "channel",
+        id: "channel",
+        accessorFn: (row) =>
+          SUBSCRIPTION_CHANNEL_LABELS[row.channel] ?? row.channel,
         header: "Канал",
-        cell: ({ getValue }) =>
-          SUBSCRIPTION_CHANNEL_LABELS[
-            getValue() as keyof typeof SUBSCRIPTION_CHANNEL_LABELS
-          ] ?? getValue(),
       },
       {
-        accessorKey: "status",
+        id: "status",
+        accessorFn: (row) => STATUS_LABELS[row.status] ?? row.status,
         header: "Статус",
-        cell: ({ getValue }) => STATUS_LABELS[getValue<string>()] ?? getValue(),
       },
       {
         accessorKey: "price",

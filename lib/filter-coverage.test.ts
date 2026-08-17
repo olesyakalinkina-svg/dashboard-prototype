@@ -48,11 +48,19 @@ describe("filter coverage — merch tab", () => {
     },
   );
 
-  it("documents empty sales channel selection as intentional exclusion", () => {
+  it("documents empty multi-select selections as intentional exclusions", () => {
     const excluded = excludedCases(cases);
-    expect(excluded).toHaveLength(1);
-    expect(excluded[0]?.option).toBe("(empty selection)");
-    expect(excluded[0]?.excluded).toContain("intentional");
+    expect(excluded).toHaveLength(2);
+    expect(excluded.map((testCase) => testCase.filter).sort()).toEqual([
+      "productCategory",
+      "salesChannels",
+    ]);
+    expect(
+      excluded.every((testCase) => testCase.option === "(empty selection)"),
+    ).toBe(true);
+    expect(
+      excluded.every((testCase) => testCase.excluded?.includes("intentional")),
+    ).toBe(true);
   });
 });
 

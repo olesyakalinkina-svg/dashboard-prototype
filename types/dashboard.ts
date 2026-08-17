@@ -14,8 +14,6 @@ export type MerchSalesPoint =
 
 export type MerchSalesGroup = "arena" | "trk" | "online";
 
-export type MerchSalesSegment = "offline" | "online" | "matchday";
-
 export type MerchProductCategory =
   | "jerseys"
   | "souvenirs"
@@ -186,6 +184,7 @@ export type MerchFilters = {
   matchClass: MatchClass | "all";
   matchId: string[];
   salesChannels: MerchSalesPoint[];
+  productCategories: MerchProductCategory[];
   /** Order date window for merch transactions (all sales channels) */
   orderDateRange: MerchOrderDateRange;
   timeGrouping: TimeGrouping;
@@ -406,12 +405,6 @@ export type TicketsPriceZoneTrendPoint = {
   period: string;
   sortKey: number;
   groups: Record<PriceZoneGroup, number>;
-};
-
-export type MerchSalesSegmentTrendPoint = {
-  period: string;
-  sortKey: number;
-  segments: Record<MerchSalesSegment, number>;
 };
 
 export type MerchProductCategoryPoint = {
