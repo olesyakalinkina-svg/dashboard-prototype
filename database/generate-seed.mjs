@@ -3,8 +3,9 @@
  * Output: database/03_seed_facts.sql
  *
  * Matches, seasons, leagues, and subscription dimensions come from the mock.
- * Ticket/merch sale rows are a compact sample across all 14 price zones + parking
+ * Ticket/merch sale rows are a compact sample across all 14 sectors + parking
  * (full mock has ~148k transactions — too large for SQL seed).
+ * Arena tickets store price_zone from unit_price (same buckets as TS).
  *
  * Usage: node database/generate-seed.mjs
  */
@@ -56,25 +57,46 @@ const opponentIdByName = Object.fromEntries(
 
 const ARENA_ID = { main: 1, secondary: 2 };
 
-const PRICE_ZONES = [
-  { id: 1, code: "A", price: 443 },
-  { id: 2, code: "B1", price: 390 },
-  { id: 3, code: "B2", price: 372 },
-  { id: 4, code: "B3", price: 354 },
-  { id: 5, code: "B4", price: 337 },
-  { id: 6, code: "C1", price: 283 },
-  { id: 7, code: "C2", price: 266 },
-  { id: 8, code: "C3", price: 248 },
-  { id: 9, code: "C4", price: 230 },
-  { id: 10, code: "D1", price: 195 },
-  { id: 11, code: "D2", price: 177 },
-  { id: 12, code: "D3", price: 159 },
-  { id: 13, code: "D4", price: 142 },
-  { id: 14, code: "VIP", price: 1506 },
+const SECTORS = [
+  { id: 1, code: "A", price: 2800 },
+  { id: 2, code: "B1", price: 2200 },
+  { id: 3, code: "B2", price: 2100 },
+  { id: 4, code: "B3", price: 2000 },
+  { id: 5, code: "B4", price: 1900 },
+  { id: 6, code: "C1", price: 1600 },
+  { id: 7, code: "C2", price: 1500 },
+  { id: 8, code: "C3", price: 1400 },
+  { id: 9, code: "C4", price: 1300 },
+  { id: 10, code: "D1", price: 1100 },
+  { id: 11, code: "D2", price: 1000 },
+  { id: 12, code: "D3", price: 900 },
+  { id: 13, code: "D4", price: 800 },
+  { id: 14, code: "VIP", price: 5500 },
 ];
 
+const PRICE_ZONE_CODES = [
+  "up_to_1500",
+  "from_1500_to_2500",
+  "from_2500_to_4000",
+  "from_4000_to_6000",
+];
+
+const PRICE_ZONE_SEEDS = {
+  up_to_1500: { price: 900, sectorId: 13, productId: 13 },
+  from_1500_to_2500: { price: 2000, sectorId: 2, productId: 2 },
+  from_2500_to_4000: { price: 3200, sectorId: 1, productId: 1 },
+  from_4000_to_6000: { price: 5000, sectorId: 14, productId: 14 },
+};
+
+function priceZoneFromUnitPrice(unitPrice) {
+  if (unitPrice < 1500) return "up_to_1500";
+  if (unitPrice < 2500) return "from_1500_to_2500";
+  if (unitPrice < 4000) return "from_2500_to_4000";
+  return "from_4000_to_6000";
+}
+
 const sectorIdByCode = Object.fromEntries(
-  PRICE_ZONES.map((zone) => [zone.code, zone.id]),
+  SECTORS.map((zone) => [zone.code, zone.id]),
 );
 
 const PARKING_PRODUCT = { productId: 15, price: 500 };
@@ -207,6 +229,7 @@ function applyLoyaltyDiscount(grossAmount) {
 for (const match of matches) {
   const windowDays = match.ticketSalesWindowDays || 14;
   const ticketCount = randomInt(80, 120);
+  const presentZones = new Set();
   for (let t = 0; t < ticketCount; t++) {
     const isParking = rand() < 0.12;
     const soldAt = subDays(match.date, randomInt(0, windowDays - 1));
@@ -223,6 +246,7 @@ for (const match of matches) {
         matchId: match.id,
         sectorId: null,
         ticketType: "parking",
+        priceZone: null,
         quantity: qty,
         unitPrice: PARKING_PRODUCT.price,
         amount,
@@ -230,10 +254,12 @@ for (const match of matches) {
       });
       continue;
     }
-    const zone = randomPick(PRICE_ZONES);
+    const zone = randomPick(SECTORS);
     const qty = randomInt(1, 4);
     const gross = zone.price * qty;
     const { amount, loyaltyDiscount } = applyLoyaltyDiscount(gross);
+    const priceZone = priceZoneFromUnitPrice(zone.price);
+    presentZones.add(priceZone);
     sales.push({
       id: `tx-${saleId++}`,
       soldAt,
@@ -243,10 +269,33 @@ for (const match of matches) {
       matchId: match.id,
       sectorId: zone.id,
       ticketType: "arena",
+      priceZone,
       quantity: qty,
       unitPrice: zone.price,
       amount,
       loyaltyDiscount,
+    });
+  }
+
+  for (const zoneCode of PRICE_ZONE_CODES) {
+    if (presentZones.has(zoneCode)) continue;
+    const seed = PRICE_ZONE_SEEDS[zoneCode];
+    const qty = 8;
+    const soldAt = subDays(match.date, randomInt(0, windowDays - 1));
+    sales.push({
+      id: `tx-${saleId++}`,
+      soldAt,
+      streamId: STREAM_IDS.tickets,
+      channelId: CHANNEL_IDS.online,
+      productId: seed.productId,
+      matchId: match.id,
+      sectorId: seed.sectorId,
+      ticketType: "arena",
+      priceZone: priceZoneFromUnitPrice(seed.price),
+      quantity: qty,
+      unitPrice: seed.price,
+      amount: seed.price * qty,
+      loyaltyDiscount: 0,
     });
   }
 
@@ -265,6 +314,7 @@ for (const match of matches) {
       matchId: match.id,
       sectorId: null,
       ticketType: null,
+      priceZone: null,
       quantity: qty,
       unitPrice: item.price,
       amount: item.price * qty,
@@ -285,6 +335,7 @@ for (let o = 0; o < 25; o++) {
     matchId: null,
     sectorId: null,
     ticketType: null,
+    priceZone: null,
     quantity: qty,
     unitPrice: item.price,
     amount: item.price * qty,
@@ -298,7 +349,7 @@ const subscriptions = mock.subscriptions.map((sub) => {
   const arenaId = ARENA_ID[sub.arena] ?? null;
   const ticketType = sub.ticketType === "parking" ? "parking" : "arena";
   const sectorId =
-    ticketType === "parking" ? null : (sectorIdByCode[sub.priceZone] ?? null);
+    ticketType === "parking" ? null : (sectorIdByCode[sub.sector] ?? null);
   return {
     id: uuidFromSubId(sub.id),
     planId: planIdFromMock(sub.planId),
@@ -333,7 +384,7 @@ if (
     const sectorId =
       ticketType === "parking"
         ? null
-        : (sectorIdByCode[mockSub?.priceZone] ?? null);
+        : (sectorIdByCode[mockSub?.sector] ?? null);
     redemptions.push({
       id: `00000000-0000-4001-9000-${String(redemptionIndex++).padStart(12, "0")}`,
       subscriptionId: uuidFromSubId(redemption.subscriptionId),
@@ -366,7 +417,7 @@ if (
 }
 
 const saleRows = sales.map((s) => {
-  return `(${sqlStr(s.id)}, ${sqlStr(toIsoTimestamp(s.soldAt))}, ${toDateKey(s.soldAt)}, ${s.streamId}, ${s.channelId}, ${s.productId}, ${sqlNullable(s.matchId)}, NULL, NULL, ${s.sectorId ?? "NULL"}, ${sqlNullable(s.ticketType)}, ${s.quantity}, ${s.unitPrice.toFixed(2)}, ${s.amount.toFixed(2)}, 0, ${(s.loyaltyDiscount ?? 0).toFixed(2)})`;
+  return `(${sqlStr(s.id)}, ${sqlStr(toIsoTimestamp(s.soldAt))}, ${toDateKey(s.soldAt)}, ${s.streamId}, ${s.channelId}, ${s.productId}, ${sqlNullable(s.matchId)}, NULL, NULL, ${s.sectorId ?? "NULL"}, ${sqlNullable(s.ticketType)}, ${sqlNullable(s.priceZone)}, ${s.quantity}, ${s.unitPrice.toFixed(2)}, ${s.amount.toFixed(2)}, 0, ${(s.loyaltyDiscount ?? 0).toFixed(2)})`;
 });
 
 const subRows = subscriptions.map((s) => {
@@ -397,7 +448,7 @@ INSERT INTO promotion_match (promotion_id, match_id) VALUES
     ('promo-9', 'match-1'), ('promo-9', 'match-2'), ('promo-9', 'match-3'),
     ('promo-9', 'match-4'), ('promo-9', 'match-5');
 
-INSERT INTO sale (id, sold_at, date_key, stream_id, channel_id, product_id, match_id, customer_id, promotion_id, sector_id, ticket_type, quantity, unit_price, amount, discount_amount, loyalty_discount_amount) VALUES
+INSERT INTO sale (id, sold_at, date_key, stream_id, channel_id, product_id, match_id, customer_id, promotion_id, sector_id, ticket_type, price_zone, quantity, unit_price, amount, discount_amount, loyalty_discount_amount) VALUES
 ${saleRows.join(",\n")};
 
 INSERT INTO subscription (id, plan_id, customer_id, purchased_at, date_key, valid_from, valid_to, price, matches_total, matches_used, channel_id, status, season, league, tournament_stage, arena_id, ticket_type, sector_id) VALUES

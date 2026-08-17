@@ -6,16 +6,21 @@ export const SECONDARY_ARENA_CAPACITY = 3000;
 export const MHL_ARENA_CAPACITY = 6300;
 
 export const TICKET_PLAN_FILL_RATE = 0.82;
-/** Baseline KHL plan average ticket price (class_2). */
-export const TICKET_PLAN_AVG_PRICE = 310;
-/** Legacy baseline used before the 2–4.5M KHL revenue retune. */
+/**
+ * Baseline KHL plan average ticket price (class_2).
+ * Kept at catalog scale so unit prices fill all four cost buckets
+ * (до 1500 … от 4000 до 6000) instead of collapsing near 310 ₽.
+ */
+export const TICKET_PLAN_AVG_PRICE = 1750;
+/** Same catalog baseline; the 310 ₽ crush is no longer applied to zone prices. */
 export const LEGACY_TICKET_PLAN_AVG_PRICE = 1750;
 
+/** Class tiers keep the former 250/310/420/480 ratios on the catalog baseline. */
 const KHL_PLAN_AVG_PRICE_BY_CLASS: Record<MatchClass, number> = {
-  class_3: 250,
+  class_3: Math.round(TICKET_PLAN_AVG_PRICE * (250 / 310)),
   class_2: TICKET_PLAN_AVG_PRICE,
-  class_1: 420,
-  playoff: 480,
+  class_1: Math.round(TICKET_PLAN_AVG_PRICE * (420 / 310)),
+  playoff: Math.round(TICKET_PLAN_AVG_PRICE * (480 / 310)),
 };
 
 /** Same class tier ratios as KHL, applied to each league's baseline avg price. */

@@ -1,5 +1,5 @@
 import { addDays } from "date-fns";
-import type { PriceZone, Subscription } from "@/types/dashboard";
+import type { Sector, Subscription } from "@/types/dashboard";
 import {
   getCampaignStatus,
   getSeasonTicketCampaignConfigs,
@@ -11,11 +11,11 @@ import {
 import { MOCK_TODAY } from "@/lib/mock/constants";
 
 const PLANS = [
-  { id: "plan-1", name: "Абонемент на 5 матчей (сектор A)", matchCount: 5, price: 6500, zone: "A" as PriceZone },
-  { id: "plan-2", name: "Абонемент на 5 матчей (сектор B)", matchCount: 5, price: 4875, zone: "B1" as PriceZone },
-  { id: "plan-4", name: "Сезонный абонемент", matchCount: 30, price: 55250, zone: "A" as PriceZone },
-  { id: "plan-5", name: "VIP-сезонный абонемент", matchCount: 30, price: 162500, zone: "VIP" as PriceZone },
-  { id: "plan-6", name: "Студенческий абонемент", matchCount: 10, price: 3900, zone: "B1" as PriceZone },
+  { id: "plan-1", name: "Абонемент на 5 матчей (сектор A)", matchCount: 5, price: 6500, zone: "A" as Sector },
+  { id: "plan-2", name: "Абонемент на 5 матчей (сектор B)", matchCount: 5, price: 4875, zone: "B1" as Sector },
+  { id: "plan-4", name: "Сезонный абонемент", matchCount: 30, price: 55250, zone: "A" as Sector },
+  { id: "plan-5", name: "VIP-сезонный абонемент", matchCount: 30, price: 162500, zone: "VIP" as Sector },
+  { id: "plan-6", name: "Студенческий абонемент", matchCount: 10, price: 3900, zone: "B1" as Sector },
 ] as const;
 
 /**
@@ -71,7 +71,7 @@ export function getActiveCampaignPaceSubscriptions(
       tournamentStage: "regular",
       arena: "main",
       ticketType: "arena",
-      priceZone: plan.zone,
+      sector: plan.zone,
     });
   }
 

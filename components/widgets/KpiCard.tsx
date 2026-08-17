@@ -1,6 +1,7 @@
 "use client";
 
 import clsx from "clsx";
+import { memo } from "react";
 import { Card, CardContent } from "@/components/ui/Card";
 import {
   formatCurrency,
@@ -31,7 +32,7 @@ type KpiCardProps = {
   rawCurrencyValue?: number;
 };
 
-export function KpiCard({
+export const KpiCard = memo(function KpiCard({
   title,
   value,
   fullValue,
@@ -79,7 +80,7 @@ export function KpiCard({
       </CardContent>
     </Card>
   );
-}
+});
 
 export function MerchKpiCards({ merchKpis }: { merchKpis: MerchKpiData }) {
   const sc = merchKpis.seasonComparison;
@@ -200,7 +201,7 @@ export function MatchSalesKpiCards({
   );
 }
 
-export function TabKpiCards({
+export const TabKpiCards = memo(function TabKpiCards({
   tab,
   ticketsKpis,
   subscriptionsKpis,
@@ -316,4 +317,4 @@ export function TabKpiCards({
   }
 
   return null;
-}
+});

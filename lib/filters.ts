@@ -11,6 +11,7 @@ import {
   startOfQuarter,
   startOfWeek,
   subDays,
+  subYears,
 } from "date-fns";
 import { ru } from "date-fns/locale";
 import {
@@ -36,6 +37,7 @@ import {
 import {
   ORDER_SOURCE_LABELS,
   ALL_PRICE_ZONES,
+  ALL_SECTORS,
   NO_MATCHES_FILTER_VALUE,
   TICKET_TYPE_LABELS,
   TOURNAMENT_STAGE_OPTIONS,
@@ -66,7 +68,12 @@ import {
   matchSalesFiltersToMerchFilters,
   matchSalesFiltersToTicketFilters,
 } from "@/lib/match-sales-filter-options";
-import { SUBSCRIPTION_CHANNEL_LABELS } from "@/lib/subscription-filter-options";
+import {
+  ALL_SUBSCRIPTION_PRICE_CATEGORIES,
+  getSubscriptionPriceCategory,
+  SUBSCRIPTION_CHANNEL_LABELS,
+  SUBSCRIPTION_PRICE_CATEGORY_LABELS,
+} from "@/lib/subscription-filter-options";
 import {
   applyTicketSalesTransaction,
   createTicketSalesAgg,
@@ -83,6 +90,8 @@ import type {
   MerchKpiData,
   Subscription,
   SubscriptionPlanStat,
+  SubscriptionPriceCategory,
+  SubscriptionPriceCategoryPoint,
   SubscriptionsKpiData,
   SubscriptionsSeasonComparison,
   TournamentStage,
@@ -199,6 +208,7 @@ function ticketFilterCacheKey(
     ticketFilters.eventCompleted,
     ticketFilters.matchId.join(","),
     ticketFilters.ticketType,
+    ticketFilters.sector,
     ticketFilters.priceZone,
     ticketFilters.orderSource,
     ticketFilters.transactionDateRange.from ?? "",
@@ -242,10 +252,19 @@ type SubscriptionDateRange = { start: Date; end: Date };
 
 const CURRENT_SEASON = "2025/26";
 
-function getRegularSubscriptionPeriod(): SubscriptionDateRange {
+function regularSalesWindowOffsetYears(season?: string): number {
+  if (!season || season === "all") return 0;
+  const currentYear = Number.parseInt(CURRENT_SEASON.slice(0, 4), 10);
+  const seasonYear = Number.parseInt(season.slice(0, 4), 10);
+  if (!Number.isFinite(currentYear) || !Number.isFinite(seasonYear)) return 0;
+  return Math.max(0, currentYear - seasonYear);
+}
+
+function getRegularSubscriptionPeriod(season?: string): SubscriptionDateRange {
+  const yearsBack = regularSalesWindowOffsetYears(season);
   return {
-    start: startOfDay(SUBSCRIPTIONS_PERIOD_START),
-    end: endOfDay(SUBSCRIPTIONS_PERIOD_END),
+    start: startOfDay(subYears(SUBSCRIPTIONS_PERIOD_START, yearsBack)),
+    end: endOfDay(subYears(SUBSCRIPTIONS_PERIOD_END, yearsBack)),
   };
 }
 
@@ -272,13 +291,21 @@ function getSubscriptionsDisplayPeriod(
     if (playoffPeriod) return playoffPeriod;
   }
 
-  return getRegularSubscriptionPeriod();
+  return getRegularSubscriptionPeriod(
+    subscriptionFilters?.season && subscriptionFilters.season !== "all"
+      ? subscriptionFilters.season
+      : CURRENT_SEASON,
+  );
 }
 
 function getSubscriptionsTrendDisplayPeriod(
   subscriptionFilters?: SubscriptionFilters,
 ): SubscriptionDateRange {
-  const regular = getRegularSubscriptionPeriod();
+  const regular = getRegularSubscriptionPeriod(
+    subscriptionFilters?.season && subscriptionFilters.season !== "all"
+      ? subscriptionFilters.season
+      : CURRENT_SEASON,
+  );
   let start = regular.start;
   let end = regular.end;
 
@@ -326,7 +353,11 @@ function subscriptionMatchesSalesWindow(
   if (subscriptionFilters?.tournamentStage === "regular") {
     return isDateInSubscriptionPeriod(
       sub.purchasedAt,
-      getRegularSubscriptionPeriod(),
+      getRegularSubscriptionPeriod(
+        subscriptionFilters.season !== "all"
+          ? subscriptionFilters.season
+          : sub.season,
+      ),
     );
   }
 
@@ -338,7 +369,7 @@ function subscriptionMatchesSalesWindow(
 
   return isDateInSubscriptionPeriod(
     sub.purchasedAt,
-    getRegularSubscriptionPeriod(),
+    getRegularSubscriptionPeriod(sub.season),
   );
 }
 
@@ -800,6 +831,9 @@ function passesTicketFieldFilters(
   if (ticketFilters.priceZone !== "all" && tx.priceZone !== ticketFilters.priceZone) {
     return false;
   }
+  if (ticketFilters.sector !== "all" && tx.sector !== ticketFilters.sector) {
+    return false;
+  }
   if (ticketFilters.orderSource !== "all" && tx.orderSource !== ticketFilters.orderSource) {
     return false;
   }
@@ -1110,8 +1144,8 @@ export function filterSubscriptions(
       return false;
     }
     if (
-      subscriptionFilters.priceZone !== "all" &&
-      sub.priceZone !== subscriptionFilters.priceZone
+      subscriptionFilters.sector !== "all" &&
+      sub.sector !== subscriptionFilters.sector
     ) {
       return false;
     }
@@ -1156,6 +1190,7 @@ function matchLevelTicketFilters(ticketFilters: TicketFilters): TicketFilters {
   return {
     ...ticketFilters,
     ticketType: "all",
+    sector: "all",
     priceZone: "all",
     orderSource: "all",
   };
@@ -1171,6 +1206,7 @@ function ticketTodayCacheKey(ticketFilters: TicketFilters): string {
     ticketFilters.eventCompleted,
     ticketFilters.matchId.join(","),
     ticketFilters.ticketType,
+    ticketFilters.sector,
     ticketFilters.priceZone,
     ticketFilters.orderSource,
     ticketFilters.transactionDateRange.from ?? "",
@@ -1290,8 +1326,8 @@ function previousPeriodSubscriptions(
       return false;
     }
     if (
-      subscriptionFilters.priceZone !== "all" &&
-      sub.priceZone !== subscriptionFilters.priceZone
+      subscriptionFilters.sector !== "all" &&
+      sub.sector !== subscriptionFilters.sector
     ) {
       return false;
     }
@@ -1723,6 +1759,7 @@ function ticketPlanScale(ticketFilters: TicketFilters): number {
   if (ticketFilters.ticketType !== "all") {
     scale *= TICKET_TYPE_PLAN_SHARE[ticketFilters.ticketType];
   }
+  if (ticketFilters.sector !== "all") scale *= 1 / ALL_SECTORS.length;
   if (ticketFilters.priceZone !== "all") scale *= 1 / ALL_PRICE_ZONES.length;
   if (ticketFilters.orderSource !== "all") scale *= 1 / 3;
   return scale;
@@ -2534,10 +2571,10 @@ export function computeSectorSales(
 ) {
   const txs = filterTicketTransactions(filters, ticketFilters);
 
-  return ALL_PRICE_ZONES.map((zone) => ({
-    sector: zone,
+  return ALL_SECTORS.map((sector) => ({
+    sector,
     value: txs
-      .filter((tx) => tx.priceZone === zone)
+      .filter((tx) => tx.sector === sector)
       .reduce((s, tx) => s + tx.quantity, 0),
   }));
 }
@@ -3097,6 +3134,35 @@ export function computeSubscriptionTariffStats(
       sold: stageSubs.length,
       revenue: stageSubs.reduce((s, sub) => s + sub.price, 0),
       utilization: totalMatches > 0 ? (usedMatches / totalMatches) * 100 : 0,
+    };
+  });
+}
+
+export function computeSubscriptionPriceCategoryShares(
+  filters: DashboardFilters,
+  subscriptionFilters?: SubscriptionFilters,
+): SubscriptionPriceCategoryPoint[] {
+  const subs = filterSubscriptions(filters, subscriptionFilters);
+  const soldByCategory = new Map<SubscriptionPriceCategory, number>();
+
+  for (const category of ALL_SUBSCRIPTION_PRICE_CATEGORIES) {
+    soldByCategory.set(category, 0);
+  }
+
+  for (const sub of subs) {
+    const category = getSubscriptionPriceCategory(sub);
+    soldByCategory.set(category, (soldByCategory.get(category) ?? 0) + 1);
+  }
+
+  const totalSold = subs.length;
+
+  return ALL_SUBSCRIPTION_PRICE_CATEGORIES.map((categoryKey) => {
+    const sold = soldByCategory.get(categoryKey) ?? 0;
+    return {
+      category: SUBSCRIPTION_PRICE_CATEGORY_LABELS[categoryKey],
+      categoryKey,
+      sold,
+      share: totalSold > 0 ? (sold / totalSold) * 100 : 0,
     };
   });
 }

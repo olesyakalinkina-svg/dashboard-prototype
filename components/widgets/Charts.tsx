@@ -16,7 +16,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, memo } from "react";
 import clsx from "clsx";
 import { ChartScrollContainer } from "@/components/charts/ChartScrollContainer";
 import {
@@ -35,12 +35,17 @@ import {
   MERCH_SALES_GROUP_LABELS,
   MERCH_SALES_POINT_COLORS,
 } from "@/lib/merch-filter-options";
+import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChartWidget } from "@/components/widgets/ChartWidget";
+import {
+  getSubscriptionCategoryChartTitle,
+} from "@/lib/subscription-filter-options";
 import {
   formatCurrency,
   formatNumber,
+  formatPercent,
   formatShortMonthYear,
 } from "@/lib/format";
-import { ChartWidget } from "@/components/widgets/ChartWidget";
 import {
   abbreviateMatchOpponent,
   formatMatchRevenueDateShort,
@@ -61,6 +66,7 @@ import type {
   MerchSalesPoint,
   SectorPoint,
   SubscriptionPlanStat,
+  SubscriptionPriceCategoryPoint,
   TimeGrouping,
   TopProductPoint,
   WeeklyPoint,
@@ -389,7 +395,7 @@ export function MatchBarChart({
 
 export function SectorPieChart({ data }: { data: SectorPoint[] }) {
   return (
-    <ChartWidget title="Продажи по ценовым зонам">
+    <ChartWidget title="Продажи по секторам">
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie
@@ -721,6 +727,152 @@ export function SubscriptionPlansChart({
     </ChartWidget>
   );
 }
+
+function PriceCategoryShareTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: { payload: SubscriptionPriceCategoryPoint }[];
+}) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0]?.payload;
+  if (!point) return null;
+
+  return (
+    <div className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-xs shadow-sm">
+      <p className="mb-1 font-medium text-[var(--foreground)]">{point.category}</p>
+      <p className="text-[var(--muted)]">
+        {formatNumber(point.sold)} шт · {formatPercent(point.share)}
+      </p>
+    </div>
+  );
+}
+
+export const SubscriptionPriceCategoryShareChart = memo(
+  function SubscriptionPriceCategoryShareChart({
+    data,
+    season,
+  }: {
+    data: SubscriptionPriceCategoryPoint[];
+    season: string;
+  }) {
+    const [tableOpen, setTableOpen] = useState(false);
+    const hasSold = useMemo(
+      () => data.some((item) => item.sold > 0),
+      [data],
+    );
+    const title = getSubscriptionCategoryChartTitle(season);
+    const maxSold = useMemo(
+      () => Math.max(...data.map((item) => item.sold), 0),
+      [data],
+    );
+
+    return (
+      <Card className="flex h-full min-w-0 flex-col">
+        <CardHeader className="sm:items-start">
+          <div className="min-w-0">
+            <CardTitle>{title}</CardTitle>
+            <p className="mt-1 text-xs leading-snug text-[var(--muted)]">
+              абонементов продано, штук
+            </p>
+          </div>
+        </CardHeader>
+        <CardContent className="flex min-w-0 flex-1 flex-col">
+          <div className="h-[118px] shrink-0">
+            {!hasSold ? (
+              <div className="flex h-full items-center justify-center text-sm text-[var(--muted)]">
+                Нет проданных абонементов
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={data}
+                  layout="vertical"
+                  barCategoryGap={6}
+                  margin={{ top: 2, right: 48, bottom: 2, left: 0 }}
+                >
+                  <XAxis type="number" domain={[0, maxSold || 1]} hide />
+                  <YAxis
+                    type="category"
+                    dataKey="category"
+                    width={128}
+                    interval={0}
+                    tick={{ fontSize: 14, fill: "#1A1A1A" }}
+                    axisLine={false}
+                    tickLine={false}
+                    padding={{ top: 0, bottom: 0 }}
+                  />
+                  <Tooltip content={<PriceCategoryShareTooltip />} />
+                  <Bar
+                    dataKey="sold"
+                    name="Продано"
+                    fill="#5282FF"
+                    barSize={18}
+                    maxBarSize={18}
+                    radius={[0, 4, 4, 0]}
+                    isAnimationActive={false}
+                  >
+                    <LabelList
+                      dataKey="sold"
+                      position="right"
+                      formatter={(value: number) => formatNumber(value)}
+                      style={{ fontSize: 14, fill: "#1A1A1A" }}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={() => setTableOpen((open) => !open)}
+              aria-expanded={tableOpen}
+              className="inline-flex min-h-11 items-center gap-1 text-sm text-[var(--accent)] hover:underline"
+            >
+              {tableOpen ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+              {tableOpen ? "Скрыть таблицу" : "Показать таблицу"}
+            </button>
+            {tableOpen ? (
+              <div className="mt-2 overflow-auto rounded-md border border-[var(--border)]">
+                <table className="min-w-full border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-[var(--border)] text-left text-[10px] font-semibold uppercase tracking-wide text-[var(--muted)]">
+                      <th className="px-2 py-2">Категория</th>
+                      <th className="px-2 py-2 text-right">Продано, шт</th>
+                      <th className="px-2 py-2 text-right">Доля</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.map((item) => (
+                      <tr
+                        key={item.categoryKey}
+                        className="border-b border-[var(--border)] last:border-b-0"
+                      >
+                        <td className="px-2 py-1.5">{item.category}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">
+                          {formatNumber(item.sold)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">
+                          {formatPercent(item.share)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  },
+);
 
 type MatchRevenueXAxisTickProps = {
   x?: number;

@@ -11,6 +11,7 @@ import {
   LEAGUE_OPTIONS,
   ORDER_SOURCE_OPTIONS,
   PRICE_ZONE_OPTIONS,
+  SECTOR_OPTIONS,
   sanitizeMatchClassForStage,
   SEASON_OPTIONS,
   TICKET_TYPE_OPTIONS,
@@ -25,6 +26,7 @@ import type {
   MatchClass,
   OrderSource,
   PriceZone,
+  Sector,
   TicketFilters,
   TicketType,
   TimeGrouping,
@@ -212,13 +214,31 @@ export function TicketsFilterBar() {
           onChange={(e) => {
             const ticketType = e.target.value as TicketType | "all";
             if (ticketType === "parking") {
-              setTicketFilters({ ticketType, priceZone: "all" });
+              setTicketFilters({
+                ticketType,
+                sector: "all",
+                priceZone: "all",
+              });
             } else {
               update("ticketType", ticketType);
             }
           }}
         >
           {TICKET_TYPE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </Select>
+
+        <Select
+          label="Сектор"
+          value={ticketFilters.sector}
+          onChange={(e) => update("sector", e.target.value as Sector | "all")}
+          disabled={isParkingTicketType}
+          className="disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {SECTOR_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
             </option>

@@ -14,6 +14,11 @@ import { DashboardTabs } from "@/components/layout/DashboardTabs";
 import { FilterBar } from "@/components/layout/FilterBar";
 import { MerchKpiCards, MatchSalesKpiCards, TabKpiCards } from "@/components/widgets/KpiCard";
 import { ChartSkeleton } from "@/components/ui/ChartSkeleton";
+import type {
+  DashboardFilters,
+  MatchSalesRow,
+  TicketFilters,
+} from "@/types/dashboard";
 
 const ResponsiveMatchSalesTable = dynamic(
   () =>
@@ -122,25 +127,14 @@ const SubscriptionCampaignPaceWidget = dynamic(
   },
 );
 
-const SubscriptionPlansChart = dynamic(
+const SubscriptionPriceCategoryShareChart = dynamic(
   () =>
     import("@/components/widgets/Charts").then((mod) => ({
-      default: mod.SubscriptionPlansChart,
+      default: mod.SubscriptionPriceCategoryShareChart,
     })),
   {
     ssr: false,
-    loading: () => <ChartSkeleton height={180} />,
-  },
-);
-
-const ChannelMixChart = dynamic(
-  () =>
-    import("@/components/widgets/Charts").then((mod) => ({
-      default: mod.ChannelMixChart,
-    })),
-  {
-    ssr: false,
-    loading: () => <ChartSkeleton height={180} />,
+    loading: () => <ChartSkeleton height={360} />,
   },
 );
 
@@ -225,7 +219,25 @@ const DashboardShell = memo(function DashboardShell() {
   );
 });
 
-function TicketsMatchDynamicsSection() {
+const TicketsSalesSection = memo(function TicketsSalesSection({
+  matchSales,
+  filters,
+  ticketFilters,
+}: {
+  matchSales: MatchSalesRow[];
+  filters: DashboardFilters;
+  ticketFilters: TicketFilters;
+}) {
+  return (
+    <ResponsiveMatchSalesTable
+      data={matchSales}
+      filters={filters}
+      ticketFilters={ticketFilters}
+    />
+  );
+});
+
+const TicketsMatchDynamicsSection = memo(function TicketsMatchDynamicsSection() {
   const {
     ticketsMatchCumulativeSeries,
     ticketsChartsPending,
@@ -248,7 +260,7 @@ function TicketsMatchDynamicsSection() {
       )}
     </div>
   );
-}
+});
 
 function DashboardPanels() {
   const {
@@ -259,9 +271,8 @@ function DashboardPanels() {
     ticketsPlanFactTrend,
     ticketsSalesChannelTrend,
     subscriptionsPlanFactTrend,
-    channelMix,
     topProducts,
-    subscriptionTariffStats,
+    subscriptionPriceCategoryShares,
     matchSales,
     combinedMatchSales,
     matchSalesKpis,
@@ -273,8 +284,10 @@ function DashboardPanels() {
     merchProductCategoryRevenue,
     merchProductCategoryTrend,
     merchSkuSales,
+    appliedFilters,
     appliedTicketFilters,
     appliedMerchFilters,
+    appliedSubscriptionFilters,
   } = useFilterData();
   const merchChartTimeGrouping = getEffectiveMerchTimeGrouping(
     appliedMerchFilters,
@@ -298,16 +311,12 @@ function DashboardPanels() {
 
         {activeTab === "subscriptions" && (
           <>
-            <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[1.6fr_1fr]">
+            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-[1.6fr_1fr]">
               <SubscriptionsSalesWidget data={subscriptionsPlanFactTrend} />
-              <div className="flex min-w-0 flex-col gap-4">
-                <SubscriptionPlansChart data={subscriptionTariffStats} compact />
-                <ChannelMixChart
-                  data={channelMix}
-                  title="Каналы продаж абонементов"
-                  compact
-                />
-              </div>
+              <SubscriptionPriceCategoryShareChart
+                data={subscriptionPriceCategoryShares}
+                season={appliedSubscriptionFilters.season}
+              />
             </div>
             <SubscriptionCampaignPaceWidget />
           </>
@@ -316,7 +325,11 @@ function DashboardPanels() {
         {activeTab === "tickets" && (
           <>
             <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
-              <ResponsiveMatchSalesTable data={matchSales} />
+              <TicketsSalesSection
+                matchSales={matchSales}
+                filters={appliedFilters}
+                ticketFilters={appliedTicketFilters}
+              />
               <TicketsMatchDynamicsSection />
             </div>
             <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-2">

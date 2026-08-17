@@ -26,7 +26,7 @@ export type TournamentStage = "regular" | "playoff";
 export type MatchClass = "class_1" | "class_2" | "class_3" | "playoff";
 export type ArenaId = "main" | "secondary";
 export type TicketType = "parking" | "arena";
-export type PriceZone =
+export type Sector =
   | "A"
   | "B1"
   | "B2"
@@ -41,6 +41,12 @@ export type PriceZone =
   | "D3"
   | "D4"
   | "VIP";
+/** Ticket unit-price buckets. Tickets at or above 6000 stay in the last bucket. */
+export type PriceZone =
+  | "up_to_1500"
+  | "from_1500_to_2500"
+  | "from_2500_to_4000"
+  | "from_4000_to_6000";
 export type OrderSource = "box_office" | "official_site" | "yandex_afisha";
 export type TimeGrouping = "day" | "week" | "month" | "quarter";
 
@@ -55,7 +61,7 @@ export type Transaction = {
   quantity: number;
   loyaltyDiscount?: number;
   freeQuantity?: number;
-  sector?: string;
+  sector?: Sector;
   ticketType?: TicketType;
   priceZone?: PriceZone;
   orderSource?: OrderSource;
@@ -169,6 +175,7 @@ export type TicketFilters = {
   eventCompleted: "all" | "yes" | "no";
   matchId: string[];
   ticketType: TicketType | "all";
+  sector: Sector | "all";
   priceZone: PriceZone | "all";
   orderSource: OrderSource | "all";
   /** Purchase date window for ticket transactions (within season window) */
@@ -195,7 +202,7 @@ export type SubscriptionFilters = {
   tournamentStage: TournamentStage | "all";
   arena: ArenaId | "all";
   ticketType: TicketType | "all";
-  priceZone: PriceZone | "all";
+  sector: Sector | "all";
   timeGrouping: TimeGrouping;
 };
 
@@ -286,7 +293,7 @@ export type Subscription = {
   tournamentStage: TournamentStage;
   arena: ArenaId;
   ticketType: TicketType;
-  priceZone: PriceZone;
+  sector: Sector;
 };
 
 /** One abonement use at a home match (does not carry subscription purchase revenue). */
@@ -297,11 +304,23 @@ export type SubscriptionRedemption = {
   redeemedAt: Date;
 };
 
+export type SubscriptionPriceCategory =
+  | "all_inclusive"
+  | "weekend"
+  | "seasonal";
+
 export type SubscriptionPlanStat = {
   plan: string;
   sold: number;
   revenue: number;
   utilization: number;
+};
+
+export type SubscriptionPriceCategoryPoint = {
+  category: string;
+  categoryKey: SubscriptionPriceCategory;
+  sold: number;
+  share: number;
 };
 
 export type WeeklyPoint = {

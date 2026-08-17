@@ -7,13 +7,14 @@ import type {
   MatchClass,
   OrderSource,
   PriceZone,
+  Sector,
   TicketFilters,
   TicketType,
   TimeGrouping,
   TournamentStage,
 } from "@/types/dashboard";
 
-export const ALL_PRICE_ZONES: PriceZone[] = [
+export const ALL_SECTORS: Sector[] = [
   "A",
   "B1",
   "B2",
@@ -29,6 +30,27 @@ export const ALL_PRICE_ZONES: PriceZone[] = [
   "D4",
   "VIP",
 ];
+
+export const ALL_PRICE_ZONES: PriceZone[] = [
+  "up_to_1500",
+  "from_1500_to_2500",
+  "from_2500_to_4000",
+  "from_4000_to_6000",
+];
+
+export const PRICE_ZONE_LABELS: Record<PriceZone, string> = {
+  up_to_1500: "до 1500",
+  from_1500_to_2500: "от 1500 до 2500",
+  from_2500_to_4000: "от 2500 до 4000",
+  from_4000_to_6000: "от 4000 до 6000",
+};
+
+export function priceZoneFromUnitPrice(unitPrice: number): PriceZone {
+  if (unitPrice < 1500) return "up_to_1500";
+  if (unitPrice < 2500) return "from_1500_to_2500";
+  if (unitPrice < 4000) return "from_2500_to_4000";
+  return "from_4000_to_6000";
+}
 
 export const DEFAULT_TICKET_TRANSACTION_DATE_RANGE: TicketFilters["transactionDateRange"] =
   {
@@ -52,6 +74,7 @@ export const DEFAULT_TICKET_FILTERS: TicketFilters = {
   eventCompleted: "all",
   matchId: [],
   ticketType: "all",
+  sector: "all",
   priceZone: "all",
   orderSource: "all",
   transactionDateRange: DEFAULT_TICKET_TRANSACTION_DATE_RANGE,
@@ -217,9 +240,17 @@ export const TICKET_TYPE_OPTIONS: { value: TicketType | "all"; label: string }[]
   { value: "arena", label: "Арена" },
 ];
 
-export const PRICE_ZONE_OPTIONS: { value: PriceZone | "all"; label: string }[] = [
+export const SECTOR_OPTIONS: { value: Sector | "all"; label: string }[] = [
   { value: "all", label: "Все сектора" },
-  ...ALL_PRICE_ZONES.map((zone) => ({ value: zone, label: zone })),
+  ...ALL_SECTORS.map((sector) => ({ value: sector, label: sector })),
+];
+
+export const PRICE_ZONE_OPTIONS: { value: PriceZone | "all"; label: string }[] = [
+  { value: "all", label: "Все зоны" },
+  ...ALL_PRICE_ZONES.map((zone) => ({
+    value: zone,
+    label: PRICE_ZONE_LABELS[zone],
+  })),
 ];
 
 export const ORDER_SOURCE_OPTIONS: { value: OrderSource | "all"; label: string }[] = [
@@ -267,6 +298,13 @@ export const ORDER_SOURCE_COLORS: Record<OrderSource, string> = {
 };
 
 export const PRICE_ZONE_COLORS: Record<PriceZone, string> = {
+  up_to_1500: "#93C5FD",
+  from_1500_to_2500: "#3B82F6",
+  from_2500_to_4000: "#1D4ED8",
+  from_4000_to_6000: "#7C3AED",
+};
+
+export const SECTOR_COLORS: Record<Sector, string> = {
   A: "#1E3A8A",
   B1: "#2563EB",
   B2: "#3B82F6",

@@ -9,6 +9,7 @@ import type {
   OrderSource,
   PriceZone,
   SalesChannel,
+  Sector,
   Subscription,
   SubscriptionPlan,
   SubscriptionRedemption,
@@ -17,7 +18,11 @@ import type {
   TicketSalesProfile,
   TicketSalesTempo,
 } from "@/types/dashboard";
-import { ALL_PRICE_ZONES } from "@/lib/ticket-filter-options";
+import {
+  ALL_PRICE_ZONES,
+  ALL_SECTORS,
+  priceZoneFromUnitPrice,
+} from "@/lib/ticket-filter-options";
 import {
   getPreviousCampaignConfig,
   getSeasonTicketCampaignConfigs,
@@ -42,7 +47,6 @@ import {
   getKhlPlanAvgPrice,
   getMhlPlanAvgPrice,
   getVhlPlanAvgPrice,
-  LEGACY_TICKET_PLAN_AVG_PRICE,
   MAIN_ARENA_CAPACITY,
   MHL_ARENA_CAPACITY,
   SECONDARY_ARENA_CAPACITY,
@@ -60,6 +64,9 @@ export const SEASON_END = new Date(2026, 4, 31);
 export const MOCK_TODAY = new Date(2026, 4, 15);
 export const SUBSCRIPTIONS_PERIOD_START = new Date(2025, 7, 25);
 export const SUBSCRIPTIONS_PERIOD_END = new Date(2025, 8, 15);
+/** Analogous regular sales window one season earlier (for 2024/25 YoY). */
+export const PREV_SUBSCRIPTIONS_PERIOD_START = new Date(2024, 7, 25);
+export const PREV_SUBSCRIPTIONS_PERIOD_END = new Date(2024, 8, 15);
 /** Playoff stage = final 60 calendar days of each season (inclusive). */
 export const PLAYOFF_WINDOW_DAYS = 60;
 
@@ -320,24 +327,25 @@ const SEASON_DEFINITIONS: SeasonDefinition[] = [
   },
 ];
 
-const ZONE_PRICE_SCALE = TICKET_PLAN_AVG_PRICE / LEGACY_TICKET_PLAN_AVG_PRICE;
-
-const ZONE_PRICES: Record<PriceZone, number> = {
-  A: Math.round(2500 * ZONE_PRICE_SCALE),
-  B1: Math.round(2200 * ZONE_PRICE_SCALE),
-  B2: Math.round(2100 * ZONE_PRICE_SCALE),
-  B3: Math.round(2000 * ZONE_PRICE_SCALE),
-  B4: Math.round(1900 * ZONE_PRICE_SCALE),
-  C1: Math.round(1600 * ZONE_PRICE_SCALE),
-  C2: Math.round(1500 * ZONE_PRICE_SCALE),
-  C3: Math.round(1400 * ZONE_PRICE_SCALE),
-  C4: Math.round(1300 * ZONE_PRICE_SCALE),
-  D1: Math.round(1100 * ZONE_PRICE_SCALE),
-  D2: Math.round(1000 * ZONE_PRICE_SCALE),
-  D3: Math.round(900 * ZONE_PRICE_SCALE),
-  D4: Math.round(800 * ZONE_PRICE_SCALE),
-  VIP: Math.round(8500 * ZONE_PRICE_SCALE),
+/** List prices in ₽: sectors stay A–VIP, cost buckets come from unit price. */
+const ZONE_PRICES: Record<Sector, number> = {
+  A: 2800,
+  B1: 2200,
+  B2: 2100,
+  B3: 2000,
+  B4: 1900,
+  C1: 1600,
+  C2: 1500,
+  C3: 1400,
+  C4: 1300,
+  D1: 1100,
+  D2: 1000,
+  D3: 900,
+  D4: 800,
+  VIP: 5500,
 };
+
+const MAX_TICKET_UNIT_PRICE = 6000;
 
 const ORDER_SOURCES: OrderSource[] = [
   "box_office",
@@ -881,40 +889,44 @@ function getOpponentSalesFactor(opponent: string, matchClass: MatchClass): numbe
 }
 
 function getLeagueZonePrice(
-  zone: PriceZone,
+  zone: Sector,
   league: League,
   matchClass: MatchClass = "class_2",
 ): number {
+  let unitPrice: number;
   switch (league) {
     case "VHL":
-      return Math.round(
+      unitPrice = Math.round(
         ZONE_PRICES[zone] *
           (getVhlPlanAvgPrice(matchClass) / TICKET_PLAN_AVG_PRICE),
       );
+      break;
     case "MHL":
-      return Math.round(
+      unitPrice = Math.round(
         ZONE_PRICES[zone] *
           (getMhlPlanAvgPrice(matchClass) / TICKET_PLAN_AVG_PRICE),
       );
+      break;
     default:
-      return Math.round(
+      unitPrice = Math.round(
         ZONE_PRICES[zone] *
           (getKhlPlanAvgPrice(matchClass) / TICKET_PLAN_AVG_PRICE),
       );
   }
+  return Math.min(MAX_TICKET_UNIT_PRICE, unitPrice);
 }
 
-function closestPriceZone(
+function closestSector(
   targetPrice: number,
   league: League = "KHL",
   matchClass: MatchClass = "class_2",
-): PriceZone {
-  return ALL_PRICE_ZONES.reduce((best, zone) =>
+): Sector {
+  return ALL_SECTORS.reduce((best, zone) =>
     Math.abs(getLeagueZonePrice(zone, league, matchClass) - targetPrice) <
     Math.abs(getLeagueZonePrice(best, league, matchClass) - targetPrice)
       ? zone
       : best,
-  ALL_PRICE_ZONES[0]);
+  ALL_SECTORS[0]);
 }
 
 function randomSaleDate(match: Match, explicit?: Date): Date {
@@ -969,12 +981,12 @@ function buildDayTicketSales(
     }
 
     if (isLast) {
-      const priceZone = closestPriceZone(
+      const sector = closestSector(
         Math.round(revenueLeft / ticketsLeft),
         league,
         matchClass,
       );
-      const unitPrice = getLeagueZonePrice(priceZone, league, matchClass);
+      const unitPrice = getLeagueZonePrice(sector, league, matchClass);
       const qty = ticketsLeft;
       const gross = unitPrice * qty;
       const { amount, loyaltyDiscount } = resolveTicketPayment(gross, revenueLeft);
@@ -985,22 +997,22 @@ function buildDayTicketSales(
         id: `tx-${id++}`,
         date: saleDate,
         stream: "tickets",
-        description: `Билет на арену, сектор ${priceZone}`,
+        description: `Билет на арену, сектор ${sector}`,
         matchId,
         channel: orderSource === "box_office" ? "arena" : "online",
         amount,
         quantity: qty,
         loyaltyDiscount: loyaltyDiscount > 0 ? loyaltyDiscount : undefined,
-        sector: priceZone,
+        sector,
         ticketType: "arena",
-        priceZone,
+        priceZone: priceZoneFromUnitPrice(unitPrice),
         orderSource,
       });
       break;
     }
 
-    const priceZone = randomPick(ALL_PRICE_ZONES);
-    const unitPrice = getLeagueZonePrice(priceZone, league, matchClass);
+    const sector = randomPick(ALL_SECTORS);
+    const unitPrice = getLeagueZonePrice(sector, league, matchClass);
     const qty = Math.min(randomInt(1, 4), ticketsLeft);
     const gross = unitPrice * qty;
     const { amount, loyaltyDiscount } = resolveTicketPayment(gross, revenueLeft);
@@ -1011,15 +1023,15 @@ function buildDayTicketSales(
       id: `tx-${id++}`,
       date: saleDate,
       stream: "tickets",
-      description: `Билет на арену, сектор ${priceZone}`,
+      description: `Билет на арену, сектор ${sector}`,
       matchId,
       channel: orderSource === "box_office" ? "arena" : "online",
       amount,
       quantity: qty,
       loyaltyDiscount: loyaltyDiscount > 0 ? loyaltyDiscount : undefined,
-      sector: priceZone,
+      sector,
       ticketType: "arena",
-      priceZone,
+      priceZone: priceZoneFromUnitPrice(unitPrice),
       orderSource,
     });
     ticketsLeft -= qty;
@@ -1170,6 +1182,8 @@ function generateTransactions(allMatches: Match[]): Transaction[] {
       const orderSource = pickOrderSource();
       const channel: SalesChannel =
         orderSource === "box_office" ? "arena" : "online";
+      const sector = randomPick(ALL_SECTORS);
+      const unitPrice = getLeagueZonePrice(sector, match.league, match.matchClass);
       transactions.push({
         id: `tx-${id++}`,
         date: randomSaleDate(match),
@@ -1180,8 +1194,9 @@ function generateTransactions(allMatches: Match[]): Transaction[] {
         amount: 0,
         quantity: qty,
         freeQuantity: qty,
+        sector,
         ticketType: "arena",
-        priceZone: randomPick(ALL_PRICE_ZONES),
+        priceZone: priceZoneFromUnitPrice(unitPrice),
         orderSource,
       });
     }
@@ -1242,8 +1257,97 @@ function generateTransactions(allMatches: Match[]): Transaction[] {
 
   const todayTicketSales = ensureMockTodayTicketSales(allMatches, transactions, id);
   transactions.push(...todayTicketSales.txs);
+  id = todayTicketSales.nextId;
+
+  const zoneCoverage = ensureTicketPriceZoneCoverage(
+    allMatches,
+    transactions,
+    id,
+  );
+  transactions.push(...zoneCoverage.txs);
 
   return transactions.sort((a, b) => b.date.getTime() - a.date.getTime());
+}
+
+const PRICE_ZONE_SEED_UNIT_PRICE: Record<PriceZone, number> = {
+  up_to_1500: 900,
+  from_1500_to_2500: 2000,
+  from_2500_to_4000: 3200,
+  from_4000_to_6000: 5000,
+};
+
+const PRICE_ZONE_SEED_SECTOR: Record<PriceZone, Sector> = {
+  up_to_1500: "D4",
+  from_1500_to_2500: "B1",
+  from_2500_to_4000: "A",
+  from_4000_to_6000: "VIP",
+};
+
+const PRICE_ZONE_SEED_QUANTITY = 8;
+
+function arenaPriceZonesByMatch(
+  transactions: Transaction[],
+): Map<string, Set<PriceZone>> {
+  const byMatch = new Map<string, Set<PriceZone>>();
+  for (const tx of transactions) {
+    if (tx.stream !== "tickets" || tx.ticketType !== "arena" || !tx.matchId) {
+      continue;
+    }
+    if (!tx.priceZone) continue;
+    let zones = byMatch.get(tx.matchId);
+    if (!zones) {
+      zones = new Set();
+      byMatch.set(tx.matchId, zones);
+    }
+    zones.add(tx.priceZone);
+  }
+  return byMatch;
+}
+
+/**
+ * Guarantee every match with arena ticket sales has txs in all four
+ * unit-price buckets. Parking rows are skipped (no price zone).
+ */
+function ensureTicketPriceZoneCoverage(
+  allMatches: Match[],
+  transactions: Transaction[],
+  startId: number,
+): { txs: Transaction[]; nextId: number } {
+  const zonesByMatch = arenaPriceZonesByMatch(transactions);
+  if (zonesByMatch.size === 0) return { txs: [], nextId: startId };
+
+  const matchById = new Map(allMatches.map((match) => [match.id, match]));
+  const txs: Transaction[] = [];
+  let id = startId;
+
+  for (const [matchId, present] of zonesByMatch) {
+    const match = matchById.get(matchId);
+    if (!match) continue;
+
+    for (const zone of ALL_PRICE_ZONES) {
+      if (present.has(zone)) continue;
+      const unitPrice = PRICE_ZONE_SEED_UNIT_PRICE[zone];
+      const sector = PRICE_ZONE_SEED_SECTOR[zone];
+      const qty = PRICE_ZONE_SEED_QUANTITY;
+      const orderSource = pickOrderSource();
+      txs.push({
+        id: `tx-${id++}`,
+        date: randomSaleDate(match),
+        stream: "tickets",
+        description: `Билет на арену, сектор ${sector}`,
+        matchId,
+        channel: orderSource === "box_office" ? "arena" : "online",
+        amount: unitPrice * qty,
+        quantity: qty,
+        sector,
+        ticketType: "arena",
+        priceZone: priceZoneFromUnitPrice(unitPrice),
+        orderSource,
+      });
+    }
+  }
+
+  return { txs, nextId: id };
 }
 
 /** Catalog prices are 35% below the previous mock so average check drops by 35%. */
@@ -1276,17 +1380,34 @@ const SEASON_SUBSCRIPTION_QUOTAS: SeasonSubscriptionQuota[] = [
     season: "2024/25",
     seasonStart: PREV_SEASON_START,
     regularCount: 45,
-    playoffCount: 18,
-    preferDashboardPeriod: false,
+    playoffCount: 12,
+    preferDashboardPeriod: true,
   },
 ];
 
-function isInRegularSubscriptionSalesWindow(purchasedAt: Date): boolean {
+function getRegularSubscriptionSalesWindow(season: string): {
+  start: Date;
+  end: Date;
+} {
+  if (season === "2024/25") {
+    return {
+      start: PREV_SUBSCRIPTIONS_PERIOD_START,
+      end: PREV_SUBSCRIPTIONS_PERIOD_END,
+    };
+  }
+  return {
+    start: SUBSCRIPTIONS_PERIOD_START,
+    end: SUBSCRIPTIONS_PERIOD_END,
+  };
+}
+
+function isInRegularSubscriptionSalesWindow(
+  purchasedAt: Date,
+  season = "2025/26",
+): boolean {
+  const { start, end } = getRegularSubscriptionSalesWindow(season);
   const day = startOfDay(purchasedAt);
-  return (
-    day >= startOfDay(SUBSCRIPTIONS_PERIOD_START) &&
-    day <= startOfDay(SUBSCRIPTIONS_PERIOD_END)
-  );
+  return day >= startOfDay(start) && day <= startOfDay(end);
 }
 
 function isInPlayoffSubscriptionSalesWindow(
@@ -1315,20 +1436,22 @@ function subscriptionPassesDefaultSeasonFilter(
       allMatches,
     );
   }
-  return isInRegularSubscriptionSalesWindow(sub.purchasedAt);
+  return isInRegularSubscriptionSalesWindow(sub.purchasedAt, sub.season);
 }
 
 const SEED_SUBSCRIPTION_PLAN =
   subscriptionPlans.find((plan) => plan.code === "SUB-SEASON") ??
   subscriptionPlans[3];
 
-/** Seed subscriptions so every price zone appears in 2025/26 default filters. */
-function ensureSubscriptionPriceZoneCoverage(
+/** Seed subscriptions so every sector appears in 2025/26 default filters. */
+function ensureSubscriptionSectorCoverage(
   subs: Subscription[],
   allMatches: Match[],
   startId: number,
 ): number {
-  const seasonMatches = allMatches.filter((match) => match.season === "2025/26");
+  const seasonMatches = allMatches.filter(
+    (match) => match.season === "2025/26" && match.league === "KHL",
+  );
   const regularMatch =
     seasonMatches.find((match) => match.tournamentStage === "regular") ??
     seasonMatches[0];
@@ -1337,10 +1460,12 @@ function ensureSubscriptionPriceZoneCoverage(
   const purchasedAt = SUBSCRIPTIONS_PERIOD_START;
   let id = startId;
 
-  for (const zone of ALL_PRICE_ZONES) {
+  for (const sector of ALL_SECTORS) {
     const hasCoverage = subs.some(
       (sub) =>
-        sub.priceZone === zone &&
+        sub.sector === sector &&
+        sub.league === "KHL" &&
+        sub.ticketType === "arena" &&
         subscriptionPassesDefaultSeasonFilter(sub, allMatches),
     );
     if (!hasCoverage) {
@@ -1351,7 +1476,8 @@ function ensureSubscriptionPriceZoneCoverage(
           regularMatch,
           purchasedAt,
           "regular",
-          zone,
+          sector,
+          "arena",
         ),
       );
     }
@@ -1372,7 +1498,7 @@ function buildSubscription(
   match: Match,
   purchasedAt: Date,
   tournamentStage: Subscription["tournamentStage"],
-  explicitPriceZone?: PriceZone,
+  explicitSector?: Sector,
   explicitTicketType?: Subscription["ticketType"],
 ): Subscription {
   const validTo = addDays(purchasedAt, 90);
@@ -1384,15 +1510,15 @@ function buildSubscription(
       : validTo < SUBSCRIPTIONS_PERIOD_END
         ? "expired"
         : "active";
-  const priceZone =
-    explicitPriceZone ??
+  const sector =
+    explicitSector ??
     (plan.code.includes("VIP")
       ? "VIP"
       : plan.code.includes("-A")
         ? "A"
         : plan.code.includes("-B")
-          ? randomPick(["B1", "B2", "B3", "B4"] as PriceZone[])
-          : randomPick(ALL_PRICE_ZONES));
+          ? randomPick(["B1", "B2", "B3", "B4"] as Sector[])
+          : randomPick(ALL_SECTORS));
 
   return {
     id: `sub-${id}`,
@@ -1411,7 +1537,7 @@ function buildSubscription(
     tournamentStage,
     arena: match.arena,
     ticketType: explicitTicketType ?? (rand() > 0.08 ? "arena" : "parking"),
-    priceZone,
+    sector,
   };
 }
 
@@ -1436,11 +1562,12 @@ function generateSubscriptions(allMatches: Match[]): Subscription[] {
     const playoffSalesWindow =
       getPlayoffSubscriptionSalesWindow(firstPlayoffMatch);
     const regularSalesEnd = subDays(playoffSalesWindow.start, 1);
+    const preferWindow = getRegularSubscriptionSalesWindow(quota.season);
     const preferStart = quota.preferDashboardPeriod
-      ? SUBSCRIPTIONS_PERIOD_START
+      ? preferWindow.start
       : undefined;
     const preferEnd = quota.preferDashboardPeriod
-      ? SUBSCRIPTIONS_PERIOD_END
+      ? preferWindow.end
       : undefined;
 
     for (let i = 0; i < quota.regularCount; i += 1) {
@@ -1448,12 +1575,15 @@ function generateSubscriptions(allMatches: Match[]): Subscription[] {
       const match = randomPick(
         regularStageMatches.length > 0 ? regularStageMatches : seasonMatches,
       );
-      const purchasedAt = randomDateInWindow(
-        quota.seasonStart,
-        regularSalesEnd,
-        preferStart,
-        preferEnd,
-      );
+      const purchasedAt =
+        quota.season === "2024/25" && preferStart && preferEnd
+          ? randomDateInSeasonRange(preferStart, preferEnd)
+          : randomDateInWindow(
+              quota.seasonStart,
+              regularSalesEnd,
+              preferStart,
+              preferEnd,
+            );
 
       subs.push(
         buildSubscription(id++, plan, match, purchasedAt, "regular"),
@@ -1476,12 +1606,119 @@ function generateSubscriptions(allMatches: Match[]): Subscription[] {
     }
   }
 
-  id = ensureSubscriptionPriceZoneCoverage(subs, allMatches, id);
+  id = ensureSubscriptionSectorCoverage(subs, allMatches, id);
   id = ensureCriticalSubscriptionCombos(subs, allMatches, id);
   ensureDefaultSeasonSoldCount(subs, allMatches, id);
   id = seedCampaignPaceSubscriptions(subs, allMatches, id);
+  realignPreviousSeasonSubscriptionPurchases(subs, allMatches);
+  rebalancePreviousSeasonKhlRevenue(subs, allMatches);
+  rebalanceDefaultSeasonAverageCheck(subs, allMatches);
 
   return subs.sort((a, b) => b.purchasedAt.getTime() - a.purchasedAt.getTime());
+}
+
+/** Analogous 2024/25 KHL window: keep sold~45 and revenue near 1.90M for modest YoY. */
+const TARGET_PREV_SEASON_KHL_REVENUE = 1_900_000;
+
+function rebalancePreviousSeasonKhlRevenue(
+  subs: Subscription[],
+  allMatches: Match[],
+): void {
+  const prev = subs.filter((sub) =>
+    subscriptionPassesPrevSeasonDefaultFilter(sub, allMatches),
+  );
+  if (prev.length === 0) return;
+
+  const minRevenue = TARGET_PREV_SEASON_KHL_REVENUE * 0.9;
+  const maxRevenue = TARGET_PREV_SEASON_KHL_REVENUE * 1.08;
+  const sumPrices = () => prev.reduce((sum, sub) => sum + sub.price, 0);
+  let revenue = sumPrices();
+  if (revenue >= minRevenue && revenue <= maxRevenue) return;
+
+  const seasonPlan = SEED_SUBSCRIPTION_PLAN;
+  const cheapPlan =
+    subscriptionPlans.find((plan) => plan.code === "SUB-STUD") ??
+    subscriptionPlans[5] ??
+    seasonPlan;
+
+  if (revenue < minRevenue) {
+    const cheapest = [...prev].sort((left, right) => left.price - right.price);
+    for (const sub of cheapest) {
+      revenue = sumPrices();
+      if (revenue >= minRevenue) return;
+      if (sub.planId === seasonPlan.id || sub.planId === "plan-5") continue;
+      sub.price = seasonPlan.price;
+      sub.planId = seasonPlan.id;
+      sub.planName = seasonPlan.name;
+    }
+    return;
+  }
+
+  const expensive = [...prev].sort((left, right) => right.price - left.price);
+  for (const sub of expensive) {
+    revenue = sumPrices();
+    if (revenue <= maxRevenue) return;
+    if (sub.planId === cheapPlan.id) continue;
+    sub.price = cheapPlan.price;
+    sub.planId = cheapPlan.id;
+    sub.planName = cheapPlan.name;
+  }
+}
+
+/** Catalog-scale target: ~65% of the pre-cut 3.451M / 60 average check. */
+const TARGET_DEFAULT_AVG_CHECK = 0.65 * (3_451_000 / 60);
+
+/**
+ * Upgrade the cheapest 2025/26 default-window rows to the season plan so
+ * average check stays in the catalog 0.65× band after RNG reshuffles.
+ */
+function rebalanceDefaultSeasonAverageCheck(
+  subs: Subscription[],
+  allMatches: Match[],
+): void {
+  const defaultSubs = subs.filter(
+    (sub) =>
+      sub.league === "KHL" &&
+      subscriptionPassesDefaultSeasonFilter(sub, allMatches),
+  );
+  if (defaultSubs.length === 0) return;
+
+  const minAvg = TARGET_DEFAULT_AVG_CHECK * 0.97;
+  const maxAvg = TARGET_DEFAULT_AVG_CHECK * 1.12;
+  const sumPrices = () => defaultSubs.reduce((sum, sub) => sum + sub.price, 0);
+  let avg = sumPrices() / defaultSubs.length;
+  if (avg >= minAvg && avg <= maxAvg) return;
+
+  const seasonPlan = SEED_SUBSCRIPTION_PLAN;
+  const cheapPlan =
+    subscriptionPlans.find((plan) => plan.code === "SUB-STUD") ??
+    subscriptionPlans[5] ??
+    seasonPlan;
+  const ordered = [...defaultSubs].sort((left, right) => left.price - right.price);
+  for (const sub of ordered) {
+    avg = sumPrices() / defaultSubs.length;
+    if (avg >= minAvg && avg <= maxAvg) return;
+    if (avg < minAvg) {
+      if (sub.planId === seasonPlan.id || sub.planId === "plan-5") continue;
+      sub.price = seasonPlan.price;
+      sub.planId = seasonPlan.id;
+      sub.planName = seasonPlan.name;
+    }
+  }
+
+  const expensiveFirst = [...defaultSubs].sort(
+    (left, right) => right.price - left.price,
+  );
+  for (const sub of expensiveFirst) {
+    avg = sumPrices() / defaultSubs.length;
+    if (avg >= minAvg && avg <= maxAvg) return;
+    if (avg <= maxAvg) return;
+    if (sub.tournamentStage === "playoff" && sub.sector === "VIP") continue;
+    if (sub.planId === cheapPlan.id) continue;
+    sub.price = cheapPlan.price;
+    sub.planId = cheapPlan.id;
+    sub.planName = cheapPlan.name;
+  }
 }
 
 /** Default 2025/26 filter view should show this many sold subscriptions. */
@@ -1537,13 +1774,162 @@ function ensureDefaultSeasonSoldCount(
   }
 }
 
+/** Default 2024/25 KHL view (analogous sales window) should be close to 2025/26. */
+const TARGET_PREV_SEASON_KHL_SOLD = 45;
+
+function nextSubscriptionNumericId(subs: Subscription[]): number {
+  let max = 0;
+  for (const sub of subs) {
+    const parsed = Number.parseInt(String(sub.id).replace(/\D/g, ""), 10);
+    if (Number.isFinite(parsed) && parsed > max) max = parsed;
+  }
+  return max + 1;
+}
+
+function subscriptionPassesPrevSeasonDefaultFilter(
+  sub: Subscription,
+  allMatches: Match[],
+): boolean {
+  if (sub.season !== "2024/25" || sub.league !== "KHL") return false;
+  if (sub.tournamentStage === "playoff") {
+    return isInPlayoffSubscriptionSalesWindow(
+      sub.purchasedAt,
+      sub.season,
+      allMatches,
+    );
+  }
+  return isInRegularSubscriptionSalesWindow(sub.purchasedAt, sub.season);
+}
+
+/** Keep ~45 KHL 2024/25 sales in the analogous window so YoY vs 2025/26 stays modest. */
+export function realignPreviousSeasonSubscriptionPurchases(
+  subs: Subscription[],
+  allMatches: Match[],
+): void {
+  const prevWindow = getRegularSubscriptionSalesWindow("2024/25");
+  const span = Math.max(
+    0,
+    differenceInCalendarDays(prevWindow.end, prevWindow.start),
+  );
+  const outsideWindow = addDays(prevWindow.end, 21);
+
+  const prevKhlPlayoff = subs.filter(
+    (sub) =>
+      sub.season === "2024/25" &&
+      sub.league === "KHL" &&
+      sub.tournamentStage === "playoff" &&
+      isInPlayoffSubscriptionSalesWindow(
+        sub.purchasedAt,
+        sub.season,
+        allMatches,
+      ),
+  );
+  const prevKhlRegulars = subs.filter(
+    (sub) =>
+      sub.season === "2024/25" &&
+      sub.league === "KHL" &&
+      sub.tournamentStage === "regular",
+  );
+  const otherPrevRegulars = subs.filter(
+    (sub) =>
+      sub.season === "2024/25" &&
+      sub.tournamentStage === "regular" &&
+      sub.league !== "KHL",
+  );
+
+  otherPrevRegulars.forEach((sub, index) => {
+    const purchasedAt = addDays(outsideWindow, index % 14);
+    sub.purchasedAt = purchasedAt;
+    sub.validTo = addDays(purchasedAt, 90);
+  });
+
+  const regularsNeeded = Math.max(
+    0,
+    TARGET_PREV_SEASON_KHL_SOLD - prevKhlPlayoff.length,
+  );
+
+  prevKhlRegulars.forEach((sub, index) => {
+    const inWindow = index < regularsNeeded;
+    const purchasedAt = inWindow
+      ? addDays(prevWindow.start, span === 0 ? 0 : index % (span + 1))
+      : addDays(outsideWindow, index % 14);
+    sub.purchasedAt = purchasedAt;
+    sub.validTo = addDays(purchasedAt, 90);
+  });
+
+  const coverageCombo = subs.find(
+    (sub) =>
+      sub.season === "2024/25" &&
+      sub.league === "VHL" &&
+      sub.ticketType === "parking" &&
+      sub.tournamentStage === "regular",
+  );
+  if (coverageCombo) {
+    coverageCombo.purchasedAt = prevWindow.start;
+    coverageCombo.validTo = addDays(prevWindow.start, 90);
+  }
+
+  const passing = subs.filter((sub) =>
+    subscriptionPassesPrevSeasonDefaultFilter(sub, allMatches),
+  );
+  if (passing.length >= TARGET_PREV_SEASON_KHL_SOLD) return;
+
+  const khlMatch =
+    allMatches.find(
+      (match) =>
+        match.season === "2024/25" &&
+        match.league === "KHL" &&
+        match.tournamentStage === "regular",
+    ) ??
+    allMatches.find(
+      (match) => match.season === "2024/25" && match.league === "KHL",
+    );
+  if (!khlMatch) return;
+
+  const templates =
+    passing.length > 0
+      ? passing
+      : prevKhlRegulars;
+  if (templates.length === 0) return;
+
+  const planById = new Map(subscriptionPlans.map((plan) => [plan.id, plan]));
+  let id = nextSubscriptionNumericId(subs);
+  const needed = TARGET_PREV_SEASON_KHL_SOLD - passing.length;
+
+  for (let extraIndex = 0; extraIndex < needed; extraIndex += 1) {
+    const template = templates[extraIndex % templates.length];
+    const plan = planById.get(template.planId) ?? SEED_SUBSCRIPTION_PLAN;
+    const purchasedAt = addDays(
+      prevWindow.start,
+      span === 0 ? 0 : extraIndex % (span + 1),
+    );
+    const extra = buildSubscription(
+      id++,
+      plan,
+      khlMatch,
+      purchasedAt,
+      "regular",
+    );
+    extra.price = template.price;
+    extra.planId = template.planId;
+    extra.planName = template.planName;
+    extra.league = "KHL";
+    extra.season = "2024/25";
+    extra.ticketType = "arena";
+    extra.tournamentStage = "regular";
+    subs.push(extra);
+  }
+}
+
 /** Ensures rare but tested filter combinations have at least one subscription. */
 function ensureCriticalSubscriptionCombos(
   subs: Subscription[],
   allMatches: Match[],
   startId: number,
 ): number {
-  const hasCombo = subs.some(
+  let id = startId;
+
+  const hasPrevVhlParking = subs.some(
     (sub) =>
       sub.season === "2024/25" &&
       sub.league === "VHL" &&
@@ -1554,27 +1940,67 @@ function ensureCriticalSubscriptionCombos(
             sub.season,
             allMatches,
           )
-        : isInRegularSubscriptionSalesWindow(sub.purchasedAt)),
+        : isInRegularSubscriptionSalesWindow(sub.purchasedAt, sub.season)),
   );
-  if (hasCombo) return startId;
+  if (!hasPrevVhlParking) {
+    const vhlMatch = allMatches.find(
+      (match) => match.season === "2024/25" && match.league === "VHL",
+    );
+    if (vhlMatch) {
+      subs.push(
+        buildSubscription(
+          id++,
+          SEED_SUBSCRIPTION_PLAN,
+          vhlMatch,
+          PREV_SUBSCRIPTIONS_PERIOD_START,
+          "regular",
+          "D1",
+          "parking",
+        ),
+      );
+    }
+  }
 
-  const vhlMatch = allMatches.find(
-    (match) => match.season === "2024/25" && match.league === "VHL",
+  const hasPlayoffVip = subs.some(
+    (sub) =>
+      sub.season === "2025/26" &&
+      sub.league === "KHL" &&
+      sub.tournamentStage === "playoff" &&
+      sub.sector === "VIP" &&
+      isInPlayoffSubscriptionSalesWindow(
+        sub.purchasedAt,
+        sub.season,
+        allMatches,
+      ),
   );
-  if (!vhlMatch) return startId;
+  if (!hasPlayoffVip) {
+    const playoffMatch = allMatches.find(
+      (match) =>
+        match.season === "2025/26" &&
+        match.league === "KHL" &&
+        match.tournamentStage === "playoff",
+    );
+    const firstPlayoff = getFirstPlayoffMatchDate(allMatches, "2025/26");
+    if (playoffMatch && firstPlayoff) {
+      const window = getPlayoffSubscriptionSalesWindow(firstPlayoff);
+      const vipPlan =
+        subscriptionPlans.find((plan) => plan.code === "SUB-SEASON") ??
+        SEED_SUBSCRIPTION_PLAN;
+      subs.push(
+        buildSubscription(
+          id++,
+          vipPlan,
+          playoffMatch,
+          window.start,
+          "playoff",
+          "VIP",
+          "arena",
+        ),
+      );
+    }
+  }
 
-  subs.push(
-    buildSubscription(
-      startId,
-      SEED_SUBSCRIPTION_PLAN,
-      vhlMatch,
-      SUBSCRIPTIONS_PERIOD_START,
-      "regular",
-      "D1",
-      "parking",
-    ),
-  );
-  return startId + 1;
+  return id;
 }
 
 function getSellableCampaignDays(
@@ -1791,8 +2217,10 @@ export function generateMockData(): {
   subscriptionRedemptions: SubscriptionRedemption[];
 } {
   const matches = generateMatches();
-  const transactions = generateTransactions(matches);
+  // Subscriptions use the shared RNG; generate them before tickets so
+  // catalog-price retunes do not reshuffle 2024/25–2025/26 abonement mix.
   const subscriptions = generateSubscriptions(matches);
+  const transactions = generateTransactions(matches);
   const subscriptionRedemptions = generateSubscriptionRedemptions(
     subscriptions,
     matches,

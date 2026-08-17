@@ -26,6 +26,7 @@ import {
 import { SUBSCRIPTION_CHANNEL_LABELS } from "@/lib/subscription-filter-options";
 import {
   ORDER_SOURCE_LABELS,
+  PRICE_ZONE_LABELS,
   TICKET_TYPE_LABELS,
 } from "@/lib/ticket-filter-options";
 import { InlineBarCell } from "@/components/ui/InlineBarCell";
@@ -714,9 +715,15 @@ export function TransactionsTable({
             header: "Тип билета",
           },
           {
-            accessorKey: "priceZone",
+            id: "sector",
+            accessorFn: (row) => row.sector ?? "—",
+            header: "Сектор",
+          },
+          {
+            id: "priceZone",
+            accessorFn: (row) =>
+              row.priceZone ? PRICE_ZONE_LABELS[row.priceZone] : "—",
             header: "Ценовая зона",
-            cell: ({ getValue }) => getValue<string | undefined>() ?? "—",
           },
         );
       }

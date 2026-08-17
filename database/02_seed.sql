@@ -1,7 +1,7 @@
 -- =============================================================================
 -- Reference data & dimension seed for hockey club BI database
 -- Run after schema.sql; matches + sales/subscriptions loaded via generate-seed.mjs
--- Aligned with lib/mock/hockey-generator.ts (seasons 2024/25–2025/26, KHL/VHL/MHL, 15 price zones)
+-- Aligned with lib/mock/hockey-generator.ts (seasons 2024/25–2025/26, KHL/VHL/MHL, 14 sectors)
 -- =============================================================================
 
 SET search_path TO bi, public;
@@ -62,7 +62,7 @@ INSERT INTO sales_channel (id, code, name) VALUES
     (2, 'arena',  'Касса арены'),
     (3, 'kiosk',  'Киоск / POS');
 
--- Price zones from types/dashboard.ts PriceZone (A, B1–B4, C1–C4, D1–D4, VIP)
+-- Arena sectors from types/dashboard.ts Sector (A, B1–B4, C1–C4, D1–D4, VIP)
 INSERT INTO sector (id, code, name, zone_group, sort_order) VALUES
     (1,  'A',   'Сектор A',   'A',   1),
     (2,  'B1',  'Сектор B1',  'B',   2),
@@ -88,22 +88,22 @@ INSERT INTO product_category (id, stream_id, name) VALUES
     (6, 3, 'Сезонные абонементы'),
     (7, 3, 'Пакетные абонементы');
 
--- Ticket zone prices: legacy × TICKET_PLAN_AVG_PRICE / LEGACY_TICKET_PLAN_AVG_PRICE (310/1750)
+-- Ticket list prices span the four cost buckets (до 1500 … от 4000 до 6000).
 INSERT INTO product (id, category_id, sku, name, base_price, sector_id) VALUES
-    (1,  1, 'TKT-A',      'Билет сектор A',     443.00, 1),
-    (2,  1, 'TKT-B1',     'Билет сектор B1',    390.00, 2),
-    (3,  1, 'TKT-B2',     'Билет сектор B2',    372.00, 3),
-    (4,  1, 'TKT-B3',     'Билет сектор B3',    354.00, 4),
-    (5,  1, 'TKT-B4',     'Билет сектор B4',    337.00, 5),
-    (6,  1, 'TKT-C1',     'Билет сектор C1',    283.00, 6),
-    (7,  1, 'TKT-C2',     'Билет сектор C2',    266.00, 7),
-    (8,  1, 'TKT-C3',     'Билет сектор C3',    248.00, 8),
-    (9,  1, 'TKT-C4',     'Билет сектор C4',    230.00, 9),
-    (10, 1, 'TKT-D1',     'Билет сектор D1',    195.00, 10),
-    (11, 1, 'TKT-D2',     'Билет сектор D2',    177.00, 11),
-    (12, 1, 'TKT-D3',     'Билет сектор D3',    159.00, 12),
-    (13, 1, 'TKT-D4',     'Билет сектор D4',    142.00, 13),
-    (14, 1, 'TKT-VIP',    'VIP-билет ложа',    1506.00, 14),
+    (1,  1, 'TKT-A',      'Билет сектор A',    2800.00, 1),
+    (2,  1, 'TKT-B1',     'Билет сектор B1',   2200.00, 2),
+    (3,  1, 'TKT-B2',     'Билет сектор B2',   2100.00, 3),
+    (4,  1, 'TKT-B3',     'Билет сектор B3',   2000.00, 4),
+    (5,  1, 'TKT-B4',     'Билет сектор B4',   1900.00, 5),
+    (6,  1, 'TKT-C1',     'Билет сектор C1',   1600.00, 6),
+    (7,  1, 'TKT-C2',     'Билет сектор C2',   1500.00, 7),
+    (8,  1, 'TKT-C3',     'Билет сектор C3',   1400.00, 8),
+    (9,  1, 'TKT-C4',     'Билет сектор C4',   1300.00, 9),
+    (10, 1, 'TKT-D1',     'Билет сектор D1',   1100.00, 10),
+    (11, 1, 'TKT-D2',     'Билет сектор D2',   1000.00, 11),
+    (12, 1, 'TKT-D3',     'Билет сектор D3',    900.00, 12),
+    (13, 1, 'TKT-D4',     'Билет сектор D4',    800.00, 13),
+    (14, 1, 'TKT-VIP',    'VIP-билет ложа',    5500.00, 14),
     (15, 2, 'TKT-PARK',   'Парковка',           500.00, NULL),
     -- Merch
     (20, 3, 'MRC-SHIRT-H', 'Футболка домашняя',           3500.00, NULL),

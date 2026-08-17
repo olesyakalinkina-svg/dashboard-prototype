@@ -53,7 +53,7 @@ All analytical views live in the `bi` schema and mirror KPIs and charts from `li
 | `match` | Home games: `season`, `league` (KHL/VHL/MHL), `tournament_stage`, `match_class`, per-match `capacity` (MHL 6300 on main arena), `ticket_sales_window_days`, plus date/attendance/status |
 | `revenue_stream` | Lookup: `tickets`, `merch`, `subscriptions` |
 | `sales_channel` | `online`, `arena`, `kiosk` |
-| `sector` | Price zones `A`, `B1`–`B4`, `C1`–`C4`, `D1`–`D4`, `VIP`, with `zone_group` A/B/C/D/VIP |
+| `sector` | Arena sections `A`, `B1`–`B4`, `C1`–`C4`, `D1`–`D4`, `VIP`, with `zone_group` A/B/C/D/VIP |
 | `product_category` | Product groups per revenue stream |
 | `product` | SKUs: tickets, merch items (`base_price`, optional `sector_id`) |
 | `subscription_plan` | Abonement tariffs (match count, price, validity) |
@@ -67,7 +67,7 @@ All analytical views live in the `bi` schema and mirror KPIs and charts from `li
 
 | Table | Description |
 |-------|-------------|
-| `sale` | Ticket and merch sales: amount, quantity, loyalty discount, `ticket_type` (`arena` / `parking`), links to `match_id`, `product_id`, `sector_id`, optional `promotion_id` |
+| `sale` | Ticket and merch sales: amount, quantity, loyalty discount, `ticket_type` (`arena` / `parking`), `price_zone` (four unit-price buckets, NULL for parking/merch), links to `match_id`, `product_id`, `sector_id`, optional `promotion_id` |
 | `subscription` | Abonement purchase: plan, price, validity, `season` / `league` / `tournament_stage` / `ticket_type` / `sector_id`, `matches_total` / `matches_used`, channel, status |
 | `subscription_redemption` | One row per abonement use at a `match_id` |
 
@@ -83,7 +83,7 @@ All analytical views live in the `bi` schema and mirror KPIs and charts from `li
 
 | View | Dashboard tab | Purpose |
 |------|---------------|---------|
-| `v_revenue_unified` | All | Unified fact: sales + subscription purchases (season, league, zone_group, ticket_type) |
+| `v_revenue_unified` | All | Unified fact: sales + subscription purchases (season, league, sector, price_zone, ticket_type) |
 | `v_tickets_kpi`, `v_tickets_kpi_summary` | Билеты | Revenue, tickets sold, avg price, loyalty discount, today |
 | `v_sector_sales` | Билеты | Sales by price zone and zone group |
 | `v_match_catalog` | All | Match dimension: season, league, stage, class, arena |

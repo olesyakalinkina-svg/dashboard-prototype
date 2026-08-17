@@ -9,7 +9,7 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { TableExcelButton } from "@/components/ui/ExcelDownloadButton";
 import { InlineBarCell } from "@/components/ui/InlineBarCell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -19,7 +19,11 @@ import {
   MatchSalesLocalFiltersBar,
 } from "@/components/widgets/MatchSalesLocalFilters";
 import { MobileSalesCards } from "@/components/widgets/MobileSalesCards";
-import { useMatchSalesTreeState } from "@/hooks/useMatchSalesTree";
+import {
+  useMatchSalesPageTree,
+  useMatchSalesTreeState,
+  type MatchSalesTreeState,
+} from "@/hooks/useMatchSalesTree";
 import {
   flattenExpandedMatchSalesTree,
   paginateTopLevel,
@@ -33,9 +37,21 @@ import {
   formatNumber,
   formatPercent,
 } from "@/lib/format";
-import type { MatchSalesRow } from "@/types/dashboard";
+import type { DashboardFilters, MatchSalesRow, TicketFilters } from "@/types/dashboard";
 
 const PAGE_SIZE = 15;
+
+type MatchSalesTableMeta = {
+  expandedSet: ReadonlySet<string>;
+  toggleExpanded: (id: string) => void;
+  barMax: {
+    revenue: number;
+    avgPrice: number;
+    ticketsSold: number;
+    issuedTickets: number;
+    loyaltyDiscountPct: number;
+  };
+};
 
 function isMatchSalesSortId(id: string): id is MatchSalesSortId {
   return (
@@ -50,31 +66,182 @@ function isMatchSalesSortId(id: string): id is MatchSalesSortId {
   );
 }
 
+const MATCH_SALES_COLUMNS: ColumnDef<MatchSalesFlatRow, unknown>[] = [
+  {
+    accessorKey: "eventLabel",
+    accessorFn: (row) => row.label,
+    header: "Мероприятие",
+    cell: ({ row, table }) => {
+      const item = row.original;
+      const meta = table.options.meta as MatchSalesTableMeta;
+      const expanded = meta.expandedSet.has(item.id);
+      return (
+        <div
+          className="flex min-w-0 items-center gap-2"
+          style={{ paddingLeft: item.depth * 16 }}
+        >
+          <MatchSalesExpandButton
+            expanded={expanded}
+            hasChildren={item.hasChildren}
+            label={item.label}
+            onToggle={() => meta.toggleExpanded(item.id)}
+          />
+          <span
+            className={clsx(
+              "whitespace-nowrap",
+              item.level === "match" ? "font-medium" : "text-[var(--muted)]",
+            )}
+          >
+            {item.label}
+          </span>
+        </div>
+      );
+    },
+  },
+  {
+    accessorKey: "date",
+    header: "Дата",
+    cell: ({ row }) =>
+      row.original.date ? formatDate(row.original.date) : "",
+  },
+  {
+    accessorKey: "revenue",
+    header: "Выручка",
+    cell: ({ row, table }) => {
+      const { revenue, planRevenue } = row.original;
+      const { barMax } = table.options.meta as MatchSalesTableMeta;
+      const fulfillmentPct =
+        planRevenue != null && planRevenue > 0
+          ? (revenue / planRevenue) * 100
+          : null;
+      return (
+        <InlineBarCell
+          value={revenue}
+          max={barMax.revenue}
+          share={fulfillmentPct ?? undefined}
+          formatted={formatCurrency(revenue)}
+          trailingFormatted={
+            fulfillmentPct !== null ? formatPercent(fulfillmentPct) : "—"
+          }
+          barClassName={
+            fulfillmentPct !== null && fulfillmentPct >= 100
+              ? "bg-emerald-500"
+              : fulfillmentPct !== null
+                ? "bg-red-400"
+                : "bg-[var(--accent)]"
+          }
+        />
+      );
+    },
+  },
+  {
+    accessorKey: "avgPrice",
+    header: "Средняя цена",
+    cell: ({ row, table }) => {
+      const { barMax } = table.options.meta as MatchSalesTableMeta;
+      return (
+        <InlineBarCell
+          value={row.original.avgPrice}
+          max={barMax.avgPrice}
+          formatted={formatCurrency(row.original.avgPrice)}
+          barClassName="bg-[var(--accent)]"
+        />
+      );
+    },
+  },
+  {
+    accessorKey: "ticketsSold",
+    header: "Продано",
+    cell: ({ row, table }) => {
+      const { barMax } = table.options.meta as MatchSalesTableMeta;
+      return (
+        <InlineBarCell
+          value={row.original.ticketsSold}
+          max={barMax.ticketsSold}
+          formatted={`${formatNumber(row.original.ticketsSold)} шт`}
+          barClassName="bg-gray-300"
+        />
+      );
+    },
+  },
+  {
+    accessorKey: "freeTickets",
+    header: "Бесплатно",
+    cell: ({ row }) => `${formatNumber(row.original.freeTickets)} шт`,
+  },
+  {
+    accessorKey: "issuedTickets",
+    header: "Оформлено",
+    cell: ({ row, table }) => {
+      const { issuedTickets, capacity } = row.original;
+      const { barMax } = table.options.meta as MatchSalesTableMeta;
+      if (capacity != null && capacity > 0) {
+        const fillPct = (issuedTickets / capacity) * 100;
+        return (
+          <InlineBarCell
+            value={issuedTickets}
+            max={capacity}
+            formatted={`${formatNumber(issuedTickets)} шт (${formatPercent(fillPct)})`}
+            barClassName="bg-emerald-500"
+          />
+        );
+      }
+      return (
+        <InlineBarCell
+          value={issuedTickets}
+          max={barMax.issuedTickets}
+          formatted={`${formatNumber(issuedTickets)} шт`}
+          trailingFormatted="—"
+          barClassName="bg-emerald-500"
+        />
+      );
+    },
+  },
+  {
+    accessorKey: "loyaltyDiscountPct",
+    header: "Скидка ПЛ",
+    cell: ({ row, table }) => {
+      const { barMax } = table.options.meta as MatchSalesTableMeta;
+      return (
+        <InlineBarCell
+          value={row.original.loyaltyDiscountPct}
+          max={barMax.loyaltyDiscountPct}
+          formatted={`${row.original.loyaltyDiscountPct.toFixed(1)}%`}
+          barClassName="bg-amber-400"
+        />
+      );
+    },
+  },
+];
+
 export const ResponsiveMatchSalesTable = memo(function ResponsiveMatchSalesTable({
   data,
+  filters,
+  ticketFilters,
 }: {
   data: MatchSalesRow[];
+  filters: DashboardFilters;
+  ticketFilters: TicketFilters;
 }) {
-  const treeState = useMatchSalesTreeState(data);
+  const treeState = useMatchSalesTreeState(data, filters, ticketFilters);
   return (
     <>
       <div className="min-w-0 md:hidden">
-        <MobileSalesCards data={data} treeState={treeState} />
+        <MobileSalesCards treeState={treeState} />
       </div>
       <div className="hidden min-w-0 md:block">
-        <MatchSalesTable data={data} treeState={treeState} />
+        <MatchSalesTable treeState={treeState} />
       </div>
     </>
   );
 });
 
-export function MatchSalesTable({
+export const MatchSalesTable = memo(function MatchSalesTable({
   embedded = false,
   treeState,
 }: {
-  data: MatchSalesRow[];
   embedded?: boolean;
-  treeState: ReturnType<typeof useMatchSalesTreeState>;
+  treeState: MatchSalesTreeState;
 }) {
   const { tree, expandedSet, toggleExpanded, barMax } = treeState;
   const [sorting, setSorting] = useState<SortingState>([
@@ -105,167 +272,54 @@ export function MatchSalesTable({
     }
   }, [pageIndex, pagination.pageIndex]);
 
+  const pageTree = useMatchSalesPageTree(pagination.pageItems, treeState);
+
   const flatRows = useMemo(
-    () => flattenExpandedMatchSalesTree(pagination.pageItems, expandedSet),
-    [pagination.pageItems, expandedSet],
+    () => flattenExpandedMatchSalesTree(pageTree, expandedSet),
+    [pageTree, expandedSet],
   );
 
-  const columns = useMemo<ColumnDef<MatchSalesFlatRow, unknown>[]>(
-    () => [
-      {
-        accessorKey: "eventLabel",
-        accessorFn: (row) => row.label,
-        header: "Мероприятие",
-        cell: ({ row }) => {
-          const item = row.original;
-          const expanded = expandedSet.has(item.id);
-          return (
-            <div
-              className="flex min-w-0 items-center gap-2"
-              style={{ paddingLeft: item.depth * 16 }}
-            >
-              <MatchSalesExpandButton
-                expanded={expanded}
-                hasChildren={item.hasChildren}
-                label={item.label}
-                onToggle={() => toggleExpanded(item.id)}
-              />
-              <span
-                className={clsx(
-                  "whitespace-nowrap",
-                  item.level === "match" ? "font-medium" : "text-[var(--muted)]",
-                )}
-              >
-                {item.label}
-              </span>
-            </div>
-          );
-        },
-      },
-      {
-        accessorKey: "date",
-        header: "Дата",
-        cell: ({ row }) =>
-          row.original.date ? formatDate(row.original.date) : "",
-      },
-      {
-        accessorKey: "revenue",
-        header: "Выручка",
-        cell: ({ row }) => {
-          const { revenue, planRevenue } = row.original;
-          const fulfillmentPct =
-            planRevenue != null && planRevenue > 0
-              ? (revenue / planRevenue) * 100
-              : null;
-          return (
-            <InlineBarCell
-              value={revenue}
-              max={barMax.revenue}
-              share={fulfillmentPct ?? undefined}
-              formatted={formatCurrency(revenue)}
-              trailingFormatted={
-                fulfillmentPct !== null ? formatPercent(fulfillmentPct) : "—"
-              }
-              barClassName={
-                fulfillmentPct !== null && fulfillmentPct >= 100
-                  ? "bg-emerald-500"
-                  : fulfillmentPct !== null
-                    ? "bg-red-400"
-                    : "bg-[var(--accent)]"
-              }
-            />
-          );
-        },
-      },
-      {
-        accessorKey: "avgPrice",
-        header: "Средняя цена",
-        cell: ({ row }) => (
-          <InlineBarCell
-            value={row.original.avgPrice}
-            max={barMax.avgPrice}
-            formatted={formatCurrency(row.original.avgPrice)}
-            barClassName="bg-[var(--accent)]"
-          />
-        ),
-      },
-      {
-        accessorKey: "ticketsSold",
-        header: "Продано",
-        cell: ({ row }) => (
-          <InlineBarCell
-            value={row.original.ticketsSold}
-            max={barMax.ticketsSold}
-            formatted={`${formatNumber(row.original.ticketsSold)} шт`}
-            barClassName="bg-gray-300"
-          />
-        ),
-      },
-      {
-        accessorKey: "freeTickets",
-        header: "Бесплатно",
-        cell: ({ row }) => `${formatNumber(row.original.freeTickets)} шт`,
-      },
-      {
-        accessorKey: "issuedTickets",
-        header: "Оформлено",
-        cell: ({ row }) => {
-          const { issuedTickets, capacity } = row.original;
-          if (capacity != null && capacity > 0) {
-            const fillPct = (issuedTickets / capacity) * 100;
-            return (
-              <InlineBarCell
-                value={issuedTickets}
-                max={capacity}
-                formatted={`${formatNumber(issuedTickets)} шт (${formatPercent(fillPct)})`}
-                barClassName="bg-emerald-500"
-              />
-            );
-          }
-          return (
-            <InlineBarCell
-              value={issuedTickets}
-              max={barMax.issuedTickets}
-              formatted={`${formatNumber(issuedTickets)} шт`}
-              trailingFormatted="—"
-              barClassName="bg-emerald-500"
-            />
-          );
-        },
-      },
-      {
-        accessorKey: "loyaltyDiscountPct",
-        header: "Скидка ПЛ",
-        cell: ({ row }) => (
-          <InlineBarCell
-            value={row.original.loyaltyDiscountPct}
-            max={barMax.loyaltyDiscountPct}
-            formatted={`${row.original.loyaltyDiscountPct.toFixed(1)}%`}
-            barClassName="bg-amber-400"
-          />
-        ),
-      },
-    ],
-    [barMax, expandedSet, toggleExpanded],
+  const tableMeta = useMemo<MatchSalesTableMeta>(
+    () => ({ expandedSet, toggleExpanded, barMax }),
+    [expandedSet, toggleExpanded, barMax],
   );
 
   const table = useReactTable({
     data: flatRows,
-    columns,
+    columns: MATCH_SALES_COLUMNS,
     state: { sorting },
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     manualSorting: true,
     manualPagination: true,
     getRowId: (row) => row.id,
+    meta: tableMeta,
   });
 
+  const excelRows = useMemo(
+    () => flattenExpandedMatchSalesTree(pageTree, expandedSet),
+    [pageTree, expandedSet],
+  );
+
   const excelTable = useReactTable({
-    data: flattenExpandedMatchSalesTree(sortedTree, expandedSet),
-    columns,
+    data: excelRows,
+    columns: MATCH_SALES_COLUMNS,
     getCoreRowModel: getCoreRowModel(),
     getRowId: (row) => row.id,
+    meta: tableMeta,
   });
+
+  const goPrev = useCallback(
+    () => setPageIndex((value) => Math.max(0, value - 1)),
+    [],
+  );
+  const goNext = useCallback(
+    () =>
+      setPageIndex((value) =>
+        Math.min(pagination.pageCount - 1, value + 1),
+      ),
+    [pagination.pageCount],
+  );
 
   const tableContent = (
     <>
@@ -337,7 +391,7 @@ export function MatchSalesTable({
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={() => setPageIndex((value) => Math.max(0, value - 1))}
+            onClick={goPrev}
             disabled={pagination.pageIndex === 0}
             className="rounded border border-[var(--border)] px-2 py-1 disabled:opacity-40"
           >
@@ -348,11 +402,7 @@ export function MatchSalesTable({
           </span>
           <button
             type="button"
-            onClick={() =>
-              setPageIndex((value) =>
-                Math.min(pagination.pageCount - 1, value + 1),
-              )
-            }
+            onClick={goNext}
             disabled={pagination.pageIndex >= pagination.pageCount - 1}
             className="rounded border border-[var(--border)] px-2 py-1 disabled:opacity-40"
           >
@@ -374,4 +424,4 @@ export function MatchSalesTable({
       <CardContent className="overflow-x-auto">{tableContent}</CardContent>
     </Card>
   );
-}
+});

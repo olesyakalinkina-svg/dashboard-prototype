@@ -179,11 +179,25 @@ CREATE TABLE sale (
     sector_id       SMALLINT REFERENCES sector (id),
     ticket_type     TEXT
         CHECK (ticket_type IS NULL OR ticket_type IN ('arena', 'parking')),
+    price_zone      TEXT
+        CHECK (
+            price_zone IS NULL
+            OR price_zone IN (
+                'up_to_1500',
+                'from_1500_to_2500',
+                'from_2500_to_4000',
+                'from_4000_to_6000'
+            )
+        ),
     quantity        INTEGER NOT NULL CHECK (quantity > 0),
     unit_price      NUMERIC(12, 2) NOT NULL CHECK (unit_price >= 0),
     amount          NUMERIC(14, 2) NOT NULL CHECK (amount >= 0),
     discount_amount NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (discount_amount >= 0),
-    loyalty_discount_amount NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (loyalty_discount_amount >= 0)
+    loyalty_discount_amount NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (loyalty_discount_amount >= 0),
+    CHECK (
+        (ticket_type = 'arena' AND price_zone IS NOT NULL)
+        OR (ticket_type IS DISTINCT FROM 'arena' AND price_zone IS NULL)
+    )
 );
 
 CREATE INDEX idx_sale_sold_at ON sale (sold_at);
@@ -193,6 +207,7 @@ CREATE INDEX idx_sale_match ON sale (match_id);
 CREATE INDEX idx_sale_promotion ON sale (promotion_id);
 CREATE INDEX idx_sale_sector ON sale (sector_id);
 CREATE INDEX idx_sale_ticket_type ON sale (ticket_type);
+CREATE INDEX idx_sale_price_zone ON sale (price_zone);
 
 CREATE TABLE subscription (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),

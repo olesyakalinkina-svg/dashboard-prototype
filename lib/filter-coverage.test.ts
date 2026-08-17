@@ -82,7 +82,7 @@ describe("filter coverage — subscriptions tab", () => {
     expect(excluded).toHaveLength(2);
     expect(excluded.map((testCase) => testCase.filter).sort()).toEqual([
       "arena",
-      "priceZone",
+      "sector",
     ]);
   });
 });

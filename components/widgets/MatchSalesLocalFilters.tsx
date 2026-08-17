@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { MultiSelect } from "@/components/ui/MultiSelect";
 import type { MatchSalesTreeState } from "@/hooks/useMatchSalesTree";
 import type { MatchSalesLocalFilters } from "@/lib/match-sales-tree";
-import type { OrderSource, PriceZone, TicketType } from "@/types/dashboard";
+import type { OrderSource, PriceZone, Sector, TicketType } from "@/types/dashboard";
 
 const BANNER_TEXT = "Показатели рассчитаны по применённым фильтрам";
 const BANNER_TOOLTIP =
@@ -34,6 +34,9 @@ function FilterFields({
   state: MatchSalesTreeState;
 }) {
   const { localFilters, setLocalFilters, options } = state;
+  const parkingOnly =
+    localFilters.ticketType.length === 1 &&
+    localFilters.ticketType[0] === "parking";
 
   function update<K extends keyof MatchSalesLocalFilters>(
     key: K,
@@ -60,9 +63,19 @@ function FilterFields({
         label="Тип билета"
         options={options.ticketTypes}
         value={localFilters.ticketType}
-        onChange={(ticketType) =>
-          update("ticketType", ticketType as TicketType[])
-        }
+        onChange={(ticketType) => {
+          const next = ticketType as TicketType[];
+          if (next.length === 1 && next[0] === "parking") {
+            setLocalFilters({
+              ...localFilters,
+              ticketType: next,
+              sector: [],
+              priceZone: [],
+            });
+            return;
+          }
+          update("ticketType", next);
+        }}
         selectAllLabel="Все типы"
         allSelectedLabel="Все типы"
         emptyLabel="Все типы"
@@ -80,18 +93,34 @@ function FilterFields({
         emptyLabel="Все источники"
         className="sm:min-w-[180px]"
       />
-      <MultiSelect
-        label="Ценовая зона"
-        options={options.priceZones}
-        value={localFilters.priceZone}
-        onChange={(priceZone) => update("priceZone", priceZone as PriceZone[])}
-        selectAllLabel="Все зоны"
-        allSelectedLabel="Все зоны"
-        emptyLabel="Все зоны"
-        searchable
-        searchPlaceholder="Поиск зоны..."
-        className="sm:min-w-[160px]"
-      />
+      {!parkingOnly && (
+        <>
+          <MultiSelect
+            label="Сектор"
+            options={options.sectors}
+            value={localFilters.sector}
+            onChange={(sector) => update("sector", sector as Sector[])}
+            selectAllLabel="Все сектора"
+            allSelectedLabel="Все сектора"
+            emptyLabel="Все сектора"
+            searchable
+            searchPlaceholder="Поиск сектора..."
+            className="sm:min-w-[160px]"
+          />
+          <MultiSelect
+            label="Ценовая зона"
+            options={options.priceZones}
+            value={localFilters.priceZone}
+            onChange={(priceZone) => update("priceZone", priceZone as PriceZone[])}
+            selectAllLabel="Все зоны"
+            allSelectedLabel="Все зоны"
+            emptyLabel="Все зоны"
+            searchable
+            searchPlaceholder="Поиск зоны..."
+            className="sm:min-w-[160px]"
+          />
+        </>
+      )}
     </div>
   );
 }

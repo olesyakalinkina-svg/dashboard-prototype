@@ -17,7 +17,9 @@ import {
 import {
   ALL_ORDER_SOURCES,
   ALL_PRICE_ZONES,
+  ALL_SECTORS,
   ORDER_SOURCE_LABELS,
+  PRICE_ZONE_LABELS,
   TICKET_TYPE_LABELS,
 } from "@/lib/ticket-filter-options";
 import type {
@@ -25,6 +27,7 @@ import type {
   MatchSalesRow,
   OrderSource,
   PriceZone,
+  Sector,
   TicketFilters,
   TicketType,
   Transaction,
@@ -40,6 +43,7 @@ export type MatchSalesLocalFilters = {
   matchId: string[];
   ticketType: TicketType[];
   orderSource: OrderSource[];
+  sector: Sector[];
   priceZone: PriceZone[];
 };
 
@@ -47,6 +51,7 @@ export const EMPTY_MATCH_SALES_LOCAL_FILTERS: MatchSalesLocalFilters = {
   matchId: [],
   ticketType: [],
   orderSource: [],
+  sector: [],
   priceZone: [],
 };
 
@@ -59,6 +64,7 @@ export type MatchSalesLocalFilterOptions = {
   matches: MatchSalesFilterOption[];
   ticketTypes: MatchSalesFilterOption[];
   orderSources: MatchSalesFilterOption[];
+  sectors: MatchSalesFilterOption[];
   priceZones: MatchSalesFilterOption[];
 };
 
@@ -168,6 +174,7 @@ export function isMatchSalesLocalFiltersEmpty(
     filters.matchId.length === 0 &&
     filters.ticketType.length === 0 &&
     filters.orderSource.length === 0 &&
+    filters.sector.length === 0 &&
     filters.priceZone.length === 0
   );
 }
@@ -178,6 +185,7 @@ export function hasMatchSalesBranchFilters(
   return (
     filters.ticketType.length > 0 ||
     filters.orderSource.length > 0 ||
+    filters.sector.length > 0 ||
     filters.priceZone.length > 0
   );
 }
@@ -189,6 +197,7 @@ export function countActiveMatchSalesLocalFilters(
   if (filters.matchId.length > 0) count += 1;
   if (filters.ticketType.length > 0) count += 1;
   if (filters.orderSource.length > 0) count += 1;
+  if (filters.sector.length > 0) count += 1;
   if (filters.priceZone.length > 0) count += 1;
   return count;
 }
@@ -201,6 +210,7 @@ export function localFilterArraysEqual(
     arraysEqual(a.matchId, b.matchId) &&
     arraysEqual(a.ticketType, b.ticketType) &&
     arraysEqual(a.orderSource, b.orderSource) &&
+    arraysEqual(a.sector, b.sector) &&
     arraysEqual(a.priceZone, b.priceZone)
   );
 }
@@ -232,6 +242,12 @@ export function transactionPassesLocalFilters(
   if (
     filters.orderSource.length > 0 &&
     (!tx.orderSource || !filters.orderSource.includes(tx.orderSource))
+  ) {
+    return false;
+  }
+  if (
+    filters.sector.length > 0 &&
+    (!tx.sector || !filters.sector.includes(tx.sector))
   ) {
     return false;
   }
@@ -277,6 +293,21 @@ export function pruneExpandedKeys(
   const next: string[] = [];
   for (const id of expanded) {
     if (validIds.has(id)) next.push(id);
+  }
+  return next;
+}
+
+/** Keep expand keys whose match still exists, including nested type/source/zone ids. */
+export function pruneExpandedKeysForMatches(
+  expanded: Iterable<string>,
+  validMatchNodeIds: ReadonlySet<string>,
+): string[] {
+  const next: string[] = [];
+  for (const id of expanded) {
+    const matchId = matchIdFromExpandedNodeId(id);
+    if (matchId && validMatchNodeIds.has(matchSalesNodeId(matchId))) {
+      next.push(id);
+    }
   }
   return next;
 }
@@ -413,9 +444,13 @@ export function getMatchSalesLocalFilterOptions(
         value: source,
         label: ORDER_SOURCE_LABELS[source],
       })),
+      sectors: ALL_SECTORS.map((sector) => ({
+        value: sector,
+        label: sector,
+      })),
       priceZones: ALL_PRICE_ZONES.map((zone) => ({
         value: zone,
-        label: zone,
+        label: PRICE_ZONE_LABELS[zone],
       })),
     };
   }
@@ -425,6 +460,7 @@ export function getMatchSalesLocalFilterOptions(
   const matchIds = new Set<string>();
   const ticketTypes = new Set<TicketType>();
   const orderSources = new Set<OrderSource>();
+  const sectors = new Set<Sector>();
   const priceZones = new Set<PriceZone>();
 
   for (const tx of txs) {
@@ -435,6 +471,9 @@ export function getMatchSalesLocalFilterOptions(
     }
     if (tx.orderSource && passesExcept(tx, filters, "orderSource")) {
       orderSources.add(tx.orderSource);
+    }
+    if (tx.sector && passesExcept(tx, filters, "sector")) {
+      sectors.add(tx.sector);
     }
     if (tx.priceZone && passesExcept(tx, filters, "priceZone")) {
       priceZones.add(tx.priceZone);
@@ -461,8 +500,11 @@ export function getMatchSalesLocalFilterOptions(
       value: source,
       label: ORDER_SOURCE_LABELS[source],
     })),
+    sectors: ALL_SECTORS.filter((sector) => sectors.has(sector)).map(
+      (sector) => ({ value: sector, label: sector }),
+    ),
     priceZones: ALL_PRICE_ZONES.filter((zone) => priceZones.has(zone)).map(
-      (zone) => ({ value: zone, label: zone }),
+      (zone) => ({ value: zone, label: PRICE_ZONE_LABELS[zone] }),
     ),
   };
 }
@@ -474,6 +516,7 @@ export function sanitizeMatchSalesLocalFilters(
   const matchValues = new Set(options.matches.map((opt) => opt.value));
   const typeValues = new Set(options.ticketTypes.map((opt) => opt.value));
   const sourceValues = new Set(options.orderSources.map((opt) => opt.value));
+  const sectorValues = new Set(options.sectors.map((opt) => opt.value));
   const zoneValues = new Set(options.priceZones.map((opt) => opt.value));
 
   return {
@@ -482,6 +525,7 @@ export function sanitizeMatchSalesLocalFilters(
     orderSource: filters.orderSource.filter((source) =>
       sourceValues.has(source),
     ),
+    sector: filters.sector.filter((sector) => sectorValues.has(sector)),
     priceZone: filters.priceZone.filter((zone) => zoneValues.has(zone)),
   };
 }
@@ -522,6 +566,9 @@ export function getMatchSalesLocalFilterChips(
   for (const value of filters.orderSource) {
     push("orderSource", value, options.orderSources);
   }
+  for (const value of filters.sector) {
+    push("sector", value, options.sectors);
+  }
   for (const value of filters.priceZone) {
     push("priceZone", value, options.priceZones);
   }
@@ -539,25 +586,6 @@ export function removeMatchSalesLocalFilterValue(
   };
 }
 
-function getOrCreateAgg(map: Map<string, BranchAgg>, key: string): BranchAgg {
-  const existing = map.get(key);
-  if (existing) return existing;
-  const created = createBranchAgg();
-  map.set(key, created);
-  return created;
-}
-
-export type ComputeMatchSalesTreeOptions = {
-  /** Omit to build the full 4-level tree. Pass a set to build children only for expanded matches. */
-  expandedIds?: ReadonlySet<string>;
-  /**
-   * When provided (including an empty array) AND the tree is collapsed,
-   * skip scanning. If expandedIds is non-empty and the list is still empty,
-   * transactions are loaded so expand can attach children.
-   */
-  transactions?: Transaction[];
-};
-
 export function matchIdFromExpandedNodeId(id: string): string | null {
   if (!id.startsWith("m:")) return null;
   const rest = id.slice(2);
@@ -565,17 +593,146 @@ export function matchIdFromExpandedNodeId(id: string): string | null {
   return pipe === -1 ? rest : rest.slice(0, pipe);
 }
 
-function expandedMatchIdsFromNodeIds(
-  expandedIds: ReadonlySet<string> | undefined,
-): Set<string> | null {
-  if (!expandedIds) return null;
-  const ids = new Set<string>();
-  for (const id of expandedIds) {
-    const matchId = matchIdFromExpandedNodeId(id);
-    if (matchId) ids.add(matchId);
+type ZoneBucket = BranchAgg;
+type SourceBucket = {
+  agg: BranchAgg;
+  zones: Map<PriceZone, ZoneBucket>;
+};
+type TypeBucket = {
+  agg: BranchAgg;
+  sources: Map<OrderSource, SourceBucket>;
+};
+
+export type MatchAggregate = {
+  agg: BranchAgg;
+  types: Map<TicketType, TypeBucket>;
+};
+
+/**
+ * One pass over transactions: match → ticketTypes → orderSources → priceZones.
+ * Callers must not .filter() the full array per node.
+ */
+export function buildMatchAggregateIndex(
+  transactions: Transaction[],
+  localFilters: MatchSalesLocalFilters = EMPTY_MATCH_SALES_LOCAL_FILTERS,
+): Map<string, MatchAggregate> {
+  const index = new Map<string, MatchAggregate>();
+  const applyLocal = !isMatchSalesLocalFiltersEmpty(localFilters);
+
+  for (const tx of transactions) {
+    if (!tx.matchId) continue;
+    if (applyLocal && !transactionPassesLocalFilters(tx, localFilters)) continue;
+
+    let match = index.get(tx.matchId);
+    if (!match) {
+      match = { agg: createBranchAgg(), types: new Map() };
+      index.set(tx.matchId, match);
+    }
+    applyBranchTransaction(match.agg, tx);
+
+    if (!tx.ticketType) continue;
+    let typeBucket = match.types.get(tx.ticketType);
+    if (!typeBucket) {
+      typeBucket = { agg: createBranchAgg(), sources: new Map() };
+      match.types.set(tx.ticketType, typeBucket);
+    }
+    applyBranchTransaction(typeBucket.agg, tx);
+
+    if (!tx.orderSource) continue;
+    let sourceBucket = typeBucket.sources.get(tx.orderSource);
+    if (!sourceBucket) {
+      sourceBucket = { agg: createBranchAgg(), zones: new Map() };
+      typeBucket.sources.set(tx.orderSource, sourceBucket);
+    }
+    applyBranchTransaction(sourceBucket.agg, tx);
+
+    if (!tx.priceZone) continue;
+    let zoneAgg = sourceBucket.zones.get(tx.priceZone);
+    if (!zoneAgg) {
+      zoneAgg = createBranchAgg();
+      sourceBucket.zones.set(tx.priceZone, zoneAgg);
+    }
+    applyBranchTransaction(zoneAgg, tx);
   }
-  return ids;
+
+  return index;
 }
+
+function typeNodesFromAggregate(
+  matchId: string,
+  aggregate: MatchAggregate | undefined,
+): MatchSalesTreeNode[] {
+  if (!aggregate) return [];
+  const typeNodes: MatchSalesTreeNode[] = [];
+
+  for (const type of TICKET_TYPE_ORDER) {
+    const typeBucket = aggregate.types.get(type);
+    if (!typeBucket) continue;
+
+    const sourceNodes: MatchSalesTreeNode[] = [];
+    for (const source of ALL_ORDER_SOURCES) {
+      const sourceBucket = typeBucket.sources.get(source);
+      if (!sourceBucket) continue;
+
+      const zoneNodes: MatchSalesTreeNode[] = [];
+      for (const zone of ALL_PRICE_ZONES) {
+        const zoneAgg = sourceBucket.zones.get(zone);
+        if (!zoneAgg) continue;
+        zoneNodes.push(
+          metricsFromAgg(zoneAgg, {
+            id: zoneKey(matchId, type, source, zone),
+            level: "priceZone",
+            matchId,
+            date: null,
+            label: childLabel("priceZone", PRICE_ZONE_LABELS[zone]),
+            planRevenue: null,
+            capacity: null,
+            hasChildren: false,
+            children: [],
+          }),
+        );
+      }
+
+      sourceNodes.push(
+        metricsFromAgg(sourceBucket.agg, {
+          id: sourceKey(matchId, type, source),
+          level: "orderSource",
+          matchId,
+          date: null,
+          label: childLabel("orderSource", ORDER_SOURCE_LABELS[source]),
+          planRevenue: null,
+          capacity: null,
+          hasChildren: zoneNodes.length > 0,
+          children: zoneNodes,
+        }),
+      );
+    }
+
+    typeNodes.push(
+      metricsFromAgg(typeBucket.agg, {
+        id: typeKey(matchId, type),
+        level: "ticketType",
+        matchId,
+        date: null,
+        label: childLabel("ticketType", TICKET_TYPE_LABELS[type]),
+        planRevenue: null,
+        capacity: null,
+        hasChildren: sourceNodes.length > 0,
+        children: sourceNodes,
+      }),
+    );
+  }
+
+  return typeNodes;
+}
+
+export type ComputeMatchSalesTreeOptions = {
+  /**
+   * When provided (including an empty array), never scan the global ticket set.
+   * Empty array = match-level rows only, no children.
+   */
+  transactions?: Transaction[];
+};
 
 export function getMatchSalesTreeTransactions(
   filters: DashboardFilters,
@@ -588,6 +745,18 @@ export function getMatchSalesTreeTransactions(
   return filterTicketTransactions(filters, ticketFilters);
 }
 
+export function buildSalesTree(
+  filteredTransactions: Transaction[],
+  matchRows: MatchSalesRow[],
+  localFilters: MatchSalesLocalFilters,
+  filters: DashboardFilters,
+  ticketFilters: TicketFilters,
+): MatchSalesTreeNode[] {
+  return computeMatchSalesTree(filters, ticketFilters, localFilters, matchRows, {
+    transactions: filteredTransactions,
+  });
+}
+
 export function computeMatchSalesTree(
   filters: DashboardFilters,
   ticketFilters: TicketFilters,
@@ -595,169 +764,27 @@ export function computeMatchSalesTree(
   matchRows: MatchSalesRow[],
   options?: ComputeMatchSalesTreeOptions,
 ): MatchSalesTreeNode[] {
-  const expandedMatchIds = expandedMatchIdsFromNodeIds(options?.expandedIds);
-  const expandAll = expandedMatchIds === null;
   const branchFilters = hasMatchSalesBranchFilters(localFilters);
-  const collapsedWithoutBranchFilters =
-    !branchFilters && expandedMatchIds !== null && expandedMatchIds.size === 0;
-  const needsChildAggs =
-    expandAll || (expandedMatchIds !== null && expandedMatchIds.size > 0);
-  const needsTxs = !collapsedWithoutBranchFilters && (branchFilters || needsChildAggs);
+  const providedTransactions = options != null && "transactions" in options;
+  const providedTxs = providedTransactions
+    ? (options.transactions ?? [])
+    : undefined;
+
+  const globalTxs =
+    providedTxs != null
+      ? providedTxs
+      : filterTicketTransactions(filters, ticketFilters);
+
+  const index =
+    globalTxs.length === 0
+      ? new Map<string, MatchAggregate>()
+      : buildMatchAggregateIndex(globalTxs, localFilters);
 
   const matchById = new Map(matchRows.map((row) => [row.matchId, row]));
   const allowedMatches = filterMatchesByTicketFilters(ticketFilters);
   const matchMeta = new Map(allowedMatches.map((match) => [match.id, match]));
-
-  const matchAggs = new Map<string, BranchAgg>();
-  const typeAggs = new Map<string, BranchAgg>();
-  const sourceAggs = new Map<string, BranchAgg>();
-  const zoneAggs = new Map<string, BranchAgg>();
-  const typesByMatch = new Map<string, Set<TicketType>>();
-  const sourcesByType = new Map<string, Set<OrderSource>>();
-  const zonesBySource = new Map<string, Set<PriceZone>>();
-
-  if (needsTxs) {
-    const providedTransactions = options != null && "transactions" in options;
-    const providedTxs = providedTransactions
-      ? (options.transactions ?? [])
-      : undefined;
-    // An explicit `transactions: []` means "children not loaded yet".
-    // Do not scan the full ticket set on the click frame.
-    const globalTxs =
-      providedTxs != null
-        ? providedTxs
-        : expandedMatchIds && expandedMatchIds.size > 0 && !branchFilters
-          ? filterTicketTransactionsForMatchIds(
-              filters,
-              ticketFilters,
-              expandedMatchIds,
-            )
-          : filterTicketTransactions(filters, ticketFilters);
-    const txs =
-      branchFilters || !isMatchSalesLocalFiltersEmpty(localFilters)
-        ? globalTxs.filter((tx) =>
-            transactionPassesLocalFilters(tx, localFilters),
-          )
-        : globalTxs;
-
-    for (const tx of txs) {
-      if (!tx.matchId) continue;
-      if (branchFilters) {
-        applyBranchTransaction(getOrCreateAgg(matchAggs, tx.matchId), tx);
-      }
-
-      const buildChildren =
-        expandAll ||
-        (expandedMatchIds !== null && expandedMatchIds.has(tx.matchId));
-      if (!buildChildren) continue;
-
-      if (!tx.ticketType) continue;
-      const tKey = typeKey(tx.matchId, tx.ticketType);
-      applyBranchTransaction(getOrCreateAgg(typeAggs, tKey), tx);
-      const types = typesByMatch.get(tx.matchId) ?? new Set<TicketType>();
-      types.add(tx.ticketType);
-      typesByMatch.set(tx.matchId, types);
-
-      if (!tx.orderSource) continue;
-      const sKey = sourceKey(tx.matchId, tx.ticketType, tx.orderSource);
-      applyBranchTransaction(getOrCreateAgg(sourceAggs, sKey), tx);
-      const sources = sourcesByType.get(tKey) ?? new Set<OrderSource>();
-      sources.add(tx.orderSource);
-      sourcesByType.set(tKey, sources);
-
-      if (!tx.priceZone) continue;
-      const zKey = zoneKey(
-        tx.matchId,
-        tx.ticketType,
-        tx.orderSource,
-        tx.priceZone,
-      );
-      applyBranchTransaction(getOrCreateAgg(zoneAggs, zKey), tx);
-      const zones = zonesBySource.get(sKey) ?? new Set<PriceZone>();
-      zones.add(tx.priceZone);
-      zonesBySource.set(sKey, zones);
-    }
-  }
-
   const useRowMetrics = !branchFilters;
-
-  function buildTypeNodes(matchId: string): MatchSalesTreeNode[] {
-    const typeNodes: MatchSalesTreeNode[] = [];
-    const types = typesByMatch.get(matchId);
-    if (!types) return typeNodes;
-
-    for (const type of TICKET_TYPE_ORDER) {
-      if (!types.has(type)) continue;
-      const tKey = typeKey(matchId, type);
-      const typeAgg = typeAggs.get(tKey);
-      if (!typeAgg) continue;
-
-      const sourceNodes: MatchSalesTreeNode[] = [];
-      const sources = sourcesByType.get(tKey);
-      if (sources) {
-        for (const source of ALL_ORDER_SOURCES) {
-          if (!sources.has(source)) continue;
-          const sKey = sourceKey(matchId, type, source);
-          const sourceAgg = sourceAggs.get(sKey);
-          if (!sourceAgg) continue;
-
-          const zoneNodes: MatchSalesTreeNode[] = [];
-          const zones = zonesBySource.get(sKey);
-          if (zones) {
-            for (const zone of ALL_PRICE_ZONES) {
-              if (!zones.has(zone)) continue;
-              const zKey = zoneKey(matchId, type, source, zone);
-              const zoneAgg = zoneAggs.get(zKey);
-              if (!zoneAgg) continue;
-              zoneNodes.push(
-                metricsFromAgg(zoneAgg, {
-                  id: zKey,
-                  level: "priceZone",
-                  matchId,
-                  date: null,
-                  label: childLabel("priceZone", zone),
-                  planRevenue: null,
-                  capacity: null,
-                  hasChildren: false,
-                  children: [],
-                }),
-              );
-            }
-          }
-
-          sourceNodes.push(
-            metricsFromAgg(sourceAgg, {
-              id: sKey,
-              level: "orderSource",
-              matchId,
-              date: null,
-              label: childLabel("orderSource", ORDER_SOURCE_LABELS[source]),
-              planRevenue: null,
-              capacity: null,
-              hasChildren: zoneNodes.length > 0,
-              children: zoneNodes,
-            }),
-          );
-        }
-      }
-
-      typeNodes.push(
-        metricsFromAgg(typeAgg, {
-          id: tKey,
-          level: "ticketType",
-          matchId,
-          date: null,
-          label: childLabel("ticketType", TICKET_TYPE_LABELS[type]),
-          planRevenue: null,
-          capacity: null,
-          hasChildren: sourceNodes.length > 0,
-          children: sourceNodes,
-        }),
-      );
-    }
-
-    return typeNodes;
-  }
+  const childrenReady = index.size > 0;
 
   const nodes: MatchSalesTreeNode[] = [];
   const matchIds = localFilters.matchId.length
@@ -770,19 +797,11 @@ export function computeMatchSalesTree(
     seen.add(matchId);
 
     const row = matchById.get(matchId);
-    const agg = matchAggs.get(matchId) ?? createBranchAgg();
+    const aggregate = index.get(matchId);
+    const agg = aggregate?.agg ?? createBranchAgg();
     const issuedForEmptyCheck = useRowMetrics
       ? (row?.issuedTickets ?? agg.issuedTickets)
       : agg.issuedTickets;
-    const salesAgg = useRowMetrics && row
-      ? {
-          revenue: row.revenue,
-          loyaltyDiscount: 0,
-          ticketsSold: row.ticketsSold,
-          freeTickets: row.freeTickets,
-          issuedTickets: row.issuedTickets,
-        }
-      : agg;
 
     if (useRowMetrics && row) {
       if (
@@ -811,17 +830,10 @@ export function computeMatchSalesTree(
     const date = row?.date ?? match?.date ?? null;
     const planRevenue = row?.planRevenue ?? null;
     const capacity = row?.capacity ?? match?.capacity ?? null;
-    const childrenBuilt =
-      expandAll ||
-      (expandedMatchIds !== null && expandedMatchIds.has(matchId));
-    const typeNodes = childrenBuilt ? buildTypeNodes(matchId) : [];
-    // Collapsed matches keep an optimistic "+" . After expand, keep it if
-    // descendants exist; if txs were missing this pass, still show "+" so
-    // the control does not disappear.
-    const hasChildren = childrenBuilt
-      ? typeNodes.length > 0 ||
-        Boolean(row && (row.ticketsSold > 0 || row.issuedTickets > 0))
-      : true;
+    const typeNodes = typeNodesFromAggregate(matchId, aggregate);
+    const hasChildren = childrenReady
+      ? typeNodes.length > 0
+      : Boolean(row && (row.ticketsSold > 0 || row.issuedTickets > 0));
 
     if (useRowMetrics && row) {
       nodes.push({
@@ -843,7 +855,7 @@ export function computeMatchSalesTree(
       });
     } else {
       nodes.push(
-        metricsFromAgg(salesAgg, {
+        metricsFromAgg(agg, {
           id: matchSalesNodeId(matchId),
           level: "match",
           matchId,

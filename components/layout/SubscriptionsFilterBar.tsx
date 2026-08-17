@@ -6,7 +6,7 @@ import { Select } from "@/components/ui/Select";
 import {
   ARENA_OPTIONS,
   LEAGUE_OPTIONS,
-  PRICE_ZONE_OPTIONS,
+  SECTOR_OPTIONS,
   SEASON_OPTIONS,
   TICKET_TYPE_OPTIONS,
   TREND_TIME_GROUPING_OPTIONS,
@@ -17,7 +17,7 @@ import { countActiveSubscriptionFilters } from "@/lib/filter-count";
 import type {
   ArenaId,
   League,
-  PriceZone,
+  Sector,
   SubscriptionFilters,
   TicketType,
   TimeGrouping,
@@ -116,11 +116,11 @@ export function SubscriptionsFilterBar() {
         </Select>
 
         <Select
-          label="Ценовая зона"
-          value={subscriptionFilters.priceZone}
-          onChange={(e) => update("priceZone", e.target.value as PriceZone | "all")}
+          label="Сектор"
+          value={subscriptionFilters.sector}
+          onChange={(e) => update("sector", e.target.value as Sector | "all")}
         >
-          {PRICE_ZONE_OPTIONS.map((opt) => (
+          {SECTOR_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
             </option>

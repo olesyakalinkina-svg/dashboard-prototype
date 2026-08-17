@@ -3,6 +3,8 @@ import { DEFAULT_DASHBOARD_FILTERS } from "@/lib/filter-coverage";
 import { computeMatchSalesTable } from "@/lib/filters";
 import * as filtersModule from "@/lib/filters";
 import {
+  buildMatchAggregateIndex,
+  buildSalesTree,
   collectMatchSalesNodeIds,
   computeMatchSalesTree,
   countActiveMatchSalesLocalFilters,
@@ -13,6 +15,7 @@ import {
   getMatchSalesTreeTransactions,
   paginateTopLevel,
   pruneExpandedKeys,
+  pruneExpandedKeysForMatches,
   sanitizeMatchSalesLocalFilters,
   sortMatchSalesNodes,
   toggleExpandedKey,
@@ -20,7 +23,8 @@ import {
   type MatchSalesLocalFilters,
   type MatchSalesTreeNode,
 } from "@/lib/match-sales-tree";
-import { DEFAULT_TICKET_FILTERS } from "@/lib/ticket-filter-options";
+import { DEFAULT_TICKET_FILTERS, ALL_PRICE_ZONES, PRICE_ZONE_LABELS, priceZoneFromUnitPrice } from "@/lib/ticket-filter-options";
+import { getMatches, getTicketTransactionsByMatchId } from "@/lib/mock/data-store";
 import type { PriceZone, Transaction } from "@/types/dashboard";
 
 const filters = DEFAULT_DASHBOARD_FILTERS;
@@ -58,8 +62,62 @@ function findArenaBranch(tree: MatchSalesTreeNode[]) {
 }
 
 function zoneCodeFromLabel(label: string): PriceZone {
-  return label.split(" · ")[1] as PriceZone;
+  const text = label.split(" · ")[1] ?? "";
+  const found = (Object.entries(PRICE_ZONE_LABELS) as [PriceZone, string][]).find(
+    ([, name]) => name === text,
+  );
+  return found?.[0] ?? (text as PriceZone);
 }
+
+describe("price zone buckets", () => {
+  it("maps unit prices onto the four cost buckets", () => {
+    expect(priceZoneFromUnitPrice(0)).toBe("up_to_1500");
+    expect(priceZoneFromUnitPrice(1499.99)).toBe("up_to_1500");
+    expect(priceZoneFromUnitPrice(1500)).toBe("from_1500_to_2500");
+    expect(priceZoneFromUnitPrice(2499)).toBe("from_1500_to_2500");
+    expect(priceZoneFromUnitPrice(2500)).toBe("from_2500_to_4000");
+    expect(priceZoneFromUnitPrice(3999)).toBe("from_2500_to_4000");
+    expect(priceZoneFromUnitPrice(4000)).toBe("from_4000_to_6000");
+    expect(priceZoneFromUnitPrice(6000)).toBe("from_4000_to_6000");
+    expect(priceZoneFromUnitPrice(9000)).toBe("from_4000_to_6000");
+  });
+
+  it("gives every match with arena tickets all four price zones", () => {
+    const byMatch = getTicketTransactionsByMatchId();
+    const matchesWithArena = getMatches().filter((match) =>
+      (byMatch.get(match.id) ?? []).some((tx) => tx.ticketType === "arena"),
+    );
+    expect(matchesWithArena.length).toBeGreaterThan(8);
+
+    const sampled = [
+      ...matchesWithArena.filter((match) => match.league === "KHL").slice(0, 6),
+      ...matchesWithArena.filter((match) => match.league === "VHL").slice(0, 2),
+      ...matchesWithArena.filter((match) => match.league === "MHL").slice(0, 2),
+    ];
+    expect(sampled.length).toBeGreaterThanOrEqual(8);
+
+    for (const match of matchesWithArena) {
+      const txs = byMatch.get(match.id) ?? [];
+      const zones = new Set(
+        txs
+          .filter((tx) => tx.ticketType === "arena" && tx.priceZone)
+          .map((tx) => tx.priceZone),
+      );
+      expect(zones, `${match.id} ${match.league}`).toEqual(
+        new Set(ALL_PRICE_ZONES),
+      );
+      expect(
+        txs
+          .filter((tx) => tx.ticketType === "parking")
+          .every((tx) => tx.priceZone == null),
+      ).toBe(true);
+    }
+
+    for (const match of sampled) {
+      expect(match.league).toBeTruthy();
+    }
+  });
+});
 
 describe("match sales tree", () => {
   it("builds match → ticket type → order source → price zone from actual zones", () => {
@@ -74,7 +132,7 @@ describe("match sales tree", () => {
     expect(sample!.source.level).toBe("orderSource");
     expect(sample!.zone.level).toBe("priceZone");
     expect(sample!.zone.label).toMatch(
-      /^Ценовая зона · (A|B[1-4]|C[1-4]|D[1-4]|VIP)$/,
+      /^Ценовая зона · (до 1500|от 1500 до 2500|от 2500 до 4000|от 4000 до 6000)$/,
     );
     expect(sample!.match.date).toBeInstanceOf(Date);
     expect(sample!.zone.date).toBeNull();
@@ -168,6 +226,7 @@ describe("match sales tree", () => {
       matchId: [match!.matchId],
       ticketType: ["arena"],
       orderSource: [],
+      sector: [],
       priceZone: [zoneA!, zoneB!],
     };
 
@@ -281,6 +340,7 @@ describe("match sales tree", () => {
       matchId: [withZones!.matchId],
       ticketType: [],
       orderSource: [],
+      sector: [],
       priceZone: [missingZone, keptZone],
     };
     const options = getMatchSalesLocalFilterOptions(txs, matchRows, dirty);
@@ -302,6 +362,7 @@ describe("match sales tree", () => {
       matchId: [sample!.match.matchId],
       ticketType: [],
       orderSource: [],
+      sector: [],
       priceZone: [zone],
     });
 
@@ -318,35 +379,21 @@ describe("match sales tree", () => {
     expect(flat.some((row) => row.level === "orderSource")).toBe(true);
     const zoneRows = flat.filter((row) => row.level === "priceZone");
     expect(zoneRows.length).toBeGreaterThan(0);
-    expect(zoneRows.every((row) => row.label.endsWith(`· ${zone}`))).toBe(true);
+    expect(
+      zoneRows.every((row) => row.label.endsWith(`· ${PRICE_ZONE_LABELS[zone]}`)),
+    ).toBe(true);
     expect(zoneRows.every((row) => row.planRevenue === null)).toBe(true);
     expect(sumChildren(filtered[0]!, "revenue")).toBe(filtered[0]!.revenue);
   });
 
-  it("does not build descendant nodes when expandedIds is empty", () => {
-    const matchRows = computeMatchSalesTable(filters, ticketFilters);
-    const collapsed = computeMatchSalesTree(
-      filters,
-      ticketFilters,
-      EMPTY_MATCH_SALES_LOCAL_FILTERS,
-      matchRows,
-      { expandedIds: new Set() },
-    );
-    expect(collapsed.length).toBe(matchRows.length);
-    expect(collapsed.every((node) => node.children.length === 0)).toBe(true);
-    expect(collapsed.every((node) => node.hasChildren)).toBe(true);
-    const byId = new Map(matchRows.map((row) => [row.matchId, row]));
-    expect(collapsed[0]?.revenue).toBe(byId.get(collapsed[0]!.matchId)?.revenue);
-  });
-
-  it("does not scan transactions when collapsed with empty local filters", () => {
+  it("does not scan transactions when collapsed with empty provided list", () => {
     const matchRows = computeMatchSalesTable(filters, ticketFilters);
     const trap = () => {
       throw new Error("collapsed tree must not iterate transactions");
     };
     const guardedTxs = new Proxy([] as Transaction[], {
       get(_target, prop) {
-        if (prop === "length") return 1_000_000;
+        if (prop === "length") return 0;
         if (prop === Symbol.iterator) {
           return function* () {
             trap();
@@ -373,7 +420,7 @@ describe("match sales tree", () => {
       ticketFilters,
       EMPTY_MATCH_SALES_LOCAL_FILTERS,
       matchRows,
-      { expandedIds: new Set(), transactions: guardedTxs },
+      { transactions: guardedTxs },
     );
     expect(performance.now() - started).toBeLessThan(50);
     expect(collapsed.length).toBe(matchRows.length);
@@ -384,41 +431,61 @@ describe("match sales tree", () => {
       filtersModule,
       "filterTicketTransactionsForMatchIds",
     );
-    const withoutProvidedTxs = computeMatchSalesTree(
+    const withoutScan = computeMatchSalesTree(
       filters,
       ticketFilters,
       EMPTY_MATCH_SALES_LOCAL_FILTERS,
       matchRows,
-      { expandedIds: new Set() },
+      { transactions: [] },
     );
     expect(filterSpy).not.toHaveBeenCalled();
     expect(matchFilterSpy).not.toHaveBeenCalled();
-    expect(withoutProvidedTxs.length).toBe(matchRows.length);
+    expect(withoutScan.length).toBe(matchRows.length);
     filterSpy.mockRestore();
     matchFilterSpy.mockRestore();
   });
 
-  it("builds children only for expanded matches", () => {
-    const { tree: full } = buildTree();
-    const first = full[0]!;
-    const second = full[1]!;
+  it("paginates matches first and builds children only for the page", () => {
     const matchRows = computeMatchSalesTable(filters, ticketFilters);
-    const partial = computeMatchSalesTree(
+    const { pageItems } = paginateTopLevel(matchRows, 0, 3);
+    const pageIds = pageItems.map((row) => row.matchId);
+    const txs = getMatchSalesTreeTransactions(filters, ticketFilters, pageIds);
+    const filterSpy = vi.spyOn(filtersModule, "filterTicketTransactions");
+    const tree = buildSalesTree(
+      txs,
+      pageItems,
+      EMPTY_MATCH_SALES_LOCAL_FILTERS,
       filters,
       ticketFilters,
-      EMPTY_MATCH_SALES_LOCAL_FILTERS,
-      matchRows,
-      { expandedIds: new Set([first.id]) },
     );
-    const expandedNode = partial.find((node) => node.id === first.id);
-    const collapsedNode = partial.find((node) => node.id === second.id);
-    expect(expandedNode?.children.length).toBe(first.children.length);
-    expect(collapsedNode?.children.length).toBe(0);
-    expect(collapsedNode?.hasChildren).toBe(true);
-    expect(expandedNode?.children[0]?.level).toBe("ticketType");
+    expect(filterSpy).not.toHaveBeenCalled();
+    expect(tree).toHaveLength(3);
+    expect(tree.every((node) => node.children.length > 0)).toBe(true);
+    filterSpy.mockRestore();
   });
 
-  it("does not scan when expand is pending and provided transactions are still empty", () => {
+  it("keeps prebuilt children when flattening; expand only changes visible rows", () => {
+    const { tree } = buildTree();
+    const first = tree[0]!;
+    expect(first.children.length).toBeGreaterThan(0);
+
+    const collapsed = flattenExpandedMatchSalesTree([first], new Set());
+    expect(collapsed).toHaveLength(1);
+    expect(collapsed[0]?.level).toBe("match");
+
+    const expanded = flattenExpandedMatchSalesTree(
+      [first],
+      new Set([first.id]),
+    );
+    expect(expanded.length).toBeGreaterThan(1);
+    expect(expanded[0]?.id).toBe(first.id);
+    expect(expanded.slice(1).every((row) => row.matchId === first.matchId)).toBe(
+      true,
+    );
+    expect(first.children.length).toBeGreaterThan(0);
+  });
+
+  it("does not scan the global ticket set when provided transactions are empty", () => {
     const matchRows = computeMatchSalesTable(filters, ticketFilters);
     const firstId = `m:${matchRows[0]!.matchId}`;
     const filterSpy = vi.spyOn(filtersModule, "filterTicketTransactions");
@@ -431,7 +498,7 @@ describe("match sales tree", () => {
       ticketFilters,
       EMPTY_MATCH_SALES_LOCAL_FILTERS,
       matchRows,
-      { expandedIds: new Set([firstId]), transactions: [] },
+      { transactions: [] },
     );
     const node = expanded.find((row) => row.id === firstId);
     expect(filterSpy).not.toHaveBeenCalled();
@@ -440,5 +507,34 @@ describe("match sales tree", () => {
     expect(node?.hasChildren).toBe(true);
     filterSpy.mockRestore();
     matchFilterSpy.mockRestore();
+  });
+
+  it("indexes transactions in one pass and expand flatten stays under 200ms", () => {
+    const { txs, tree } = buildTree();
+    const index = buildMatchAggregateIndex(txs);
+    expect(index.size).toBeGreaterThan(0);
+    const sample = tree[0]!;
+    expect(index.get(sample.matchId)?.types.size).toBeGreaterThan(0);
+
+    const ids = collectMatchSalesNodeIds([sample]);
+    const started = performance.now();
+    flattenExpandedMatchSalesTree([sample], ids);
+    const elapsed = performance.now() - started;
+    expect(elapsed).toBeLessThan(200);
+  });
+
+  it("prunes nested expand keys only when the match disappears", () => {
+    const { tree } = buildTree();
+    const first = tree[0]!;
+    const typeId = first.children[0]?.id;
+    expect(typeId).toBeDefined();
+    const expanded = [first.id, typeId!];
+    const kept = pruneExpandedKeysForMatches(
+      expanded,
+      new Set([first.id]),
+    );
+    expect(kept).toEqual(expanded);
+    const dropped = pruneExpandedKeysForMatches(expanded, new Set());
+    expect(dropped).toEqual([]);
   });
 });

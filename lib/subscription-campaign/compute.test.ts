@@ -24,7 +24,7 @@ import {
 import type {
   ArenaId,
   League,
-  PriceZone,
+  Sector,
   Subscription,
   SubscriptionFilters,
   TicketType,
@@ -37,7 +37,7 @@ const DEFAULT_FILTERS: SubscriptionFilters = {
   tournamentStage: "all",
   arena: "all",
   ticketType: "all",
-  priceZone: "all",
+  sector: "all",
   timeGrouping: "week",
 };
 
@@ -80,7 +80,7 @@ function sub(partial: Partial<Subscription> & Pick<Subscription, "id" | "purchas
     tournamentStage: "regular" as TournamentStage,
     arena: "main" as ArenaId,
     ticketType: "arena" as TicketType,
-    priceZone: "A" as PriceZone,
+    sector: "A" as Sector,
     ...partial,
   };
 }

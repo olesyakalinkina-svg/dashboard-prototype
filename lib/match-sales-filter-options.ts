@@ -37,6 +37,7 @@ export function matchSalesFiltersToTicketFilters(
     eventCompleted: filters.eventCompleted,
     matchId: filters.matchId,
     ticketType: "all",
+    sector: "all",
     priceZone: "all",
     orderSource: "all",
     transactionDateRange: filters.purchaseDateRange,

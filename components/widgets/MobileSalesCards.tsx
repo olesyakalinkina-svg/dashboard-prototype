@@ -1,14 +1,17 @@
 "use client";
 
 import clsx from "clsx";
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { RowsExcelButton } from "@/components/ui/ExcelDownloadButton";
 import {
   MatchSalesFilterBanner,
   MatchSalesMobileLocalFilters,
 } from "@/components/widgets/MatchSalesLocalFilters";
-import type { MatchSalesTreeState } from "@/hooks/useMatchSalesTree";
+import {
+  useMatchSalesPageTree,
+  type MatchSalesTreeState,
+} from "@/hooks/useMatchSalesTree";
 import {
   flattenExpandedMatchSalesTree,
   paginateTopLevel,
@@ -22,7 +25,6 @@ import {
   formatPercent,
 } from "@/lib/format";
 import type { ExcelValue } from "@/lib/excel-export";
-import type { MatchSalesRow } from "@/types/dashboard";
 
 const MATCH_SALES_EXCEL_HEADERS = [
   "Мероприятие",
@@ -108,7 +110,7 @@ function MetricsGrid({ row }: { row: MatchSalesTreeNode | MatchSalesFlatRow }) {
   );
 }
 
-function NestedBranch({
+const NestedBranch = memo(function NestedBranch({
   node,
   expandedSet,
   toggleExpanded,
@@ -156,12 +158,11 @@ function NestedBranch({
       )}
     </div>
   );
-}
+});
 
-export function MobileSalesCards({
+export const MobileSalesCards = memo(function MobileSalesCards({
   treeState,
 }: {
-  data: MatchSalesRow[];
   treeState: MatchSalesTreeState;
 }) {
   const { tree, expandedSet, toggleExpanded } = treeState;
@@ -181,6 +182,8 @@ export function MobileSalesCards({
     [sorted, page],
   );
 
+  const pageTree = useMatchSalesPageTree(pagination.pageItems, treeState);
+
   useEffect(() => {
     if (page !== pagination.pageIndex) {
       setPage(pagination.pageIndex);
@@ -189,8 +192,8 @@ export function MobileSalesCards({
 
   const excelRows = useMemo(
     () =>
-      getTreeExcelRows(flattenExpandedMatchSalesTree(sorted, expandedSet)),
-    [sorted, expandedSet],
+      getTreeExcelRows(flattenExpandedMatchSalesTree(pageTree, expandedSet)),
+    [pageTree, expandedSet],
   );
 
   return (
@@ -206,12 +209,12 @@ export function MobileSalesCards({
       <CardContent className="space-y-3">
         <MatchSalesFilterBanner />
         <MatchSalesMobileLocalFilters state={treeState} />
-        {pagination.pageItems.length === 0 ? (
+        {pageTree.length === 0 ? (
           <p className="py-6 text-center text-sm text-[var(--muted)]">
             Нет данных
           </p>
         ) : (
-          pagination.pageItems.map((row) => {
+          pageTree.map((row) => {
             const expanded = expandedSet.has(row.id);
             return (
               <article
@@ -303,4 +306,4 @@ export function MobileSalesCards({
       </CardContent>
     </Card>
   );
-}
+});

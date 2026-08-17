@@ -11,7 +11,6 @@ import {
   type ReactNode,
 } from "react";
 import {
-  computeChannelMix,
   computeMatchSalesTable,
   computeMerchMatchSalesTable,
   computeMerchPlanFactTrend,
@@ -21,7 +20,7 @@ import {
   computeMerchSalesChannelTrend,
   computeMerchSkuSalesTable,
   computeMerchKpis,
-  computeSubscriptionTariffStats,
+  computeSubscriptionPriceCategoryShares,
   computeSubscriptionsKpis,
   computeSubscriptionsPlanFactTrend,
   computeTicketsKpis,
@@ -55,7 +54,6 @@ import { DEFAULT_SUBSCRIPTION_FILTERS } from "@/lib/subscription-filter-options"
 import { loadMockData } from "@/lib/mock/data-store";
 import { DashboardLoading } from "@/components/layout/DashboardLoading";
 import type {
-  ChannelMixPoint,
   DashboardFilters,
   DashboardTab,
   DateRangePreset,
@@ -75,7 +73,7 @@ import type {
   PlanFactTrendPoint,
   SubscriptionsPlanFactTrendPoint,
   SubscriptionFilters,
-  SubscriptionPlanStat,
+  SubscriptionPriceCategoryPoint,
   SubscriptionsKpiData,
   TicketFilters,
   TicketMatchCumulativeSeries,
@@ -153,9 +151,8 @@ type FilterDataContextValue = {
   ticketsPlanFactTrend: PlanFactTrendPoint[];
   ticketsSalesChannelTrend: TicketsSalesChannelTrendPoint[];
   subscriptionsPlanFactTrend: SubscriptionsPlanFactTrendPoint[];
-  channelMix: ChannelMixPoint[];
   topProducts: TopProductPoint[];
-  subscriptionTariffStats: SubscriptionPlanStat[];
+  subscriptionPriceCategoryShares: SubscriptionPriceCategoryPoint[];
   matchSales: MatchSalesRow[];
   combinedMatchSales: CombinedMatchSalesRow[];
   matchSalesKpis: MatchSalesKpiData;
@@ -253,9 +250,8 @@ function emptyTicketsDataValue(
     ticketsPlanFactTrend: [],
     ticketsSalesChannelTrend: [],
     subscriptionsPlanFactTrend: [],
-    channelMix: [],
     topProducts: [],
-    subscriptionTariffStats: [],
+    subscriptionPriceCategoryShares: [],
     matchSales: [],
     combinedMatchSales: [],
     matchSalesKpis: EMPTY_MATCH_SALES_KPIS,
@@ -311,9 +307,8 @@ function computeMerchTabDataCached(
         ticketsPlanFactTrend: [],
         ticketsSalesChannelTrend: [],
         subscriptionsPlanFactTrend: [],
-        channelMix: [],
         topProducts: computeTopProducts(filters, merchFilters),
-        subscriptionTariffStats: [],
+        subscriptionPriceCategoryShares: [],
         matchSales: [],
         combinedMatchSales: [],
         matchSalesKpis: EMPTY_MATCH_SALES_KPIS,
@@ -367,13 +362,8 @@ function computeSubscriptionsTabDataCached(
         ticketsMatchCumulativeSeries: [],
         ticketsPlanFactTrend: [],
         ticketsSalesChannelTrend: [],
-        channelMix: computeChannelMix(
-          filters,
-          "subscriptions",
-          subscriptionFilters,
-        ),
         topProducts: [],
-        subscriptionTariffStats: computeSubscriptionTariffStats(
+        subscriptionPriceCategoryShares: computeSubscriptionPriceCategoryShares(
           filters,
           subscriptionFilters,
         ),
@@ -414,9 +404,8 @@ function computeMatchesTabData(
     ticketsPlanFactTrend: [],
     ticketsSalesChannelTrend: [],
     subscriptionsPlanFactTrend: [],
-    channelMix: [],
     topProducts: [],
-    subscriptionTariffStats: [],
+    subscriptionPriceCategoryShares: [],
     matchSales: [],
     combinedMatchSales: computeCombinedMatchSalesTable(
       filters,
@@ -793,6 +782,7 @@ function TabCompute({
       ticketFilters.eventCompleted,
       ticketFilters.matchId,
       ticketFilters.ticketType,
+      ticketFilters.sector,
       ticketFilters.priceZone,
       ticketFilters.orderSource,
       ticketFilters.transactionDateRange.from,
@@ -839,7 +829,7 @@ function TabCompute({
       subscriptionFilters.tournamentStage,
       subscriptionFilters.arena,
       subscriptionFilters.ticketType,
-      subscriptionFilters.priceZone,
+      subscriptionFilters.sector,
     ],
   );
 
