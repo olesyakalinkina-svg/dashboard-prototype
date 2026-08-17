@@ -130,7 +130,16 @@ export function TicketsSeasonMatchChart({
     return getSeasonMatchChartWidth(displayData);
   }, [displayData, isMobileViewport, viewportWidth]);
 
-  const xTicks = buildSeasonMatchXAxisTicks(displayData, { grouping: timeGrouping });
+  const matchDateKeys = useMemo(
+    () => visibleViews.map((view) => view.matchDateKey),
+    [visibleViews],
+  );
+
+  const xTicks = buildSeasonMatchXAxisTicks(displayData, {
+    grouping: timeGrouping,
+    matchDateKeys,
+  });
+  const showAllXTicks = xTicks.length <= 16;
 
   const labeledPlanMatchIds = useMemo(() => {
     if (viewportWidth < 768) {
@@ -174,7 +183,7 @@ export function TicketsSeasonMatchChart({
   ]);
 
   const formatAxisLabel = (value: number) =>
-    formatSeasonMatchAxisLabel(Number(value), displayData);
+    formatSeasonMatchAxisLabel(Number(value), displayData, matchDateKeys);
 
   useEffect(() => {
     if (!selectedMatchId) {
@@ -259,7 +268,8 @@ export function TicketsSeasonMatchChart({
               tickFormatter={formatAxisLabel}
               tick={{ fontSize: 10, fill: "#8B8B8E" }}
               tickMargin={6}
-              minTickGap={24}
+              interval={showAllXTicks ? 0 : "preserveEnd"}
+              minTickGap={16}
               height={32}
             />
             <YAxis

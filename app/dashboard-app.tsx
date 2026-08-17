@@ -1,8 +1,14 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { FilterProvider, useFilterData, useFilterState } from "@/context/FilterContext";
+import { memo } from "react";
+import {
+  FilterDataRuntime,
+  FilterProvider,
+  useFilterData,
+} from "@/context/FilterContext";
 import { getEffectiveMerchTimeGrouping } from "@/lib/merch-filter-options";
+import { getEffectiveTicketTimeGrouping } from "@/lib/ticket-filter-options";
 import { DashboardHeader } from "@/components/layout/DashboardHeader";
 import { DashboardTabs } from "@/components/layout/DashboardTabs";
 import { FilterBar } from "@/components/layout/FilterBar";
@@ -74,17 +80,6 @@ const TicketsSalesChannelsTrendWidget = dynamic(
   },
 );
 
-const TicketsPriceZoneTrendWidget = dynamic(
-  () =>
-    import("@/components/widgets/TicketsPriceZoneTrendWidget").then((mod) => ({
-      default: mod.TicketsPriceZoneTrendWidget,
-    })),
-  {
-    ssr: false,
-    loading: () => <ChartSkeleton height={360} />,
-  },
-);
-
 const TicketsSeasonMatchDynamicsWidget = dynamic(
   () =>
     import("@/components/widgets/TicketsSeasonMatchDynamicsWidget").then(
@@ -94,33 +89,7 @@ const TicketsSeasonMatchDynamicsWidget = dynamic(
     ),
   {
     ssr: false,
-    loading: () => <ChartSkeleton height={420} />,
-  },
-);
-
-const TicketsBreakdownWidget = dynamic(
-  () =>
-    import("@/components/widgets/TicketsBreakdownWidget").then((mod) => ({
-      default: mod.TicketsBreakdownWidget,
-    })),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[1fr_1.4fr] xl:grid-rows-2">
-        <ChartSkeleton
-          className="xl:col-start-1 xl:row-start-1"
-          height={180}
-        />
-        <ChartSkeleton
-          className="xl:col-start-1 xl:row-start-2"
-          height={220}
-        />
-        <ChartSkeleton
-          className="h-full xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:self-stretch"
-          height={480}
-        />
-      </div>
-    ),
+    loading: () => <ChartSkeleton height={380} />,
   },
 );
 
@@ -132,6 +101,24 @@ const SubscriptionsSalesWidget = dynamic(
   {
     ssr: false,
     loading: () => <ChartSkeleton height={360} />,
+  },
+);
+
+const SubscriptionCampaignPaceWidget = dynamic(
+  () =>
+    import("@/components/widgets/SubscriptionCampaignPaceWidget").then(
+      (mod) => ({
+        default: mod.SubscriptionCampaignPaceWidget,
+      }),
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2">
+        <ChartSkeleton height={360} />
+        <ChartSkeleton height={360} />
+      </div>
+    ),
   },
 );
 
@@ -225,16 +212,52 @@ const TopProductsChart = dynamic(
   },
 );
 
-function DashboardContent() {
-  const { activeTab, ticketFilters, merchFilters } = useFilterState();
+const DashboardShell = memo(function DashboardShell() {
+  return (
+    <div className="min-h-screen min-w-0 overflow-x-clip bg-[var(--background)]">
+      <DashboardHeader />
+      <DashboardTabs />
+      <FilterBar />
+      <FilterDataRuntime>
+        <DashboardPanels />
+      </FilterDataRuntime>
+    </div>
+  );
+});
+
+function TicketsMatchDynamicsSection() {
   const {
+    ticketsMatchCumulativeSeries,
+    ticketsChartsPending,
+    appliedTicketFilters,
+  } = useFilterData();
+  const ticketChartTimeGrouping = getEffectiveTicketTimeGrouping(
+    appliedTicketFilters,
+  );
+
+  return (
+    <div className="min-w-0 self-start">
+      {ticketsChartsPending ? (
+        <ChartSkeleton height={380} />
+      ) : (
+        <TicketsSeasonMatchDynamicsWidget
+          series={ticketsMatchCumulativeSeries}
+          matchIds={appliedTicketFilters.matchId}
+          timeGrouping={ticketChartTimeGrouping}
+        />
+      )}
+    </div>
+  );
+}
+
+function DashboardPanels() {
+  const {
+    displayTab: activeTab,
     ticketsKpis,
     merchKpis,
     subscriptionsKpis,
-    ticketsMatchCumulativeSeries,
     ticketsPlanFactTrend,
     ticketsSalesChannelTrend,
-    ticketsPriceZoneTrend,
     subscriptionsPlanFactTrend,
     channelMix,
     topProducts,
@@ -243,9 +266,6 @@ function DashboardContent() {
     combinedMatchSales,
     matchSalesKpis,
     matchRevenueChart,
-    ticketTypeSales,
-    priceZoneSales,
-    orderSourceSales,
     merchMatchSales,
     merchSalesChannelRevenue,
     merchSalesChannelTrend,
@@ -253,19 +273,21 @@ function DashboardContent() {
     merchProductCategoryRevenue,
     merchProductCategoryTrend,
     merchSkuSales,
+    appliedTicketFilters,
+    appliedMerchFilters,
   } = useFilterData();
-  const merchChartTimeGrouping = getEffectiveMerchTimeGrouping(merchFilters);
+  const merchChartTimeGrouping = getEffectiveMerchTimeGrouping(
+    appliedMerchFilters,
+  );
+  const ticketChartTimeGrouping = getEffectiveTicketTimeGrouping(
+    appliedTicketFilters,
+  );
 
   return (
-    <div className="min-h-screen min-w-0 overflow-x-clip bg-[var(--background)]">
-      <DashboardHeader />
-      <DashboardTabs />
-      <FilterBar />
-
-      <main
-        className="min-w-0 space-y-4 p-4 sm:space-y-6 sm:p-6"
-        style={{ paddingBottom: "calc(1rem + var(--safe-area-bottom))" }}
-      >
+    <main
+      className="min-w-0 space-y-4 p-4 sm:space-y-6 sm:p-6"
+      style={{ paddingBottom: "calc(1rem + var(--safe-area-bottom))" }}
+    >
         {activeTab !== "merch" && activeTab !== "matches" && (
           <TabKpiCards
             tab={activeTab}
@@ -287,6 +309,7 @@ function DashboardContent() {
                 />
               </div>
             </div>
+            <SubscriptionCampaignPaceWidget />
           </>
         )}
 
@@ -294,21 +317,19 @@ function DashboardContent() {
           <>
             <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
               <ResponsiveMatchSalesTable data={matchSales} />
-              <TicketsSeasonMatchDynamicsWidget
-                series={ticketsMatchCumulativeSeries}
-                ticketFilters={ticketFilters}
-              />
+              <TicketsMatchDynamicsSection />
             </div>
             <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
-              <TicketsPlanFactWidget data={ticketsPlanFactTrend} />
-              <TicketsSalesChannelsTrendWidget data={ticketsSalesChannelTrend} />
+              <TicketsPlanFactWidget
+                data={ticketsPlanFactTrend}
+                timeGrouping={ticketChartTimeGrouping}
+              />
+              <TicketsSalesChannelsTrendWidget
+                data={ticketsSalesChannelTrend}
+                timeGrouping={ticketChartTimeGrouping}
+                orderSource={appliedTicketFilters.orderSource}
+              />
             </div>
-            <TicketsBreakdownWidget
-              ticketTypeSales={ticketTypeSales}
-              priceZoneSales={priceZoneSales}
-              orderSourceSales={orderSourceSales}
-            />
-            <TicketsPriceZoneTrendWidget data={ticketsPriceZoneTrend} />
           </>
         )}
 
@@ -326,7 +347,7 @@ function DashboardContent() {
             <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-2">
               <MerchSalesChannelsTrendWidget
                 data={merchSalesChannelTrend}
-                channels={merchFilters.salesChannels}
+                channels={appliedMerchFilters.salesChannels}
                 timeGrouping={merchChartTimeGrouping}
               />
               <MerchProductCategoriesTrendWidget
@@ -344,19 +365,18 @@ function DashboardContent() {
         {activeTab === "matches" && (
           <>
             <MatchSalesKpiCards matchSalesKpis={matchSalesKpis} />
-            <MatchRevenueChart data={matchRevenueChart} />
             <CombinedMatchSalesTable data={combinedMatchSales} />
+            <MatchRevenueChart data={matchRevenueChart} />
           </>
         )}
-      </main>
-    </div>
+    </main>
   );
 }
 
 export default function DashboardApp() {
   return (
     <FilterProvider>
-      <DashboardContent />
+      <DashboardShell />
     </FilterProvider>
   );
 }

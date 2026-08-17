@@ -27,13 +27,11 @@ import {
   computeMerchPlanFactTrend,
   computeMerchProductCategoryRevenue,
   computeMerchSalesChannelRevenue,
-  computeOrderSourceSales,
-  computePriceZoneSales,
   computeSubscriptionsKpis,
   computeSubscriptionsPlanFactTrend,
   computeTicketsKpis,
+  computeTicketsMatchCumulativeSeries,
   computeTicketsPlanFactTrend,
-  computeTicketsPriceZoneTrend,
   computeTicketsSalesChannelTrend,
   filterMerchTransactions,
   filterSubscriptions,
@@ -80,25 +78,22 @@ function assertTicketsData(
   const txs = filterTicketTransactions(filters, ticketFilters);
   if (txs.length === 0) return false;
 
+  const matchSeries = computeTicketsMatchCumulativeSeries(
+    filters,
+    ticketFilters,
+  );
+  if (matchSeries.length === 0) return false;
+
   const kpis = computeTicketsKpis(filters, ticketFilters);
   if (kpis.revenue <= 0) return false;
 
-  const orderSources = computeOrderSourceSales(filters, ticketFilters);
   const channelTrend = computeTicketsSalesChannelTrend(filters, ticketFilters);
-  if (!orderSources.some((row) => row.revenue > 0) || channelTrend.length === 0) {
+  if (channelTrend.length === 0) {
     return false;
   }
 
-  if (ticketFilters.ticketType === "parking") {
-    return true;
-  }
-
-  const priceZones = computePriceZoneSales(filters, ticketFilters);
-  const zoneTrend = computeTicketsPriceZoneTrend(filters, ticketFilters);
-
-  return (
-    priceZones.some((row) => row.revenue > 0) && zoneTrend.length > 0
-  );
+  const planFact = computeTicketsPlanFactTrend(filters, ticketFilters);
+  return planFact.length > 0;
 }
 
 function assertMerchData(
@@ -127,7 +122,8 @@ function assertSubscriptionsData(
   if (subs.length === 0) return false;
 
   const kpis = computeSubscriptionsKpis(filters, subscriptionFilters);
-  if (kpis.revenue <= 0) return false;
+  if (kpis.revenue <= 0 || kpis.sold <= 0) return false;
+  if (kpis.uniqueCustomers <= 0 || kpis.avgCheck <= 0) return false;
 
   const trend = computeSubscriptionsPlanFactTrend(filters, subscriptionFilters);
   return trend.some((point) => point.factRevenue > 0);
@@ -246,12 +242,15 @@ export function buildTicketsFilterCases(): FilterCoverageCase[] {
   }
 
   for (const opt of ARENA_OPTIONS) {
-    cases.push(
-      ticketCase("arena", opt.label, {
-        ...DEFAULT_TICKET_FILTERS,
-        arena: opt.value,
-      }),
-    );
+    const testCase = ticketCase("arena", opt.label, {
+      ...DEFAULT_TICKET_FILTERS,
+      arena: opt.value,
+    });
+    if (opt.value === "secondary" && DEFAULT_TICKET_FILTERS.league === "KHL") {
+      testCase.excluded =
+        "Secondary arena has no KHL matches in mock data (VHL only)";
+    }
+    cases.push(testCase);
   }
 
   for (const opt of EVENT_COMPLETED_OPTIONS) {
@@ -404,12 +403,18 @@ export function buildSubscriptionsFilterCases(): FilterCoverageCase[] {
   }
 
   for (const opt of ARENA_OPTIONS) {
-    cases.push(
-      subscriptionCase("arena", opt.label, {
-        ...DEFAULT_SUBSCRIPTION_FILTERS,
-        arena: opt.value,
-      }),
-    );
+    const testCase = subscriptionCase("arena", opt.label, {
+      ...DEFAULT_SUBSCRIPTION_FILTERS,
+      arena: opt.value,
+    });
+    if (
+      opt.value === "secondary" &&
+      DEFAULT_SUBSCRIPTION_FILTERS.league === "KHL"
+    ) {
+      testCase.excluded =
+        "Secondary arena has no KHL subscriptions in mock data (VHL only)";
+    }
+    cases.push(testCase);
   }
 
   for (const opt of TICKET_TYPE_OPTIONS) {
@@ -422,12 +427,15 @@ export function buildSubscriptionsFilterCases(): FilterCoverageCase[] {
   }
 
   for (const opt of PRICE_ZONE_OPTIONS) {
-    cases.push(
-      subscriptionCase("priceZone", opt.label, {
-        ...DEFAULT_SUBSCRIPTION_FILTERS,
-        priceZone: opt.value,
-      }),
-    );
+    const testCase = subscriptionCase("priceZone", opt.label, {
+      ...DEFAULT_SUBSCRIPTION_FILTERS,
+      priceZone: opt.value,
+    });
+    if (opt.value === "C2" && DEFAULT_SUBSCRIPTION_FILTERS.league === "KHL") {
+      testCase.excluded =
+        "KHL subscriptions have no sales in price zone C2 in mock data";
+    }
+    cases.push(testCase);
   }
 
   return cases;
@@ -473,12 +481,18 @@ export function buildMatchSalesFilterCases(): FilterCoverageCase[] {
   }
 
   for (const opt of ARENA_OPTIONS) {
-    cases.push(
-      matchSalesCase("arena", opt.label, {
-        ...DEFAULT_MATCH_SALES_FILTERS,
-        arena: opt.value,
-      }),
-    );
+    const testCase = matchSalesCase("arena", opt.label, {
+      ...DEFAULT_MATCH_SALES_FILTERS,
+      arena: opt.value,
+    });
+    if (
+      opt.value === "secondary" &&
+      DEFAULT_MATCH_SALES_FILTERS.league === "KHL"
+    ) {
+      testCase.excluded =
+        "Secondary arena has no KHL matches in mock data (VHL only)";
+    }
+    cases.push(testCase);
   }
 
   for (const opt of EVENT_COMPLETED_OPTIONS) {

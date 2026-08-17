@@ -18,7 +18,8 @@ function toLocalCalendarIso(date: Date): string {
   return format(date, "yyyy-MM-dd'T'12:00:00");
 }
 
-const { matches, transactions, subscriptions } = generateMockData();
+const { matches, transactions, subscriptions, subscriptionRedemptions } =
+  generateMockData();
 
 const serialized = {
   matches: matches.map((match) => ({
@@ -34,6 +35,10 @@ const serialized = {
     purchasedAt: sub.purchasedAt.toISOString(),
     validTo: sub.validTo.toISOString(),
   })),
+  subscriptionRedemptions: subscriptionRedemptions.map((redemption) => ({
+    ...redemption,
+    redeemedAt: toLocalCalendarIso(redemption.redeemedAt),
+  })),
 };
 
 mkdirSync(outDir, { recursive: true });
@@ -41,5 +46,5 @@ writeFileSync(outPath, JSON.stringify(serialized));
 
 console.log(`Generated ${outPath}`);
 console.log(
-  `  Matches: ${matches.length}, Transactions: ${transactions.length}, Subscriptions: ${subscriptions.length}`,
+  `  Matches: ${matches.length}, Transactions: ${transactions.length}, Subscriptions: ${subscriptions.length}, Redemptions: ${subscriptionRedemptions.length}`,
 );

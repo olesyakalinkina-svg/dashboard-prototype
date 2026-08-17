@@ -7,7 +7,6 @@ import type {
   MatchClass,
   OrderSource,
   PriceZone,
-  PriceZoneGroup,
   TicketFilters,
   TicketType,
   TimeGrouping,
@@ -31,21 +30,6 @@ export const ALL_PRICE_ZONES: PriceZone[] = [
   "VIP",
 ];
 
-export const ALL_PRICE_ZONE_GROUPS: PriceZoneGroup[] = [
-  "A",
-  "B",
-  "C",
-  "D",
-  "VIP",
-];
-
-export function getPriceZoneGroup(zone: PriceZone): PriceZoneGroup {
-  if (zone === "A" || zone === "VIP") return zone;
-  if (zone.startsWith("B")) return "B";
-  if (zone.startsWith("C")) return "C";
-  return "D";
-}
-
 export const DEFAULT_TICKET_TRANSACTION_DATE_RANGE: TicketFilters["transactionDateRange"] =
   {
     from: null,
@@ -61,7 +45,7 @@ export function isNoMatchesFilterValue(matchIds: string[]): boolean {
 
 export const DEFAULT_TICKET_FILTERS: TicketFilters = {
   season: "2025/26",
-  league: "all",
+  league: "KHL",
   tournamentStage: "all",
   matchClass: "all",
   arena: "all",
@@ -299,10 +283,3 @@ export const PRICE_ZONE_COLORS: Record<PriceZone, string> = {
   VIP: "#7C3AED",
 };
 
-export const PRICE_ZONE_GROUP_COLORS: Record<PriceZoneGroup, string> = {
-  A: "#DC2626",
-  B: "#0284C7",
-  C: "#059669",
-  D: "#C2410C",
-  VIP: "#7C3AED",
-};

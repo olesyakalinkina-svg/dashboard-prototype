@@ -16,7 +16,7 @@ export const DEFAULT_MATCH_SALES_PURCHASE_DATE_RANGE: MatchSalesFilters["purchas
 
 export const DEFAULT_MATCH_SALES_FILTERS: MatchSalesFilters = {
   season: "2025/26",
-  league: "all",
+  league: "KHL",
   tournamentStage: "all",
   matchClass: "all",
   arena: "all",

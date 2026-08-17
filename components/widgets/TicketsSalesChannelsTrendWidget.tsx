@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import {
   CartesianGrid,
   Legend,
@@ -23,17 +23,19 @@ import {
   getMerchTrendPeriodLabel,
   getMerchTrendXAxisProps,
 } from "@/components/widgets/Charts";
-import { useFilterState } from "@/context/FilterContext";
 import { useChartAreaZoom } from "@/hooks/useChartAreaZoom";
 import {
   ALL_ORDER_SOURCES,
   ORDER_SOURCE_COLORS,
   ORDER_SOURCE_LABELS,
-  getEffectiveTicketTimeGrouping,
 } from "@/lib/ticket-filter-options";
 import { formatCurrency } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import type { OrderSource, TicketsSalesChannelTrendPoint } from "@/types/dashboard";
+import type {
+  OrderSource,
+  TicketsSalesChannelTrendPoint,
+  TimeGrouping,
+} from "@/types/dashboard";
 
 function ChannelTrendTooltip({
   active,
@@ -66,17 +68,19 @@ function ChannelTrendTooltip({
   );
 }
 
-export function TicketsSalesChannelsTrendWidget({
-  data,
-}: {
-  data: TicketsSalesChannelTrendPoint[];
-}) {
-  const { ticketFilters } = useFilterState();
-  const timeGrouping = getEffectiveTicketTimeGrouping(ticketFilters);
-
+export const TicketsSalesChannelsTrendWidget = memo(
+  function TicketsSalesChannelsTrendWidget({
+    data,
+    timeGrouping,
+    orderSource,
+  }: {
+    data: TicketsSalesChannelTrendPoint[];
+    timeGrouping: TimeGrouping;
+    orderSource: OrderSource | "all";
+  }) {
   const activeSources = useMemo(() => {
-    if (ticketFilters.orderSource !== "all") {
-      return [ticketFilters.orderSource];
+    if (orderSource !== "all") {
+      return [orderSource];
     }
 
     const sourceSet = new Set<OrderSource>();
@@ -88,7 +92,7 @@ export function TicketsSalesChannelsTrendWidget({
       }
     }
     return ALL_ORDER_SOURCES.filter((source) => sourceSet.has(source));
-  }, [ticketFilters.orderSource, data]);
+  }, [orderSource, data]);
 
   const chartData = useMemo(
     () =>
@@ -125,7 +129,7 @@ export function TicketsSalesChannelsTrendWidget({
         ) : (
           <ChartScrollContainer
             className={clsx(
-              "min-h-[280px] flex-1 sm:min-h-[360px]",
+              "h-[280px] sm:h-[360px]",
               CHART_ZOOM_SURFACE_CLASS,
             )}
           >
@@ -174,4 +178,4 @@ export function TicketsSalesChannelsTrendWidget({
       </CardContent>
     </Card>
   );
-}
+});

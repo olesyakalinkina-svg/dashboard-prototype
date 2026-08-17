@@ -4,9 +4,9 @@ import {
   createContext,
   useCallback,
   useContext,
-  useDeferredValue,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -21,17 +21,13 @@ import {
   computeMerchSalesChannelTrend,
   computeMerchSkuSalesTable,
   computeMerchKpis,
-  computeOrderSourceSales,
-  computePriceZoneSales,
   computeSubscriptionTariffStats,
   computeSubscriptionsKpis,
   computeSubscriptionsPlanFactTrend,
-  computeTicketTypeSales,
   computeTicketsKpis,
-  computeTicketsMatchCumulativeSeries,
-  computeTicketsPlanFactTrend,
-  computeTicketsSalesChannelTrend,
-  computeTicketsPriceZoneTrend,
+  computeTicketsMatchCumulativeSeriesIdle,
+  computeTicketsPlanFactTrendIdle,
+  computeTicketsSalesChannelTrendIdle,
   computeTopProducts,
   computeMatchRevenueChart,
   computeMatchSalesKpis,
@@ -39,8 +35,12 @@ import {
   filterMatchesByMatchSalesFilters,
   filterMatchesByMerchFilters,
   filterMatchesByTicketFilters,
+  openFilterCacheSession,
   runWithFilterCache,
+  warmTicketFilterPassesIdle,
 } from "@/lib/filters";
+import { yieldToEventLoop, yieldUntilIdle } from "@/lib/idle";
+import { beginTicketsUiTurn, noteTicketsCompute } from "@/lib/tickets-compute-trace";
 import {
   buildMatchFilterOptions,
   DEFAULT_TICKET_FILTERS,
@@ -72,18 +72,14 @@ import type {
   MerchSalesChannelPoint,
   MerchSalesChannelTrendPoint,
   MerchSkuSalesRow,
-  OrderSourceSalesPoint,
   PlanFactTrendPoint,
   SubscriptionsPlanFactTrendPoint,
-  PriceZoneSalesPoint,
   SubscriptionFilters,
   SubscriptionPlanStat,
   SubscriptionsKpiData,
   TicketFilters,
   TicketMatchCumulativeSeries,
   TicketsSalesChannelTrendPoint,
-  TicketsPriceZoneTrendPoint,
-  TicketTypeSalesPoint,
   TicketsKpiData,
   TimeGrouping,
   TopProductPoint,
@@ -94,15 +90,11 @@ const TREND_TIME_GROUPINGS: TimeGrouping[] = ["day", "week", "month"];
 type TicketsTrendSlice = {
   ticketsPlanFactTrend: PlanFactTrendPoint[];
   ticketsSalesChannelTrend: TicketsSalesChannelTrendPoint[];
-  ticketsPriceZoneTrend: TicketsPriceZoneTrendPoint[];
 };
 
-type TicketsTabCachedData = {
-  base: Omit<
-    FilterDataContextValue,
-    "ticketsPlanFactTrend" | "ticketsSalesChannelTrend" | "ticketsPriceZoneTrend"
-  >;
-  trendsByGrouping: Record<TimeGrouping, TicketsTrendSlice>;
+type TicketsTabCoreData = {
+  ticketsKpis: TicketsKpiData;
+  matchSales: MatchSalesRow[];
 };
 
 type MerchTrendSlice = {
@@ -153,13 +145,13 @@ type FilterStateContextValue = {
 };
 
 type FilterDataContextValue = {
+  displayTab: DashboardTab;
   ticketsKpis: TicketsKpiData;
   merchKpis: MerchKpiData;
   subscriptionsKpis: SubscriptionsKpiData;
   ticketsMatchCumulativeSeries: TicketMatchCumulativeSeries[];
   ticketsPlanFactTrend: PlanFactTrendPoint[];
   ticketsSalesChannelTrend: TicketsSalesChannelTrendPoint[];
-  ticketsPriceZoneTrend: TicketsPriceZoneTrendPoint[];
   subscriptionsPlanFactTrend: SubscriptionsPlanFactTrendPoint[];
   channelMix: ChannelMixPoint[];
   topProducts: TopProductPoint[];
@@ -168,9 +160,6 @@ type FilterDataContextValue = {
   combinedMatchSales: CombinedMatchSalesRow[];
   matchSalesKpis: MatchSalesKpiData;
   matchRevenueChart: MatchRevenuePoint[];
-  ticketTypeSales: TicketTypeSalesPoint[];
-  priceZoneSales: PriceZoneSalesPoint[];
-  orderSourceSales: OrderSourceSalesPoint[];
   merchMatchSales: MerchMatchSalesRow[];
   merchSalesChannelRevenue: MerchSalesChannelPoint[];
   merchSalesChannelTrend: MerchSalesChannelTrendPoint[];
@@ -178,7 +167,16 @@ type FilterDataContextValue = {
   merchProductCategoryRevenue: MerchProductCategoryPoint[];
   merchProductCategoryTrend: MerchProductCategoryTrendPoint[];
   merchSkuSales: MerchSkuSalesRow[];
+  ticketsChartsPending: boolean;
+  ticketsTrendsPending: boolean;
+  appliedFilters: DashboardFilters;
+  appliedTicketFilters: TicketFilters;
+  appliedMerchFilters: MerchFilters;
+  appliedSubscriptionFilters: SubscriptionFilters;
+  requestTicketsMatchDynamics: () => void;
 };
+
+const NOOP_REQUEST_MATCH_DYNAMICS = () => {};
 
 export type FilterContextValue = FilterStateContextValue & FilterDataContextValue;
 
@@ -201,6 +199,8 @@ const EMPTY_TICKETS_KPIS: TicketsKpiData = {
   loyaltyDiscountChange: 0,
   fillRate: 0,
   planCompletionPct: 0,
+  planTicketsSold: 0,
+  planFactTicketsSold: 0,
   revenueToday: 0,
   ticketsToday: 0,
   revenueSparkline: [],
@@ -221,8 +221,10 @@ const EMPTY_SUBSCRIPTIONS_KPIS: SubscriptionsKpiData = {
   revenueChange: 0,
   sold: 0,
   soldChange: 0,
-  avgUtilization: 0,
-  activeCount: 0,
+  uniqueCustomers: 0,
+  uniqueCustomersChange: 0,
+  avgCheck: 0,
+  avgCheckChange: 0,
   revenueSparkline: [],
   soldSparkline: [],
 };
@@ -239,55 +241,40 @@ const EMPTY_MATCH_SALES_KPIS: MatchSalesKpiData = {
 const FilterStateContext = createContext<FilterStateContextValue | null>(null);
 const FilterDataContext = createContext<FilterDataContextValue | null>(null);
 
-function computeTicketsTabDataCached(
-  filters: DashboardFilters,
-  ticketFilters: TicketFilters,
-): TicketsTabCachedData {
-  return runWithFilterCache(() => {
-    const trendsByGrouping = {} as Record<TimeGrouping, TicketsTrendSlice>;
-    for (const grouping of TREND_TIME_GROUPINGS) {
-      const withGrouping = { ...ticketFilters, timeGrouping: grouping };
-      trendsByGrouping[grouping] = {
-        ticketsPlanFactTrend: computeTicketsPlanFactTrend(filters, withGrouping),
-        ticketsSalesChannelTrend: computeTicketsSalesChannelTrend(
-          filters,
-          withGrouping,
-        ),
-        ticketsPriceZoneTrend: computeTicketsPriceZoneTrend(filters, withGrouping),
-      };
-    }
-
-    return {
-      base: {
-        ticketsKpis: computeTicketsKpis(filters, ticketFilters),
-        merchKpis: EMPTY_MERCH_KPIS,
-        subscriptionsKpis: EMPTY_SUBSCRIPTIONS_KPIS,
-        ticketsMatchCumulativeSeries: computeTicketsMatchCumulativeSeries(
-          filters,
-          ticketFilters,
-        ),
-        subscriptionsPlanFactTrend: [],
-        channelMix: [],
-        topProducts: [],
-        subscriptionTariffStats: [],
-        matchSales: computeMatchSalesTable(filters, ticketFilters),
-        combinedMatchSales: [],
-        matchSalesKpis: EMPTY_MATCH_SALES_KPIS,
-        matchRevenueChart: [],
-        ticketTypeSales: computeTicketTypeSales(filters, ticketFilters),
-        priceZoneSales: computePriceZoneSales(filters, ticketFilters),
-        orderSourceSales: computeOrderSourceSales(filters, ticketFilters),
-        merchMatchSales: [],
-        merchSalesChannelRevenue: [],
-        merchSalesChannelTrend: [],
-        merchPlanFactTrend: [],
-        merchProductCategoryRevenue: [],
-        merchProductCategoryTrend: [],
-        merchSkuSales: [],
-      },
-      trendsByGrouping,
-    };
-  });
+function emptyTicketsDataValue(
+  appliedTicketFilters: TicketFilters,
+): FilterDataContextValue {
+  return {
+    displayTab: "tickets",
+    ticketsKpis: EMPTY_TICKETS_KPIS,
+    merchKpis: EMPTY_MERCH_KPIS,
+    subscriptionsKpis: EMPTY_SUBSCRIPTIONS_KPIS,
+    ticketsMatchCumulativeSeries: [],
+    ticketsPlanFactTrend: [],
+    ticketsSalesChannelTrend: [],
+    subscriptionsPlanFactTrend: [],
+    channelMix: [],
+    topProducts: [],
+    subscriptionTariffStats: [],
+    matchSales: [],
+    combinedMatchSales: [],
+    matchSalesKpis: EMPTY_MATCH_SALES_KPIS,
+    matchRevenueChart: [],
+    merchMatchSales: [],
+    merchSalesChannelRevenue: [],
+    merchSalesChannelTrend: [],
+    merchPlanFactTrend: [],
+    merchProductCategoryRevenue: [],
+    merchProductCategoryTrend: [],
+    merchSkuSales: [],
+    ticketsChartsPending: true,
+    ticketsTrendsPending: true,
+    appliedFilters: defaultFilters,
+    appliedTicketFilters,
+    appliedMerchFilters: DEFAULT_MERCH_FILTERS,
+    appliedSubscriptionFilters: DEFAULT_SUBSCRIPTION_FILTERS,
+    requestTicketsMatchDynamics: NOOP_REQUEST_MATCH_DYNAMICS,
+  };
 }
 
 function computeMerchTabDataCached(
@@ -316,13 +303,13 @@ function computeMerchTabDataCached(
 
     return {
       base: {
+        displayTab: "merch" as const,
         ticketsKpis: EMPTY_TICKETS_KPIS,
         merchKpis: computeMerchKpis(filters, merchFilters),
         subscriptionsKpis: EMPTY_SUBSCRIPTIONS_KPIS,
         ticketsMatchCumulativeSeries: [],
         ticketsPlanFactTrend: [],
         ticketsSalesChannelTrend: [],
-        ticketsPriceZoneTrend: [],
         subscriptionsPlanFactTrend: [],
         channelMix: [],
         topProducts: computeTopProducts(filters, merchFilters),
@@ -331,9 +318,6 @@ function computeMerchTabDataCached(
         combinedMatchSales: [],
         matchSalesKpis: EMPTY_MATCH_SALES_KPIS,
         matchRevenueChart: [],
-        ticketTypeSales: [],
-        priceZoneSales: [],
-        orderSourceSales: [],
         merchMatchSales: computeMerchMatchSalesTable(filters, merchFilters),
         merchSalesChannelRevenue: computeMerchSalesChannelRevenue(
           filters,
@@ -344,6 +328,13 @@ function computeMerchTabDataCached(
           merchFilters,
         ),
         merchSkuSales: computeMerchSkuSalesTable(filters, merchFilters),
+        ticketsChartsPending: false,
+        ticketsTrendsPending: false,
+        appliedFilters: filters,
+        appliedTicketFilters: DEFAULT_TICKET_FILTERS,
+        appliedMerchFilters: merchFilters,
+        appliedSubscriptionFilters: DEFAULT_SUBSCRIPTION_FILTERS,
+        requestTicketsMatchDynamics: NOOP_REQUEST_MATCH_DYNAMICS,
       },
       trendsByGrouping,
     };
@@ -369,13 +360,13 @@ function computeSubscriptionsTabDataCached(
 
     return {
       base: {
+        displayTab: "subscriptions" as const,
         ticketsKpis: EMPTY_TICKETS_KPIS,
         merchKpis: EMPTY_MERCH_KPIS,
         subscriptionsKpis: computeSubscriptionsKpis(filters, subscriptionFilters),
         ticketsMatchCumulativeSeries: [],
         ticketsPlanFactTrend: [],
         ticketsSalesChannelTrend: [],
-        ticketsPriceZoneTrend: [],
         channelMix: computeChannelMix(
           filters,
           "subscriptions",
@@ -390,9 +381,6 @@ function computeSubscriptionsTabDataCached(
         combinedMatchSales: [],
         matchSalesKpis: EMPTY_MATCH_SALES_KPIS,
         matchRevenueChart: [],
-        ticketTypeSales: [],
-        priceZoneSales: [],
-        orderSourceSales: [],
         merchMatchSales: [],
         merchSalesChannelRevenue: [],
         merchSalesChannelTrend: [],
@@ -400,6 +388,13 @@ function computeSubscriptionsTabDataCached(
         merchProductCategoryRevenue: [],
         merchProductCategoryTrend: [],
         merchSkuSales: [],
+        ticketsChartsPending: false,
+        ticketsTrendsPending: false,
+        appliedFilters: filters,
+        appliedTicketFilters: DEFAULT_TICKET_FILTERS,
+        appliedMerchFilters: DEFAULT_MERCH_FILTERS,
+        appliedSubscriptionFilters: subscriptionFilters,
+        requestTicketsMatchDynamics: NOOP_REQUEST_MATCH_DYNAMICS,
       },
       trendsByGrouping,
     };
@@ -411,13 +406,13 @@ function computeMatchesTabData(
   matchSalesFiltersForData: MatchSalesFilters,
 ): FilterDataContextValue {
   return runWithFilterCache(() => ({
+    displayTab: "matches" as const,
     ticketsKpis: EMPTY_TICKETS_KPIS,
     merchKpis: EMPTY_MERCH_KPIS,
     subscriptionsKpis: EMPTY_SUBSCRIPTIONS_KPIS,
     ticketsMatchCumulativeSeries: [],
     ticketsPlanFactTrend: [],
     ticketsSalesChannelTrend: [],
-    ticketsPriceZoneTrend: [],
     subscriptionsPlanFactTrend: [],
     channelMix: [],
     topProducts: [],
@@ -432,9 +427,6 @@ function computeMatchesTabData(
       filters,
       matchSalesFiltersForData,
     ),
-    ticketTypeSales: [],
-    priceZoneSales: [],
-    orderSourceSales: [],
     merchMatchSales: [],
     merchSalesChannelRevenue: [],
     merchSalesChannelTrend: [],
@@ -442,6 +434,13 @@ function computeMatchesTabData(
     merchProductCategoryRevenue: [],
     merchProductCategoryTrend: [],
     merchSkuSales: [],
+    ticketsChartsPending: false,
+    ticketsTrendsPending: false,
+    appliedFilters: filters,
+    appliedTicketFilters: DEFAULT_TICKET_FILTERS,
+    appliedMerchFilters: DEFAULT_MERCH_FILTERS,
+    appliedSubscriptionFilters: DEFAULT_SUBSCRIPTION_FILTERS,
+    requestTicketsMatchDynamics: NOOP_REQUEST_MATCH_DYNAMICS,
   }));
 }
 
@@ -457,7 +456,6 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     useState<SubscriptionFilters>(DEFAULT_SUBSCRIPTION_FILTERS);
   const [activeTab, setActiveTabState] = useState<DashboardTab>("tickets");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  // Always false on the first render so SSR HTML matches client hydration.
   const [dataReady, setDataReady] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
 
@@ -490,11 +488,10 @@ export function FilterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setTicketFilters = useCallback((patch: Partial<TicketFilters>) => {
+    beginTicketsUiTurn();
     setTicketFiltersState((prev) => {
       const next = { ...prev, ...patch };
       const effectiveTimeGrouping = getEffectiveTicketTimeGrouping(next);
-      // Persist month→day only; other groupings stay so they restore when
-      // purchase-date or single-match overrides are cleared.
       if (effectiveTimeGrouping === "day" && next.timeGrouping === "month") {
         next.timeGrouping = "day";
       }
@@ -519,6 +516,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const resetTicketFilters = useCallback(() => {
+    beginTicketsUiTurn();
     setFilters(defaultFilters);
     setTicketFiltersState(DEFAULT_TICKET_FILTERS);
   }, []);
@@ -601,115 +599,6 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     ],
   );
 
-  const deferredFilters = useDeferredValue(filters);
-  const deferredTicketFilters = useDeferredValue(ticketFilters);
-  const deferredMerchFilters = useDeferredValue(merchFilters);
-  const deferredMatchSalesFilters = useDeferredValue(matchSalesFilters);
-  const deferredSubscriptionFilters = useDeferredValue(subscriptionFilters);
-
-  const ticketFiltersForStableData = useMemo(
-    () => ({
-      ...deferredTicketFilters,
-      matchId: deferredTicketFilters.matchId,
-      transactionDateRange: {
-        ...deferredTicketFilters.transactionDateRange,
-      },
-    }),
-    [
-      deferredTicketFilters.season,
-      deferredTicketFilters.league,
-      deferredTicketFilters.tournamentStage,
-      deferredTicketFilters.matchClass,
-      deferredTicketFilters.arena,
-      deferredTicketFilters.eventCompleted,
-      deferredTicketFilters.matchId,
-      deferredTicketFilters.ticketType,
-      deferredTicketFilters.priceZone,
-      deferredTicketFilters.orderSource,
-      deferredTicketFilters.transactionDateRange.from,
-      deferredTicketFilters.transactionDateRange.to,
-    ],
-  );
-
-  const ticketFiltersForData = useMemo(
-    () => ({
-      ...ticketFiltersForStableData,
-      timeGrouping: deferredTicketFilters.timeGrouping,
-    }),
-    [ticketFiltersForStableData, deferredTicketFilters.timeGrouping],
-  );
-
-  const merchFiltersForStableData = useMemo(
-    () => ({
-      ...deferredMerchFilters,
-      matchId: deferredMerchFilters.matchId,
-      salesChannels: deferredMerchFilters.salesChannels,
-      productCategories: deferredMerchFilters.productCategories,
-      orderDateRange: { ...deferredMerchFilters.orderDateRange },
-    }),
-    [
-      deferredMerchFilters.season,
-      deferredMerchFilters.league,
-      deferredMerchFilters.tournamentStage,
-      deferredMerchFilters.matchClass,
-      deferredMerchFilters.matchId,
-      deferredMerchFilters.salesChannels,
-      deferredMerchFilters.productCategories,
-      deferredMerchFilters.orderDateRange.from,
-      deferredMerchFilters.orderDateRange.to,
-    ],
-  );
-
-  const merchFiltersForData = useMemo(
-    () => ({
-      ...merchFiltersForStableData,
-      timeGrouping: deferredMerchFilters.timeGrouping,
-    }),
-    [merchFiltersForStableData, deferredMerchFilters.timeGrouping],
-  );
-
-  const subscriptionFiltersForStableData = useMemo(
-    () => ({ ...deferredSubscriptionFilters }),
-    [
-      deferredSubscriptionFilters.season,
-      deferredSubscriptionFilters.league,
-      deferredSubscriptionFilters.tournamentStage,
-      deferredSubscriptionFilters.arena,
-      deferredSubscriptionFilters.ticketType,
-      deferredSubscriptionFilters.priceZone,
-    ],
-  );
-
-  const subscriptionFiltersForData = useMemo(
-    () => ({
-      ...subscriptionFiltersForStableData,
-      timeGrouping: deferredSubscriptionFilters.timeGrouping,
-    }),
-    [
-      subscriptionFiltersForStableData,
-      deferredSubscriptionFilters.timeGrouping,
-    ],
-  );
-
-  const matchSalesFiltersForData = useMemo(
-    () => ({
-      ...deferredMatchSalesFilters,
-      matchId: deferredMatchSalesFilters.matchId,
-      purchaseDateRange: { ...deferredMatchSalesFilters.purchaseDateRange },
-    }),
-    [
-      deferredMatchSalesFilters.season,
-      deferredMatchSalesFilters.league,
-      deferredMatchSalesFilters.tournamentStage,
-      deferredMatchSalesFilters.matchClass,
-      deferredMatchSalesFilters.arena,
-      deferredMatchSalesFilters.eventCompleted,
-      deferredMatchSalesFilters.matchId,
-      deferredMatchSalesFilters.purchaseDateRange.from,
-      deferredMatchSalesFilters.purchaseDateRange.to,
-    ],
-  );
-
   const stateValue = useMemo<FilterStateContextValue>(
     () => ({
       filters,
@@ -763,141 +652,518 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     ],
   );
 
-  const ticketsTabCachedData = useMemo(
-    () =>
-      dataReady && activeTab === "tickets"
-        ? computeTicketsTabDataCached(
-            deferredFilters,
-            ticketFiltersForStableData,
-          )
-        : null,
-    [dataReady, activeTab, deferredFilters, ticketFiltersForStableData],
+  return (
+    <FilterStateContext.Provider value={stateValue}>
+      {!dataReady ? (
+        dataError ? (
+          <div className="flex min-h-screen items-center justify-center bg-[var(--background)] p-6">
+            <p className="text-sm text-red-600">{dataError}</p>
+          </div>
+        ) : (
+          <DashboardLoading />
+        )
+      ) : (
+        children
+      )}
+    </FilterStateContext.Provider>
+  );
+}
+
+function ticketsPayload(
+  core: TicketsTabCoreData,
+  ticketFilters: TicketFilters,
+  filters: DashboardFilters,
+  extras: Partial<FilterDataContextValue> = {},
+): FilterDataContextValue {
+  return {
+    ...emptyTicketsDataValue(ticketFilters),
+    displayTab: "tickets",
+    ticketsKpis: core.ticketsKpis,
+    matchSales: core.matchSales,
+    appliedFilters: filters,
+    appliedTicketFilters: ticketFilters,
+    ticketsChartsPending: true,
+    ticketsTrendsPending: true,
+    ...extras,
+  };
+}
+
+export function FilterDataRuntime({ children }: { children: ReactNode }) {
+  const requestTicketsMatchDynamicsRef = useRef(NOOP_REQUEST_MATCH_DYNAMICS);
+  const requestTicketsMatchDynamics = useCallback(() => {
+    requestTicketsMatchDynamicsRef.current();
+  }, []);
+  const [dataValue, setDataValue] = useState<FilterDataContextValue>(() => ({
+    ...emptyTicketsDataValue(DEFAULT_TICKET_FILTERS),
+    requestTicketsMatchDynamics,
+  }));
+
+  const publish = useCallback(
+    (value: FilterDataContextValue) => {
+      setDataValue({ ...value, requestTicketsMatchDynamics });
+    },
+    [requestTicketsMatchDynamics],
   );
 
-  const merchTabCachedData = useMemo(
-    () =>
-      dataReady && activeTab === "merch"
-        ? computeMerchTabDataCached(deferredFilters, merchFiltersForStableData)
-        : null,
-    [dataReady, activeTab, deferredFilters, merchFiltersForStableData],
+  return (
+    <>
+      <TabCompute
+        publish={publish}
+        requestTicketsMatchDynamicsRef={requestTicketsMatchDynamicsRef}
+      />
+      <FilterDataContext.Provider value={dataValue}>
+        {children}
+      </FilterDataContext.Provider>
+    </>
   );
+}
 
-  const subscriptionsTabCachedData = useMemo(
-    () =>
-      dataReady && activeTab === "subscriptions"
-        ? computeSubscriptionsTabDataCached(
-            deferredFilters,
-            subscriptionFiltersForStableData,
-          )
-        : null,
+function TabCompute({
+  publish,
+  requestTicketsMatchDynamicsRef,
+}: {
+  publish: (value: FilterDataContextValue) => void;
+  requestTicketsMatchDynamicsRef: { current: () => void };
+}) {
+  const {
+    filters,
+    ticketFilters,
+    merchFilters,
+    matchSalesFilters,
+    subscriptionFilters,
+    activeTab,
+  } = useFilterState();
+  requestTicketsMatchDynamicsRef.current = NOOP_REQUEST_MATCH_DYNAMICS;
+
+  const ticketsTabCacheRef = useRef<{
+    filters: DashboardFilters;
+    tabFilters: TicketFilters;
+    value: TicketsTabCoreData;
+  } | null>(null);
+  const ticketsSeriesCacheRef = useRef<{
+    filters: DashboardFilters;
+    tabFilters: TicketFilters;
+    value: TicketMatchCumulativeSeries[];
+  } | null>(null);
+  const ticketsTrendsCacheRef = useRef<{
+    filters: DashboardFilters;
+    tabFilters: TicketFilters;
+    grouping: TimeGrouping;
+    value: TicketsTrendSlice;
+  } | null>(null);
+  const merchTabCacheRef = useRef<{
+    filters: DashboardFilters;
+    tabFilters: MerchFilters;
+    value: MerchTabCachedData;
+  } | null>(null);
+  const subscriptionsTabCacheRef = useRef<{
+    filters: DashboardFilters;
+    tabFilters: SubscriptionFilters;
+    value: SubscriptionsTabCachedData;
+  } | null>(null);
+  const matchesTabCacheRef = useRef<{
+    filters: DashboardFilters;
+    tabFilters: MatchSalesFilters;
+    value: FilterDataContextValue;
+  } | null>(null);
+  const lastTicketsPayloadRef = useRef<FilterDataContextValue | null>(null);
+  const ticketsSessionRef = useRef<ReturnType<
+    typeof openFilterCacheSession
+  > | null>(null);
+
+  function getTicketsSession() {
+    if (!ticketsSessionRef.current) {
+      ticketsSessionRef.current = openFilterCacheSession();
+    }
+    return ticketsSessionRef.current;
+  }
+
+  const ticketFiltersForStableData = useMemo(
+    () => ({
+      ...ticketFilters,
+      matchId: ticketFilters.matchId,
+      transactionDateRange: { ...ticketFilters.transactionDateRange },
+    }),
     [
-      dataReady,
-      activeTab,
-      deferredFilters,
-      subscriptionFiltersForStableData,
+      ticketFilters.season,
+      ticketFilters.league,
+      ticketFilters.tournamentStage,
+      ticketFilters.matchClass,
+      ticketFilters.arena,
+      ticketFilters.eventCompleted,
+      ticketFilters.matchId,
+      ticketFilters.ticketType,
+      ticketFilters.priceZone,
+      ticketFilters.orderSource,
+      ticketFilters.transactionDateRange.from,
+      ticketFilters.transactionDateRange.to,
     ],
   );
 
-  const matchesTabData = useMemo(
-    () =>
-      dataReady && activeTab === "matches"
-        ? computeMatchesTabData(deferredFilters, matchSalesFiltersForData)
-        : null,
-    [dataReady, activeTab, deferredFilters, matchSalesFiltersForData],
+  const liveTicketTimeGrouping = getEffectiveTicketTimeGrouping(ticketFilters);
+
+  const merchFiltersForStableData = useMemo(
+    () => ({
+      ...merchFilters,
+      matchId: merchFilters.matchId,
+      salesChannels: merchFilters.salesChannels,
+      productCategories: merchFilters.productCategories,
+      orderDateRange: { ...merchFilters.orderDateRange },
+    }),
+    [
+      merchFilters.season,
+      merchFilters.league,
+      merchFilters.tournamentStage,
+      merchFilters.matchClass,
+      merchFilters.matchId,
+      merchFilters.salesChannels,
+      merchFilters.productCategories,
+      merchFilters.orderDateRange.from,
+      merchFilters.orderDateRange.to,
+    ],
   );
 
-  const effectiveTicketTimeGrouping = getEffectiveTicketTimeGrouping(
-    ticketFiltersForData,
+  const merchFiltersForData = useMemo(
+    () => ({
+      ...merchFiltersForStableData,
+      timeGrouping: merchFilters.timeGrouping,
+    }),
+    [merchFiltersForStableData, merchFilters.timeGrouping],
   );
 
-  const effectiveMerchTimeGrouping = getEffectiveMerchTimeGrouping(
-    merchFiltersForData,
+  const subscriptionFiltersForStableData = useMemo(
+    () => ({ ...subscriptionFilters }),
+    [
+      subscriptionFilters.season,
+      subscriptionFilters.league,
+      subscriptionFilters.tournamentStage,
+      subscriptionFilters.arena,
+      subscriptionFilters.ticketType,
+      subscriptionFilters.priceZone,
+    ],
   );
 
-  const dataValue = useMemo(() => {
-    if (activeTab === "tickets" && ticketsTabCachedData) {
-      return {
-        ...ticketsTabCachedData.base,
-        ...ticketsTabCachedData.trendsByGrouping[effectiveTicketTimeGrouping],
-      };
-    }
+  const subscriptionFiltersForData = useMemo(
+    () => ({
+      ...subscriptionFiltersForStableData,
+      timeGrouping: subscriptionFilters.timeGrouping,
+    }),
+    [subscriptionFiltersForStableData, subscriptionFilters.timeGrouping],
+  );
 
-    if (activeTab === "merch" && merchTabCachedData) {
-      return {
-        ...merchTabCachedData.base,
-        ...merchTabCachedData.trendsByGrouping[effectiveMerchTimeGrouping],
-      };
-    }
+  const matchSalesFiltersForData = useMemo(
+    () => ({
+      ...matchSalesFilters,
+      matchId: matchSalesFilters.matchId,
+      purchaseDateRange: { ...matchSalesFilters.purchaseDateRange },
+    }),
+    [
+      matchSalesFilters.season,
+      matchSalesFilters.league,
+      matchSalesFilters.tournamentStage,
+      matchSalesFilters.matchClass,
+      matchSalesFilters.arena,
+      matchSalesFilters.eventCompleted,
+      matchSalesFilters.matchId,
+      matchSalesFilters.purchaseDateRange.from,
+      matchSalesFilters.purchaseDateRange.to,
+    ],
+  );
 
-    if (activeTab === "subscriptions" && subscriptionsTabCachedData) {
-      return {
-        ...subscriptionsTabCachedData.base,
-        subscriptionsPlanFactTrend:
-          subscriptionsTabCachedData.trendsByGrouping[
-            subscriptionFiltersForData.timeGrouping
-          ],
-      };
-    }
+  useEffect(() => {
+    if (activeTab !== "tickets") return;
 
-    if (activeTab === "matches" && matchesTabData) {
-      return matchesTabData;
-    }
+    let cancelled = false;
+    const requestFilters = filters;
+    const requestTicketFilters = ticketFiltersForStableData;
+    const grouping = liveTicketTimeGrouping;
+    const delay = lastTicketsPayloadRef.current ? 500 : 0;
 
-    return {
-      ticketsKpis: EMPTY_TICKETS_KPIS,
-      merchKpis: EMPTY_MERCH_KPIS,
-      subscriptionsKpis: EMPTY_SUBSCRIPTIONS_KPIS,
-      ticketsMatchCumulativeSeries: [],
-      ticketsPlanFactTrend: [],
-      ticketsSalesChannelTrend: [],
-      ticketsPriceZoneTrend: [],
-      subscriptionsPlanFactTrend: [],
-      channelMix: [],
-      topProducts: [],
-      subscriptionTariffStats: [],
-      matchSales: [],
-      combinedMatchSales: [],
-      matchSalesKpis: EMPTY_MATCH_SALES_KPIS,
-      matchRevenueChart: [],
-      ticketTypeSales: [],
-      priceZoneSales: [],
-      orderSourceSales: [],
-      merchMatchSales: [],
-      merchSalesChannelRevenue: [],
-      merchSalesChannelTrend: [],
-      merchPlanFactTrend: [],
-      merchProductCategoryRevenue: [],
-      merchProductCategoryTrend: [],
-      merchSkuSales: [],
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        await yieldToEventLoop();
+        if (cancelled) return;
+
+        const coreHit =
+          ticketsTabCacheRef.current?.filters === requestFilters &&
+          ticketsTabCacheRef.current.tabFilters === requestTicketFilters;
+        const trendsHit =
+          ticketsTrendsCacheRef.current?.filters === requestFilters &&
+          ticketsTrendsCacheRef.current.tabFilters === requestTicketFilters &&
+          ticketsTrendsCacheRef.current.grouping === grouping;
+        const seriesHit =
+          ticketsSeriesCacheRef.current?.filters === requestFilters &&
+          ticketsSeriesCacheRef.current.tabFilters === requestTicketFilters;
+
+        if (coreHit && trendsHit && seriesHit) {
+          const core = ticketsTabCacheRef.current?.value;
+          const trends = ticketsTrendsCacheRef.current?.value;
+          const series = ticketsSeriesCacheRef.current?.value;
+          if (!core || !trends || !series) return;
+          const payload = ticketsPayload(
+            core,
+            requestTicketFilters,
+            requestFilters,
+            {
+              ...trends,
+              ticketsMatchCumulativeSeries: series,
+              ticketsTrendsPending: false,
+              ticketsChartsPending: false,
+            },
+          );
+          lastTicketsPayloadRef.current = payload;
+          publish(payload);
+          return;
+        }
+
+        const session = getTicketsSession();
+        try {
+          let core = coreHit ? ticketsTabCacheRef.current?.value : undefined;
+          if (!core) {
+            const warmDone = noteTicketsCompute("tickets-warm-filter-passes");
+            const warmed = await session.runAsync(() =>
+              warmTicketFilterPassesIdle(
+                requestFilters,
+                requestTicketFilters,
+                () => cancelled,
+              ),
+            );
+            warmDone();
+            if (cancelled || !warmed) return;
+
+            const kpisDone = noteTicketsCompute("computeTicketsKpis");
+            const ticketsKpis = session.run(() =>
+              computeTicketsKpis(requestFilters, requestTicketFilters),
+            );
+            kpisDone();
+            await yieldToEventLoop();
+            if (cancelled) return;
+
+            const tableDone = noteTicketsCompute("computeMatchSalesTable");
+            const matchSales = session.run(() =>
+              computeMatchSalesTable(requestFilters, requestTicketFilters),
+            );
+            tableDone();
+            if (cancelled) return;
+
+            core = { ticketsKpis, matchSales };
+            ticketsTabCacheRef.current = {
+              filters: requestFilters,
+              tabFilters: requestTicketFilters,
+              value: core,
+            };
+          }
+
+          const corePayload = ticketsPayload(
+            core,
+            requestTicketFilters,
+            requestFilters,
+            {
+              ticketsMatchCumulativeSeries:
+                lastTicketsPayloadRef.current?.ticketsMatchCumulativeSeries ??
+                [],
+              ticketsChartsPending: !seriesHit,
+              ticketsTrendsPending: !trendsHit,
+              ...(trendsHit ? ticketsTrendsCacheRef.current?.value : null),
+            },
+          );
+          lastTicketsPayloadRef.current = corePayload;
+          publish(corePayload);
+
+          await yieldToEventLoop();
+          if (cancelled) return;
+
+          let series = seriesHit
+            ? ticketsSeriesCacheRef.current?.value
+            : undefined;
+          if (!series) {
+            const seriesDone = noteTicketsCompute(
+              "computeTicketsMatchCumulativeSeries",
+            );
+            await yieldUntilIdle(1200);
+            if (cancelled) return;
+            const computedSeries = await session.runAsync(() =>
+              computeTicketsMatchCumulativeSeriesIdle(
+                requestFilters,
+                requestTicketFilters,
+                () => cancelled,
+              ),
+            );
+            seriesDone();
+            if (cancelled || computedSeries == null) return;
+            series = computedSeries;
+            ticketsSeriesCacheRef.current = {
+              filters: requestFilters,
+              tabFilters: requestTicketFilters,
+              value: series,
+            };
+          }
+
+          const withSeries = {
+            ...(lastTicketsPayloadRef.current ?? corePayload),
+            ticketsMatchCumulativeSeries: series,
+            ticketsChartsPending: false,
+          };
+          lastTicketsPayloadRef.current = withSeries;
+          publish(withSeries);
+
+          if (trendsHit) return;
+
+          await yieldToEventLoop();
+          if (cancelled) return;
+
+          const groupingDone = noteTicketsCompute(`tickets-trends-${grouping}`);
+          const withGrouping = {
+            ...requestTicketFilters,
+            timeGrouping: grouping,
+          };
+          const ticketsPlanFactTrend = await session.runAsync(() =>
+            computeTicketsPlanFactTrendIdle(
+              requestFilters,
+              withGrouping,
+              () => cancelled,
+            ),
+          );
+          if (cancelled || ticketsPlanFactTrend == null) return;
+          await yieldToEventLoop();
+          if (cancelled) return;
+          const ticketsSalesChannelTrend = await session.runAsync(() =>
+            computeTicketsSalesChannelTrendIdle(
+              requestFilters,
+              withGrouping,
+              () => cancelled,
+            ),
+          );
+          groupingDone();
+          if (cancelled || ticketsSalesChannelTrend == null) return;
+
+          const trendSlice = { ticketsPlanFactTrend, ticketsSalesChannelTrend };
+          ticketsTrendsCacheRef.current = {
+            filters: requestFilters,
+            tabFilters: requestTicketFilters,
+            grouping,
+            value: trendSlice,
+          };
+
+          const withTrends = ticketsPayload(
+            core,
+            requestTicketFilters,
+            requestFilters,
+            {
+              ...trendSlice,
+              ticketsMatchCumulativeSeries: series,
+              ticketsTrendsPending: false,
+              ticketsChartsPending: false,
+            },
+          );
+          lastTicketsPayloadRef.current = withTrends;
+          publish(withTrends);
+        } catch (error) {
+          console.error("[tickets] core compute failed", error);
+        }
+      })();
+    }, delay);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [
     activeTab,
-    ticketsTabCachedData,
-    effectiveTicketTimeGrouping,
-    merchTabCachedData,
-    effectiveMerchTimeGrouping,
-    subscriptionsTabCachedData,
-    subscriptionFiltersForData.timeGrouping,
-    matchesTabData,
+    filters,
+    ticketFiltersForStableData,
+    liveTicketTimeGrouping,
+    publish,
   ]);
 
-  return (
-    <FilterStateContext.Provider value={stateValue}>
-      <FilterDataContext.Provider value={dataValue}>
-        {!dataReady ? (
-          dataError ? (
-            <div className="flex min-h-screen items-center justify-center bg-[var(--background)] p-6">
-              <p className="text-sm text-red-600">{dataError}</p>
-            </div>
-          ) : (
-            <DashboardLoading />
-          )
-        ) : (
-          children
-        )}
-      </FilterDataContext.Provider>
-    </FilterStateContext.Provider>
-  );
+  useEffect(() => {
+    if (activeTab !== "merch") return;
+    const prev = merchTabCacheRef.current;
+    const cached =
+      prev &&
+      prev.filters === filters &&
+      prev.tabFilters === merchFiltersForStableData
+        ? prev.value
+        : null;
+    const value =
+      cached ?? computeMerchTabDataCached(filters, merchFiltersForStableData);
+    if (!cached) {
+      merchTabCacheRef.current = {
+        filters,
+        tabFilters: merchFiltersForStableData,
+        value,
+      };
+    }
+    const grouping = getEffectiveMerchTimeGrouping(merchFiltersForData);
+    publish({
+      ...value.base,
+      ...value.trendsByGrouping[grouping],
+    });
+  }, [
+    activeTab,
+    filters,
+    merchFiltersForStableData,
+    merchFiltersForData,
+    publish,
+  ]);
+
+  useEffect(() => {
+    if (activeTab !== "subscriptions") return;
+    const prev = subscriptionsTabCacheRef.current;
+    const cached =
+      prev &&
+      prev.filters === filters &&
+      prev.tabFilters === subscriptionFiltersForStableData
+        ? prev.value
+        : null;
+    const value =
+      cached ??
+      computeSubscriptionsTabDataCached(
+        filters,
+        subscriptionFiltersForStableData,
+      );
+    if (!cached) {
+      subscriptionsTabCacheRef.current = {
+        filters,
+        tabFilters: subscriptionFiltersForStableData,
+        value,
+      };
+    }
+    publish({
+      ...value.base,
+      subscriptionsPlanFactTrend:
+        value.trendsByGrouping[subscriptionFiltersForData.timeGrouping],
+    });
+  }, [
+    activeTab,
+    filters,
+    subscriptionFiltersForStableData,
+    subscriptionFiltersForData.timeGrouping,
+    publish,
+  ]);
+
+  useEffect(() => {
+    if (activeTab !== "matches") return;
+    const prev = matchesTabCacheRef.current;
+    const cached =
+      prev &&
+      prev.filters === filters &&
+      prev.tabFilters === matchSalesFiltersForData
+        ? prev.value
+        : null;
+    const value =
+      cached ?? computeMatchesTabData(filters, matchSalesFiltersForData);
+    if (!cached) {
+      matchesTabCacheRef.current = {
+        filters,
+        tabFilters: matchSalesFiltersForData,
+        value,
+      };
+    }
+    publish(value);
+  }, [activeTab, filters, matchSalesFiltersForData, publish]);
+
+  return null;
 }
 
 export function useFilterState() {

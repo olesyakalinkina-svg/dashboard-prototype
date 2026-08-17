@@ -59,9 +59,9 @@ export function TicketsSeasonMatchLegend({
   };
 
   return (
-    <div className="mt-4 hidden min-h-0 flex-1 flex-col border-t border-[var(--border)] pt-4 md:flex">
+    <div className="mt-3 hidden shrink-0 flex-col border-t border-[var(--border)] pt-3 md:flex">
       <div
-        className="grid w-full flex-1 auto-rows-min grid-cols-2 content-start gap-x-5 gap-y-3 lg:grid-cols-3 xl:grid-cols-4"
+        className="grid w-full auto-rows-min grid-cols-2 content-start gap-x-5 gap-y-2 lg:grid-cols-3 xl:grid-cols-4"
       >
         {comparisonMode ? (
           <>

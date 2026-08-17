@@ -321,24 +321,47 @@ const subscriptions = mock.subscriptions.map((sub) => {
 
 const redemptions = [];
 let redemptionIndex = 1;
+const mockSubById = new Map(mock.subscriptions.map((sub) => [sub.id, sub]));
 
-for (const sub of subscriptions) {
-  const eligible = matches.filter(
-    (m) =>
-      m.season === sub.season &&
-      m.league === sub.league &&
-      m.date >= sub.validFrom &&
-      m.date <= sub.validTo,
-  );
-  const usedCount = Math.min(sub.matchesUsed, eligible.length);
-  for (const m of eligible.slice(0, usedCount)) {
+if (
+  Array.isArray(mock.subscriptionRedemptions) &&
+  mock.subscriptionRedemptions.length > 0
+) {
+  for (const redemption of mock.subscriptionRedemptions) {
+    const mockSub = mockSubById.get(redemption.subscriptionId);
+    const ticketType = mockSub?.ticketType === "parking" ? "parking" : "arena";
+    const sectorId =
+      ticketType === "parking"
+        ? null
+        : (sectorIdByCode[mockSub?.priceZone] ?? null);
     redemptions.push({
       id: `00000000-0000-4001-9000-${String(redemptionIndex++).padStart(12, "0")}`,
-      subscriptionId: sub.id,
-      matchId: m.id,
-      redeemedAt: m.date,
-      sectorId: sub.sectorId,
+      subscriptionId: uuidFromSubId(redemption.subscriptionId),
+      matchId: redemption.matchId,
+      redeemedAt: parseMockDate(redemption.redeemedAt),
+      sectorId,
     });
+  }
+} else {
+  for (const sub of subscriptions) {
+    if (sub.status === "cancelled") continue;
+    const eligible = matches.filter(
+      (m) =>
+        m.season === sub.season &&
+        m.league === sub.league &&
+        m.date >= sub.validFrom &&
+        m.date <= sub.validTo,
+    );
+    const usedCount = Math.min(sub.matchesUsed, sub.matchesTotal, eligible.length);
+    for (const m of eligible.slice(0, usedCount)) {
+      redemptions.push({
+        id: `00000000-0000-4001-9000-${String(redemptionIndex++).padStart(12, "0")}`,
+        subscriptionId: sub.id,
+        matchId: m.id,
+        redeemedAt: m.date,
+        sectorId: sub.sectorId,
+      });
+    }
   }
 }
 

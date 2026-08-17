@@ -13,7 +13,7 @@ export const SUBSCRIPTION_CHANNEL_LABELS: Record<
 
 export const DEFAULT_SUBSCRIPTION_FILTERS: SubscriptionFilters = {
   season: "2025/26",
-  league: "all",
+  league: "KHL",
   tournamentStage: "all",
   arena: "all",
   ticketType: "all",

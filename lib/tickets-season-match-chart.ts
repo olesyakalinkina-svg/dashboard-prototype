@@ -4,7 +4,6 @@ import { formatShortMonthYear } from "@/lib/format";
 import type {
   TicketMatchCumulativeSeries,
   TicketsSeasonMatchChartRow,
-  TicketsSeasonMatchQuickFilter,
   TicketsSeasonMatchSeriesView,
   TicketsSeasonMatchStatus,
   TimeGrouping,
@@ -26,10 +25,15 @@ export const SEASON_MATCH_PLAN_LABEL_HEIGHT = 14;
 export const SEASON_MATCH_PLAN_LABEL_GAP = 4;
 export const SEASON_MATCH_PLAN_LABEL_OFFSET = 18;
 export const SEASON_MATCH_MAX_BRIGHT_LINES = 10;
+/** Completed matches shown when nothing is currently on sale. */
+export const SEASON_MATCH_LAST_COMPLETED_FALLBACK_COUNT = 3;
 export const SEASON_MATCH_PLAN_LEGEND_LABEL = "План продаж";
 export const SEASON_MATCH_COMPARISON_COLOR = "#9CA3AF";
 export const SEASON_MATCH_COMPARISON_LEGEND_LABEL =
   "Предыдущие матчи того же класса";
+/** Widget-local selector: restore auto current-sales / last-3 logic. */
+export const SEASON_MATCH_CURRENT_SALES_VALUE = "__current_sales__";
+export const SEASON_MATCH_CURRENT_SALES_LABEL = "Текущие продажи";
 
 const CONTRAST_LINE_COLORS = [
   "#E41A1C",
@@ -124,6 +128,18 @@ function getCurrentFactRevenue(item: TicketMatchCumulativeSeries): number {
   return endPoint?.revenue ?? 0;
 }
 
+/**
+ * Current / ongoing ticket sales: the match is not finished and MOCK_TODAY
+ * (via currentDaysBeforeMatch) falls inside the sales window.
+ * Equivalent to the former "В продаже" chip.
+ */
+export function isSeasonMatchCurrentlyOnSale(item: {
+  eventCompleted: boolean;
+  currentDaysBeforeMatch: number | null;
+}): boolean {
+  return !item.eventCompleted && item.currentDaysBeforeMatch != null;
+}
+
 export function isSeasonMatchComparisonMode(
   series: TicketMatchCumulativeSeries[],
 ): boolean {
@@ -179,8 +195,7 @@ export function buildSeasonMatchSeriesViews(
       planRevenue: item.planRevenue,
       eventCompleted: item.eventCompleted,
       hasFactSales: item.hasFactSales,
-      isOnSale:
-        !item.eventCompleted && item.currentDaysBeforeMatch != null,
+      isOnSale: isSeasonMatchCurrentlyOnSale(item),
       salesStartDateKey,
       currentFact,
       completionPct,
@@ -192,34 +207,109 @@ export function buildSeasonMatchSeriesViews(
   });
 }
 
-export function filterSeasonMatchSeriesViews(
+export function buildSeasonMatchSelectorOptions(
   views: TicketsSeasonMatchSeriesView[],
-  quickFilter: TicketsSeasonMatchQuickFilter,
-  searchQuery: string,
+): Array<{ value: string; label: string }> {
+  const matches = views
+    .filter((view) => !view.isComparison)
+    .sort((left, right) => left.matchDateKey - right.matchDateKey)
+    .map((view) => ({
+      value: view.matchId,
+      label: view.legendLabel,
+    }));
+
+  return [
+    {
+      value: SEASON_MATCH_CURRENT_SALES_VALUE,
+      label: SEASON_MATCH_CURRENT_SALES_LABEL,
+    },
+    ...matches,
+  ];
+}
+
+export function toSeasonMatchSelectorValue(
+  selectedMatchIds: string[],
+): string[] {
+  if (selectedMatchIds.length === 0) {
+    return [SEASON_MATCH_CURRENT_SALES_VALUE];
+  }
+  return selectedMatchIds.filter(
+    (id) => id !== SEASON_MATCH_CURRENT_SALES_VALUE,
+  );
+}
+
+/**
+ * Maps MultiSelect next value back to widget match ids.
+ * "Текущие продажи" is exclusive: picking it clears matches (auto mode);
+ * picking a match while auto is on drops the exclusive option.
+ */
+export function fromSeasonMatchSelectorValue(
+  previousSelectedMatchIds: string[],
+  nextSelectorValue: string[],
+): string[] {
+  const wasAuto = previousSelectedMatchIds.length === 0;
+  const nextHasCurrent = nextSelectorValue.includes(
+    SEASON_MATCH_CURRENT_SALES_VALUE,
+  );
+  const nextMatches = nextSelectorValue.filter(
+    (id) => id !== SEASON_MATCH_CURRENT_SALES_VALUE,
+  );
+
+  if (nextHasCurrent) {
+    if (!wasAuto) {
+      return [];
+    }
+    return nextMatches;
+  }
+
+  return nextMatches;
+}
+
+export type SelectSeasonMatchChartViewsOptions = {
+  /**
+   * Widget-local match ids. Empty means default: current on-sale matches,
+   * or the last completed matches if nothing is on sale.
+   */
+  selectedMatchIds?: string[];
+  /**
+   * When the tab already scoped the series (global match filter or
+   * comparison mode), keep incoming views instead of current-sales / last-3.
+   */
+  preserveIncomingViews?: boolean;
+};
+
+/**
+ * Default: matches currently on sale. If none → last 3 completed (by date).
+ * Widget-local selection overrides that and can include completed matches.
+ */
+export function selectSeasonMatchChartViews(
+  views: TicketsSeasonMatchSeriesView[],
+  options: SelectSeasonMatchChartViewsOptions = {},
 ): TicketsSeasonMatchSeriesView[] {
-  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const selectedMatchIds = options.selectedMatchIds ?? [];
+  if (selectedMatchIds.length > 0) {
+    const selected = new Set(selectedMatchIds);
+    return views.filter((view) => selected.has(view.matchId));
+  }
 
-  return views.filter((view) => {
-    if (
-      normalizedQuery &&
-      !view.opponent.toLowerCase().includes(normalizedQuery)
-    ) {
-      return false;
-    }
+  if (options.preserveIncomingViews) {
+    return views;
+  }
 
-    switch (quickFilter) {
-      case "on_sale":
-        return view.isOnSale;
-      case "completed":
-        return view.eventCompleted;
-      case "met_plan":
-        return view.completionPct >= 100;
-      case "missed_plan":
-        return view.completionPct < 95;
-      default:
-        return true;
-    }
-  });
+  if (views.some((view) => view.isSelected)) {
+    return views;
+  }
+
+  const onSale = views.filter((view) => view.isOnSale);
+  if (onSale.length > 0) {
+    return onSale;
+  }
+
+  return [...views]
+    .filter((view) => view.eventCompleted)
+    .sort((left, right) => right.matchDateKey - left.matchDateKey)
+    .slice(0, SEASON_MATCH_LAST_COMPLETED_FALLBACK_COUNT)
+    .sort((left, right) => left.matchDateKey - right.matchDateKey);
 }
 
 export function buildSeasonMatchChartRows(
@@ -351,7 +441,15 @@ export function aggregateSeasonMatchChartRowsByGrouping(
 export function formatSeasonMatchAxisLabel(
   dateKey: number,
   rows: TicketsSeasonMatchChartRow[],
+  matchDateKeys?: Iterable<number>,
 ): string {
+  const matchDates =
+    matchDateKeys instanceof Set
+      ? matchDateKeys
+      : new Set(matchDateKeys ?? []);
+  if (matchDates.has(dateKey)) {
+    return formatSeasonMatchDateLabel(dateKey);
+  }
   const row = rows.find((entry) => entry.dateKey === dateKey);
   return row?.periodLabel ?? formatSeasonMatchDateLabel(dateKey);
 }
@@ -428,38 +526,59 @@ export function getSeasonMatchYDomainKeys(
 
 export function buildSeasonMatchXAxisTicks(
   rows: TicketsSeasonMatchChartRow[],
-  options?: { stepDays?: number; grouping?: TimeGrouping },
+  options?: {
+    stepDays?: number;
+    grouping?: TimeGrouping;
+    matchDateKeys?: Iterable<number>;
+  },
 ): number[] {
   if (rows.length === 0) return [];
 
   const grouping = options?.grouping ?? "day";
+  let ticks: number[];
+
   if (grouping !== "day") {
     if (rows.length <= 14) {
-      return rows.map((row) => row.dateKey);
+      ticks = rows.map((row) => row.dateKey);
+    } else {
+      const step = grouping === "month" ? 1 : 2;
+      ticks = rows
+        .filter((_, index) => index % step === 0 || index === rows.length - 1)
+        .map((row) => row.dateKey);
     }
-    const step = grouping === "month" ? 1 : 2;
-    return rows
-      .filter((_, index) => index % step === 0 || index === rows.length - 1)
-      .map((row) => row.dateKey);
+  } else {
+    const stepDays = options?.stepDays ?? 2;
+    const minKey = rows[0].dateKey;
+    const maxKey = rows[rows.length - 1].dateKey;
+    ticks = [];
+    let current = startOfDay(new Date(minKey));
+    const end = startOfDay(new Date(maxKey));
+
+    while (current.getTime() <= end.getTime()) {
+      ticks.push(current.getTime());
+      current = addDays(current, stepDays);
+    }
+
+    if (ticks[ticks.length - 1] !== end.getTime()) {
+      ticks.push(end.getTime());
+    }
   }
 
-  const stepDays = options?.stepDays ?? 2;
   const minKey = rows[0].dateKey;
   const maxKey = rows[rows.length - 1].dateKey;
-  const ticks: number[] = [];
-  let current = startOfDay(new Date(minKey));
-  const end = startOfDay(new Date(maxKey));
-
-  while (current.getTime() <= end.getTime()) {
-    ticks.push(current.getTime());
-    current = addDays(current, stepDays);
+  const present = new Set(ticks);
+  for (const matchDateKey of options?.matchDateKeys ?? []) {
+    if (
+      matchDateKey >= minKey &&
+      matchDateKey <= maxKey &&
+      !present.has(matchDateKey)
+    ) {
+      ticks.push(matchDateKey);
+      present.add(matchDateKey);
+    }
   }
 
-  if (ticks[ticks.length - 1] !== end.getTime()) {
-    ticks.push(end.getTime());
-  }
-
-  return ticks;
+  return ticks.sort((left, right) => left - right);
 }
 
 export function getSeasonMatchLineOpacity(
@@ -583,14 +702,3 @@ export function getSeasonMatchPlanMarkerY(
   const ratio = yMax > 0 ? Math.min(1, Math.max(0, value / yMax)) : 0;
   return SEASON_MATCH_CHART_TOP_GUTTER + (1 - ratio) * plotHeight;
 }
-
-export const SEASON_MATCH_QUICK_FILTERS: {
-  value: TicketsSeasonMatchQuickFilter;
-  label: string;
-}[] = [
-  { value: "all", label: "Все матчи" },
-  { value: "on_sale", label: "В продаже" },
-  { value: "completed", label: "Завершённые" },
-  { value: "met_plan", label: "Выполнили план" },
-  { value: "missed_plan", label: "Не выполнили план" },
-];

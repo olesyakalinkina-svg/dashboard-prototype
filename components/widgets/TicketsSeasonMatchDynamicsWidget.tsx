@@ -1,25 +1,23 @@
 "use client";
 
-import clsx from "clsx";
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import {
   ChartZoomHint,
   ChartZoomResetButton,
 } from "@/components/charts/ChartZoom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { NO_MATCHES_FILTER_VALUE, getEffectiveTicketTimeGrouping } from "@/lib/ticket-filter-options";
+import { MultiSelect } from "@/components/ui/MultiSelect";
+import { NO_MATCHES_FILTER_VALUE } from "@/lib/ticket-filter-options";
 import {
   aggregateSeasonMatchChartRowsByGrouping,
   buildSeasonMatchChartRows,
+  buildSeasonMatchSelectorOptions,
   buildSeasonMatchSeriesViews,
-  filterSeasonMatchSeriesViews,
-  SEASON_MATCH_QUICK_FILTERS,
+  fromSeasonMatchSelectorValue,
+  SEASON_MATCH_CURRENT_SALES_LABEL,
+  selectSeasonMatchChartViews,
 } from "@/lib/tickets-season-match-chart";
-import type {
-  TicketFilters,
-  TicketMatchCumulativeSeries,
-  TicketsSeasonMatchQuickFilter,
-} from "@/types/dashboard";
+import type { TicketMatchCumulativeSeries, TimeGrouping } from "@/types/dashboard";
 import { MobileMatchSelector } from "./tickets-season-match/MobileMatchSelector";
 import { TicketsSeasonMatchChart } from "./tickets-season-match/TicketsSeasonMatchChart";
 import { TicketsSeasonMatchLegend } from "./tickets-season-match/TicketsSeasonMatchLegend";
@@ -29,16 +27,17 @@ type ChartZoomControl = {
   resetZoom: () => void;
 };
 
-export function TicketsSeasonMatchDynamicsWidget({
-  series,
-  ticketFilters,
-}: {
-  series: TicketMatchCumulativeSeries[];
-  ticketFilters: TicketFilters;
-}) {
-  const [quickFilter, setQuickFilter] =
-    useState<TicketsSeasonMatchQuickFilter>("all");
-  const [searchQuery, setSearchQuery] = useState("");
+export const TicketsSeasonMatchDynamicsWidget = memo(
+  function TicketsSeasonMatchDynamicsWidget({
+    series,
+    matchIds,
+    timeGrouping,
+  }: {
+    series: TicketMatchCumulativeSeries[];
+    matchIds: string[];
+    timeGrouping: TimeGrouping;
+  }) {
+  const [selectedMatchIds, setSelectedMatchIds] = useState<string[]>([]);
   const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(
     () => new Set(),
   );
@@ -46,16 +45,42 @@ export function TicketsSeasonMatchDynamicsWidget({
   const [chartZoomControl, setChartZoomControl] =
     useState<ChartZoomControl | null>(null);
 
-  const timeGrouping = getEffectiveTicketTimeGrouping(ticketFilters);
-
   const allViews = useMemo(
     () => buildSeasonMatchSeriesViews(series),
     [series],
   );
 
+  const selectorOptions = useMemo(
+    () => buildSeasonMatchSelectorOptions(allViews),
+    [allViews],
+  );
+  const currentSalesOption = selectorOptions[0];
+  const matchFilterOptions = selectorOptions.slice(1);
+
+  const availableMatchIdsKey = matchFilterOptions
+    .map((option) => option.value)
+    .join(",");
+
+  useEffect(() => {
+    const valid = new Set(
+      availableMatchIdsKey.split(",").filter((id) => id.length > 0),
+    );
+    setSelectedMatchIds((current) => {
+      const next = current.filter((id) => valid.has(id));
+      return next.length === current.length ? current : next;
+    });
+  }, [availableMatchIdsKey]);
+
+  const globalMatchFilterActive =
+    matchIds.length > 0 && matchIds[0] !== NO_MATCHES_FILTER_VALUE;
+
   const filteredViews = useMemo(
-    () => filterSeasonMatchSeriesViews(allViews, quickFilter, searchQuery),
-    [allViews, quickFilter, searchQuery],
+    () =>
+      selectSeasonMatchChartViews(allViews, {
+        selectedMatchIds,
+        preserveIncomingViews: globalMatchFilterActive,
+      }),
+    [allViews, selectedMatchIds, globalMatchFilterActive],
   );
 
   const dailyChartRows = useMemo(
@@ -73,18 +98,18 @@ export function TicketsSeasonMatchDynamicsWidget({
     [dailyChartRows, filteredViews, timeGrouping],
   );
 
-  const selectedMatchIdsKey = ticketFilters.matchId.join(",");
+  const selectedMatchIdsKey = matchIds.join(",");
   const selectedMatchId =
-    ticketFilters.matchId.length === 1 &&
-    ticketFilters.matchId[0] !== NO_MATCHES_FILTER_VALUE
-      ? ticketFilters.matchId[0]
+    matchIds.length === 1 && matchIds[0] !== NO_MATCHES_FILTER_VALUE
+      ? matchIds[0]
       : null;
+  const widgetMatchIdsKey = selectedMatchIds.join(",");
 
   useEffect(() => {
     setHiddenSeries(new Set());
     setHoveredSeries(null);
     setChartZoomControl(null);
-  }, [series, quickFilter, searchQuery, selectedMatchIdsKey, timeGrouping]);
+  }, [series, widgetMatchIdsKey, selectedMatchIdsKey, timeGrouping]);
 
   const toggleSeries = (matchId: string) => {
     setHiddenSeries((current) => {
@@ -98,10 +123,10 @@ export function TicketsSeasonMatchDynamicsWidget({
     });
   };
 
-  const chartHeight = 300;
+  const chartHeight = 260;
 
   return (
-    <Card className="flex h-full min-w-0 flex-col">
+    <Card className="flex min-w-0 flex-col">
       <CardHeader>
         <div className="min-w-0">
           <CardTitle>Динамика продаж билетов по матчам</CardTitle>
@@ -110,38 +135,29 @@ export function TicketsSeasonMatchDynamicsWidget({
           </p>
           <ChartZoomHint visible={!chartZoomControl?.isZoomed} />
         </div>
-        <div className="hidden w-full flex-wrap items-center gap-2 md:flex">
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
           {chartZoomControl?.isZoomed && (
             <ChartZoomResetButton onClick={chartZoomControl.resetZoom} />
           )}
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Поиск соперника"
-            className="w-full rounded-md border border-[var(--border)] bg-white px-2.5 py-1.5 text-xs sm:w-44"
+          <MultiSelect
+            label="Матчи"
+            options={matchFilterOptions}
+            value={selectedMatchIds}
+            onChange={(nextValue) =>
+              setSelectedMatchIds(
+                fromSeasonMatchSelectorValue(selectedMatchIds, nextValue),
+              )
+            }
+            leadingExclusiveOption={currentSalesOption}
+            selectAllLabel="Все матчи"
+            allSelectedLabel="Все матчи"
+            emptyLabel={SEASON_MATCH_CURRENT_SALES_LABEL}
+            applyOnClose
+            className="sm:min-w-[220px]"
           />
         </div>
       </CardHeader>
-      <CardContent className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="mb-3 hidden shrink-0 flex-wrap gap-2 md:flex">
-          {SEASON_MATCH_QUICK_FILTERS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => setQuickFilter(option.value)}
-              className={clsx(
-                "rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors",
-                quickFilter === option.value
-                  ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
-                  : "border-[var(--border)] bg-white text-[var(--muted)] hover:text-[var(--foreground)]",
-              )}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-
+      <CardContent className="flex min-h-0 min-w-0 flex-col">
         {series.length === 0 ? (
           <div
             className="flex shrink-0 items-center justify-center text-sm text-[var(--muted)]"
@@ -182,10 +198,6 @@ export function TicketsSeasonMatchDynamicsWidget({
           views={filteredViews}
           hiddenSeries={hiddenSeries}
           hoveredSeries={hoveredSeries}
-          quickFilter={quickFilter}
-          searchQuery={searchQuery}
-          onQuickFilterChange={setQuickFilter}
-          onSearchChange={setSearchQuery}
           onToggleSeries={toggleSeries}
           onHoverSeries={setHoveredSeries}
         />
@@ -200,4 +212,4 @@ export function TicketsSeasonMatchDynamicsWidget({
       </CardContent>
     </Card>
   );
-}
+});

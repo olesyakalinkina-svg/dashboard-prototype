@@ -41,7 +41,6 @@ export type PriceZone =
   | "D3"
   | "D4"
   | "VIP";
-export type PriceZoneGroup = "A" | "B" | "C" | "D" | "VIP";
 export type OrderSource = "box_office" | "official_site" | "yandex_afisha";
 export type TimeGrouping = "day" | "week" | "month" | "quarter";
 
@@ -251,6 +250,17 @@ export type DashboardTab = "subscriptions" | "tickets" | "merch" | "matches";
 
 export type SubscriptionStatus = "active" | "expired" | "fully_used" | "cancelled";
 
+export type SeasonTicketCampaignStatus = "upcoming" | "active" | "completed";
+
+export type SeasonTicketCampaign = {
+  id: string;
+  seasonId: string;
+  seasonName: string;
+  startDate: string;
+  endDate: string | null;
+  status: SeasonTicketCampaignStatus;
+};
+
 export type SubscriptionPlan = {
   id: string;
   code: string;
@@ -263,6 +273,7 @@ export type Subscription = {
   id: string;
   planId: string;
   planName: string;
+  customerId: string;
   purchasedAt: Date;
   validTo: Date;
   price: number;
@@ -276,6 +287,14 @@ export type Subscription = {
   arena: ArenaId;
   ticketType: TicketType;
   priceZone: PriceZone;
+};
+
+/** One abonement use at a home match (does not carry subscription purchase revenue). */
+export type SubscriptionRedemption = {
+  id: string;
+  subscriptionId: string;
+  matchId: string;
+  redeemedAt: Date;
 };
 
 export type SubscriptionPlanStat = {
@@ -332,13 +351,6 @@ export type TicketMatchCumulativeSeries = {
   points: TicketMatchCumulativePoint[];
   seriesRole?: TicketMatchCumulativeSeriesRole;
 };
-
-export type TicketsSeasonMatchQuickFilter =
-  | "all"
-  | "on_sale"
-  | "completed"
-  | "met_plan"
-  | "missed_plan";
 
 export type TicketsSeasonMatchStatus = "behind" | "on_track" | "ahead";
 
@@ -401,12 +413,6 @@ export type TicketsSalesChannelTrendPoint = {
   channels: Record<OrderSource, number>;
 };
 
-export type TicketsPriceZoneTrendPoint = {
-  period: string;
-  sortKey: number;
-  groups: Record<PriceZoneGroup, number>;
-};
-
 export type MerchProductCategoryPoint = {
   category: string;
   categoryKey: MerchProductCategory;
@@ -443,6 +449,8 @@ export type TicketsKpiData = {
   loyaltyDiscountChange: number;
   fillRate: number;
   planCompletionPct: number;
+  planTicketsSold: number;
+  planFactTicketsSold: number;
   revenueToday: number;
   ticketsToday: number;
   revenueSparkline: number[];
@@ -473,6 +481,8 @@ export type SubscriptionsSeasonComparison = {
   previousSeason: string;
   revenueChange: number;
   soldChange: number;
+  uniqueCustomersChange: number;
+  avgCheckChange: number;
 };
 
 export type SubscriptionsKpiData = {
@@ -480,8 +490,10 @@ export type SubscriptionsKpiData = {
   revenueChange: number;
   sold: number;
   soldChange: number;
-  avgUtilization: number;
-  activeCount: number;
+  uniqueCustomers: number;
+  uniqueCustomersChange: number;
+  avgCheck: number;
+  avgCheckChange: number;
   revenueSparkline: number[];
   soldSparkline: number[];
   seasonComparison?: SubscriptionsSeasonComparison;
@@ -527,13 +539,6 @@ export type TicketTypeSalesPoint = {
   tickets: number;
   revenue: number;
   share: number;
-};
-
-export type PriceZoneSalesPoint = {
-  zone: PriceZone;
-  label: string;
-  tickets: number;
-  revenue: number;
 };
 
 export type OrderSourceSalesPoint = {

@@ -34,7 +34,10 @@ describe("filter coverage — tickets tab", () => {
   );
 
   it("documents intentional exclusions", () => {
-    expect(excludedCases(cases)).toHaveLength(0);
+    const excluded = excludedCases(cases);
+    expect(excluded).toHaveLength(1);
+    expect(excluded[0]?.filter).toBe("arena");
+    expect(excluded[0]?.option).toBe("Второстепенная");
   });
 });
 
@@ -75,7 +78,12 @@ describe("filter coverage — subscriptions tab", () => {
   );
 
   it("documents intentional exclusions", () => {
-    expect(excludedCases(cases)).toHaveLength(0);
+    const excluded = excludedCases(cases);
+    expect(excluded).toHaveLength(2);
+    expect(excluded.map((testCase) => testCase.filter).sort()).toEqual([
+      "arena",
+      "priceZone",
+    ]);
   });
 });
 
@@ -90,7 +98,10 @@ describe("filter coverage — match sales tab", () => {
   );
 
   it("documents intentional exclusions", () => {
-    expect(excludedCases(cases)).toHaveLength(0);
+    const excluded = excludedCases(cases);
+    expect(excluded).toHaveLength(1);
+    expect(excluded[0]?.filter).toBe("arena");
+    expect(excluded[0]?.option).toBe("Второстепенная");
   });
 });
 

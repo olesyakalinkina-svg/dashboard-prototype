@@ -183,7 +183,7 @@ export function MatchSalesKpiCards({
         {...kpiProps}
       />
       <KpiCard
-        title="Заполняемость"
+        title="Заполняемость (вся билетная масса/вместимость)"
         value={formatPercent(matchSalesKpis.fillRate)}
         change={sc?.fillRateChange}
         hideTrend={!showSeasonComparison}
@@ -215,7 +215,7 @@ export function TabKpiCards({
     const seasonChangeLabel = sc ? `к сезону ${sc.previousSeason}` : undefined;
 
     return (
-      <div className="grid min-w-0 grid-cols-1 gap-3 min-[480px]:grid-cols-2 md:gap-4">
+      <div className="grid min-w-0 grid-cols-1 gap-3 min-[480px]:grid-cols-2 md:gap-4 lg:grid-cols-4">
         <KpiCard
           title="Выручка"
           value={formatCurrency(subscriptionsKpis.revenue)}
@@ -226,9 +226,25 @@ export function TabKpiCards({
           hideTrend={!showSeasonComparison}
         />
         <KpiCard
-          title="Продано"
+          title="Абонементов продано (шт)"
           value={formatNumber(subscriptionsKpis.sold)}
           change={sc?.soldChange}
+          changeLabel={seasonChangeLabel}
+          hideTrend={!showSeasonComparison}
+        />
+        <KpiCard
+          title="Уникальные покупатели"
+          value={formatNumber(subscriptionsKpis.uniqueCustomers)}
+          change={sc?.uniqueCustomersChange}
+          changeLabel={seasonChangeLabel}
+          hideTrend={!showSeasonComparison}
+        />
+        <KpiCard
+          title="Средний чек"
+          value={formatCurrency(subscriptionsKpis.avgCheck)}
+          compactCurrency
+          rawCurrencyValue={subscriptionsKpis.avgCheck}
+          change={sc?.avgCheckChange}
           changeLabel={seasonChangeLabel}
           hideTrend={!showSeasonComparison}
         />
@@ -237,9 +253,13 @@ export function TabKpiCards({
   }
 
   if (tab === "tickets") {
-    const sc = ticketsKpis.seasonComparison;
-    const showSeasonComparison = Boolean(sc);
-    const seasonChangeLabel = sc ? `к сезону ${sc.previousSeason}` : undefined;
+    const ticketsPlanCompletionPct = ticketsKpis.planCompletionPct;
+    const ticketsSoldPlanChange =
+      ticketsKpis.planTicketsSold > 0
+        ? ((ticketsKpis.planFactTicketsSold - ticketsKpis.planTicketsSold) /
+            ticketsKpis.planTicketsSold) *
+          100
+        : 0;
 
     return (
       <div className="grid min-w-0 grid-cols-1 gap-3 min-[480px]:grid-cols-2 md:gap-4 lg:grid-cols-4">
@@ -248,47 +268,34 @@ export function TabKpiCards({
           value={formatCurrency(ticketsKpis.revenue)}
           compactCurrency
           rawCurrencyValue={ticketsKpis.revenue}
-          change={sc?.revenueChange}
-          changeLabel={seasonChangeLabel}
-          hideTrend={!showSeasonComparison}
-        />
-        <KpiCard
-          title="Выполнение плана"
-          value={formatPercent(ticketsKpis.planCompletionPct)}
-          change={sc?.planCompletionChange}
-          changeLabel={seasonChangeLabel}
-          hideTrend={!showSeasonComparison}
+          change={ticketsPlanCompletionPct - 100}
+          changeLabel="к плану"
+          hideTrend={false}
         />
         <KpiCard
           title="Проданные билеты"
           value={formatNumber(ticketsKpis.ticketsSold)}
-          change={sc?.ticketsChange}
-          changeLabel={seasonChangeLabel}
-          hideTrend={!showSeasonComparison}
+          change={ticketsSoldPlanChange}
+          changeLabel="к плану"
+          hideTrend={false}
         />
         <KpiCard
           title="Средняя цена"
           value={formatCurrency(ticketsKpis.avgPrice)}
           compactCurrency
           rawCurrencyValue={ticketsKpis.avgPrice}
-          change={sc?.avgPriceChange}
-          changeLabel={seasonChangeLabel}
-          hideTrend={!showSeasonComparison}
+          hideTrend
         />
         <KpiCard
           title="Скидка программы лояльности"
           value={formatPercent(ticketsKpis.loyaltyDiscountPct)}
-          change={sc?.loyaltyDiscountPctChange}
-          changeLabel={seasonChangeLabel}
-          hideTrend={!showSeasonComparison}
+          hideTrend
         />
         <KpiCard
-          title="Заполняемость"
+          title="Заполняемость (вся билетная масса/вместимость)"
           value={formatPercent(ticketsKpis.fillRate)}
           subtitle="Купленные и бесплатные билеты"
-          change={sc?.fillRateChange}
-          changeLabel={seasonChangeLabel}
-          hideTrend={!showSeasonComparison}
+          hideTrend
         />
         <KpiCard
           title="Выручка сегодня"

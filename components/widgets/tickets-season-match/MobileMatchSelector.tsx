@@ -7,12 +7,8 @@ import { Button } from "@/components/ui/Button";
 import {
   SEASON_MATCH_COMPARISON_LEGEND_LABEL,
   SEASON_MATCH_PLAN_LEGEND_LABEL,
-  SEASON_MATCH_QUICK_FILTERS,
 } from "@/lib/tickets-season-match-chart";
-import type {
-  TicketsSeasonMatchQuickFilter,
-  TicketsSeasonMatchSeriesView,
-} from "@/types/dashboard";
+import type { TicketsSeasonMatchSeriesView } from "@/types/dashboard";
 
 const VISIBLE_CHIP_LINES = 4;
 
@@ -20,20 +16,12 @@ export function MobileMatchSelector({
   views,
   hiddenSeries,
   hoveredSeries,
-  quickFilter,
-  searchQuery,
-  onQuickFilterChange,
-  onSearchChange,
   onToggleSeries,
   onHoverSeries,
 }: {
   views: TicketsSeasonMatchSeriesView[];
   hiddenSeries: Set<string>;
   hoveredSeries: string | null;
-  quickFilter: TicketsSeasonMatchQuickFilter;
-  searchQuery: string;
-  onQuickFilterChange: (value: TicketsSeasonMatchQuickFilter) => void;
-  onSearchChange: (value: string) => void;
   onToggleSeries: (matchId: string) => void;
   onHoverSeries: (matchId: string | null) => void;
 }) {
@@ -62,24 +50,6 @@ export function MobileMatchSelector({
   return (
     <>
       <div className="mt-3 border-t border-[var(--border)] pt-3 md:hidden">
-        <div className="mb-2 flex flex-wrap gap-1.5">
-          {SEASON_MATCH_QUICK_FILTERS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => onQuickFilterChange(option.value)}
-              className={clsx(
-                "rounded-full border px-2.5 py-1 text-[10px] font-medium transition-colors",
-                quickFilter === option.value
-                  ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
-                  : "border-[var(--border)] bg-white text-[var(--muted)]",
-              )}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-
         <div className="flex flex-wrap gap-1.5">
           {previewViews.map((view) => {
             const isHidden = hiddenSeries.has(view.matchId);
@@ -162,32 +132,6 @@ export function MobileMatchSelector({
             </div>
 
             <div className="space-y-3 overflow-y-auto px-4 py-3">
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={(event) => onSearchChange(event.target.value)}
-                placeholder="Поиск соперника"
-                className="w-full rounded-md border border-[var(--border)] bg-white px-2.5 py-2 text-xs"
-              />
-
-              <div className="flex flex-wrap gap-1.5">
-                {SEASON_MATCH_QUICK_FILTERS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => onQuickFilterChange(option.value)}
-                    className={clsx(
-                      "rounded-full border px-2.5 py-1 text-[10px] font-medium",
-                      quickFilter === option.value
-                        ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
-                        : "border-[var(--border)] text-[var(--muted)]",
-                    )}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-
               <div className="flex flex-wrap gap-1.5">
                 {views.map((view) => {
                   const isHidden = hiddenSeries.has(view.matchId);

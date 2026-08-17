@@ -24,7 +24,10 @@ export {
 export {
   getMatchById,
   getMatches,
+  getMerchTransactions,
+  getSubscriptionRedemptions,
   getSubscriptions,
+  getTicketTransactionsByMatchId,
   getTransactions,
   initMockDataSync,
   isMockDataReady,
@@ -124,10 +127,10 @@ export function getMatchLabel(matchId: string): string {
 }
 
 export const subscriptionPlans: SubscriptionPlan[] = [
-  { id: "plan-1", code: "SUB-5-A", name: "Абонемент на 5 матчей (сектор A)", matchCount: 5, price: 10000 },
-  { id: "plan-2", code: "SUB-5-B", name: "Абонемент на 5 матчей (сектор B)", matchCount: 5, price: 7500 },
-  { id: "plan-3", code: "SUB-10-A", name: "Абонемент на 10 матчей", matchCount: 10, price: 18000 },
-  { id: "plan-4", code: "SUB-SEASON", name: "Сезонный абонемент", matchCount: 30, price: 85000 },
-  { id: "plan-5", code: "SUB-VIP", name: "VIP-сезонный абонемент", matchCount: 30, price: 250000 },
-  { id: "plan-6", code: "SUB-STUD", name: "Студенческий абонемент", matchCount: 10, price: 6000 },
+  { id: "plan-1", code: "SUB-5-A", name: "Абонемент на 5 матчей (сектор A)", matchCount: 5, price: 6500 },
+  { id: "plan-2", code: "SUB-5-B", name: "Абонемент на 5 матчей (сектор B)", matchCount: 5, price: 4875 },
+  { id: "plan-3", code: "SUB-10-A", name: "Абонемент на 10 матчей", matchCount: 10, price: 11700 },
+  { id: "plan-4", code: "SUB-SEASON", name: "Сезонный абонемент", matchCount: 30, price: 55250 },
+  { id: "plan-5", code: "SUB-VIP", name: "VIP-сезонный абонемент", matchCount: 30, price: 162500 },
+  { id: "plan-6", code: "SUB-STUD", name: "Студенческий абонемент", matchCount: 10, price: 3900 },
 ];

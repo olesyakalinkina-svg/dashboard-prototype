@@ -8,7 +8,7 @@ export const SEASON_START = new Date(2025, 8, 1);
 export const SEASON_END = new Date(2026, 4, 31);
 export const MOCK_TODAY = new Date(2026, 4, 15);
 export const SUBSCRIPTIONS_PERIOD_START = new Date(2025, 7, 25);
-export const SUBSCRIPTIONS_PERIOD_END = new Date(2025, 8, 14);
+export const SUBSCRIPTIONS_PERIOD_END = new Date(2025, 8, 15);
 
 function getMatchDate(
   index: number,

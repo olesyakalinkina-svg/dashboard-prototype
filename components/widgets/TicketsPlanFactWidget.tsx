@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import {
   CartesianGrid,
   Legend,
@@ -16,19 +16,17 @@ import {
   getMerchTrendPeriodLabel,
   getMerchTrendXAxisProps,
 } from "@/components/widgets/Charts";
-import { useFilterState } from "@/context/FilterContext";
-import { ChartScrollContainer } from "@/components/charts/ChartScrollContainer";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import type { PlanFactTrendPoint, TimeGrouping } from "@/types/dashboard";
 import {
   ChartZoomHint,
   ChartZoomReferenceArea,
   ChartZoomResetButton,
   CHART_ZOOM_SURFACE_CLASS,
 } from "@/components/charts/ChartZoom";
+import { ChartScrollContainer } from "@/components/charts/ChartScrollContainer";
 import { useChartAreaZoom } from "@/hooks/useChartAreaZoom";
 import { formatCurrency } from "@/lib/format";
-import { getEffectiveTicketTimeGrouping } from "@/lib/ticket-filter-options";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import type { PlanFactTrendPoint } from "@/types/dashboard";
 
 const COLORS = {
   plan: "#8B8B8E",
@@ -57,13 +55,13 @@ function PlanFactTooltip({
   );
 }
 
-export function TicketsPlanFactWidget({
+export const TicketsPlanFactWidget = memo(function TicketsPlanFactWidget({
   data,
+  timeGrouping,
 }: {
   data: PlanFactTrendPoint[];
+  timeGrouping: TimeGrouping;
 }) {
-  const { ticketFilters } = useFilterState();
-  const timeGrouping = getEffectiveTicketTimeGrouping(ticketFilters);
 
   const chartData = useMemo(
     () =>
@@ -96,7 +94,7 @@ export function TicketsPlanFactWidget({
       <CardContent className="flex min-w-0 flex-1 flex-col">
         <ChartScrollContainer
           className={clsx(
-            "min-h-[280px] flex-1 sm:min-h-[360px]",
+            "h-[280px] sm:h-[360px]",
             CHART_ZOOM_SURFACE_CLASS,
           )}
         >
@@ -141,5 +139,5 @@ export function TicketsPlanFactWidget({
       </CardContent>
     </Card>
   );
-}
+});
 

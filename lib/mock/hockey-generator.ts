@@ -11,12 +11,22 @@ import type {
   SalesChannel,
   Subscription,
   SubscriptionPlan,
+  SubscriptionRedemption,
   TicketType,
   Transaction,
   TicketSalesProfile,
   TicketSalesTempo,
 } from "@/types/dashboard";
 import { ALL_PRICE_ZONES } from "@/lib/ticket-filter-options";
+import {
+  getPreviousCampaignConfig,
+  getSeasonTicketCampaignConfigs,
+} from "@/lib/subscription-campaign/campaigns";
+import {
+  getCampaignDayNumber,
+  parseCalendarDate,
+  toCalendarDateKey,
+} from "@/lib/subscription-campaign/dates";
 import {
   COMPLETED_MATCH_OVERLAP_COUNT,
   TICKET_SALES_WINDOW_MAX_DAYS,
@@ -49,7 +59,7 @@ export const SEASON_START = new Date(2025, 8, 1);
 export const SEASON_END = new Date(2026, 4, 31);
 export const MOCK_TODAY = new Date(2026, 4, 15);
 export const SUBSCRIPTIONS_PERIOD_START = new Date(2025, 7, 25);
-export const SUBSCRIPTIONS_PERIOD_END = new Date(2025, 8, 14);
+export const SUBSCRIPTIONS_PERIOD_END = new Date(2025, 8, 15);
 /** Playoff stage = final 60 calendar days of each season (inclusive). */
 export const PLAYOFF_WINDOW_DAYS = 60;
 
@@ -582,7 +592,6 @@ const CURRENT_SEASON_KHL_MATCH_DATES: Record<string, Date> = {
   "Трактор": new Date(2025, 9, 29),
   "Металлург": new Date(2025, 10, 7),
   "Салават Юлаев": new Date(2025, 11, 1),
-  "Динамо Мск": new Date(2026, 4, 15),
 };
 
 function applyCurrentSeasonKhlMatchDates(matches: Match[]): void {
@@ -597,6 +606,46 @@ function applyCurrentSeasonKhlMatchDates(matches: Match[]): void {
     if (!match.eventCompleted) {
       match.attendance = 0;
     }
+  }
+}
+
+/**
+ * Upcoming playoff demo: two Динамо Мск home games on different dates.
+ * match-16 (originally Shanghai) becomes Динамо Мск on 17.05.2026;
+ * match-15 stays Динамо Мск on 15.05.2026.
+ */
+function applyUpcomingDynamoPlayoffDates(matches: Match[]): void {
+  const season = "2025/26";
+  const isCurrentKhl = (match: Match) =>
+    match.season === season && match.league === "KHL";
+
+  const match16 = matches.find(
+    (match) => isCurrentKhl(match) && match.id === "match-16",
+  );
+  const match15 = matches.find(
+    (match) => isCurrentKhl(match) && match.id === "match-15",
+  );
+
+  if (match16) {
+    match16.opponent = "Динамо Мск";
+    match16.date = startOfDay(new Date(2026, 4, 17));
+    match16.eventCompleted = isEventCompleted(match16.date);
+    if (!match16.eventCompleted) {
+      match16.attendance = 0;
+    }
+    match16.matchClass = "playoff";
+    match16.tournamentStage = "playoff";
+  }
+
+  if (match15) {
+    match15.opponent = "Динамо Мск";
+    match15.date = startOfDay(new Date(2026, 4, 15));
+    match15.eventCompleted = isEventCompleted(match15.date);
+    if (!match15.eventCompleted) {
+      match15.attendance = 0;
+    }
+    match15.matchClass = "playoff";
+    match15.tournamentStage = "playoff";
   }
 }
 
@@ -653,8 +702,9 @@ function generateMatches(): Match[] {
   applyTournamentStages(allMatches);
   alignCompletedMatchSalesWindows(allMatches);
   alignNearestUpcomingMatchSalesWindows(allMatches);
-  applyTicketChartDemoProfiles(allMatches);
   applyCurrentSeasonKhlMatchDates(allMatches);
+  applyUpcomingDynamoPlayoffDates(allMatches);
+  applyTicketChartDemoProfiles(allMatches);
   return allMatches;
 }
 
@@ -738,22 +788,31 @@ function applyTicketChartDemoProfiles(matches: Match[]): void {
         otherCompletedKhlProfiles[index % otherCompletedKhlProfiles.length];
     });
 
-  const upcomingKhl = matches
-    .filter((match) => match.league === "KHL" && !match.eventCompleted)
-    .sort((left, right) => left.date.getTime() - right.date.getTime());
+  const inSaleDemoMatch = matches.find(
+    (match) =>
+      match.id === "match-16" &&
+      match.season === "2025/26" &&
+      match.league === "KHL",
+  );
+  const secondUpcomingDemoMatch = matches.find(
+    (match) =>
+      match.id === "match-15" &&
+      match.season === "2025/26" &&
+      match.league === "KHL",
+  );
 
-  if (upcomingKhl[0]) {
+  if (inSaleDemoMatch) {
     // In-sale demo: sales window opens before MOCK_TODAY so presale txs exist
     // through mock today (partial curve; match still upcoming).
-    upcomingKhl[0].date = startOfDay(new Date(2026, 4, 25));
-    upcomingKhl[0].ticketSalesWindowDays = TICKET_SALES_WINDOW_MAX_DAYS;
-    upcomingKhl[0].ticketSalesProfile = {
+    inSaleDemoMatch.date = startOfDay(new Date(2026, 4, 17));
+    inSaleDemoMatch.ticketSalesWindowDays = TICKET_SALES_WINDOW_MAX_DAYS;
+    inSaleDemoMatch.ticketSalesProfile = {
       fulfillmentFactor: 0.88,
       tempo: "steady",
     };
   }
-  if (upcomingKhl[1]) {
-    upcomingKhl[1].ticketSalesProfile = {
+  if (secondUpcomingDemoMatch) {
+    secondUpcomingDemoMatch.ticketSalesProfile = {
       fulfillmentFactor: 1.03,
       tempo: "front_loaded",
     };
@@ -1187,13 +1246,14 @@ function generateTransactions(allMatches: Match[]): Transaction[] {
   return transactions.sort((a, b) => b.date.getTime() - a.date.getTime());
 }
 
+/** Catalog prices are 35% below the previous mock so average check drops by 35%. */
 const subscriptionPlans: SubscriptionPlan[] = [
-  { id: "plan-1", code: "SUB-5-A", name: "Абонемент на 5 матчей (сектор A)", matchCount: 5, price: 10000 },
-  { id: "plan-2", code: "SUB-5-B", name: "Абонемент на 5 матчей (сектор B)", matchCount: 5, price: 7500 },
-  { id: "plan-3", code: "SUB-10-A", name: "Абонемент на 10 матчей", matchCount: 10, price: 18000 },
-  { id: "plan-4", code: "SUB-SEASON", name: "Сезонный абонемент", matchCount: 30, price: 85000 },
-  { id: "plan-5", code: "SUB-VIP", name: "VIP-сезонный абонемент", matchCount: 30, price: 250000 },
-  { id: "plan-6", code: "SUB-STUD", name: "Студенческий абонемент", matchCount: 10, price: 6000 },
+  { id: "plan-1", code: "SUB-5-A", name: "Абонемент на 5 матчей (сектор A)", matchCount: 5, price: 6500 },
+  { id: "plan-2", code: "SUB-5-B", name: "Абонемент на 5 матчей (сектор B)", matchCount: 5, price: 4875 },
+  { id: "plan-3", code: "SUB-10-A", name: "Абонемент на 10 матчей", matchCount: 10, price: 11700 },
+  { id: "plan-4", code: "SUB-SEASON", name: "Сезонный абонемент", matchCount: 30, price: 55250 },
+  { id: "plan-5", code: "SUB-VIP", name: "VIP-сезонный абонемент", matchCount: 30, price: 162500 },
+  { id: "plan-6", code: "SUB-STUD", name: "Студенческий абонемент", matchCount: 10, price: 3900 },
 ];
 
 type SeasonSubscriptionQuota = {
@@ -1300,6 +1360,12 @@ function ensureSubscriptionPriceZoneCoverage(
   return id;
 }
 
+/** ~80% unique buyers: some fans purchase more than one subscription. */
+function customerIdForSubscription(id: number): string {
+  const customerNum = Math.max(1, Math.floor((id - 1) * 4 / 5) + 1);
+  return `cust-${customerNum}`;
+}
+
 function buildSubscription(
   id: number,
   plan: SubscriptionPlan,
@@ -1332,6 +1398,7 @@ function buildSubscription(
     id: `sub-${id}`,
     planId: plan.id,
     planName: plan.name,
+    customerId: customerIdForSubscription(id),
     purchasedAt,
     validTo,
     price: plan.price,
@@ -1410,9 +1477,64 @@ function generateSubscriptions(allMatches: Match[]): Subscription[] {
   }
 
   id = ensureSubscriptionPriceZoneCoverage(subs, allMatches, id);
-  ensureCriticalSubscriptionCombos(subs, allMatches, id);
+  id = ensureCriticalSubscriptionCombos(subs, allMatches, id);
+  ensureDefaultSeasonSoldCount(subs, allMatches, id);
+  id = seedCampaignPaceSubscriptions(subs, allMatches, id);
 
   return subs.sort((a, b) => b.purchasedAt.getTime() - a.purchasedAt.getTime());
+}
+
+/** Default 2025/26 filter view should show this many sold subscriptions. */
+const TARGET_DEFAULT_SEASON_SOLD = 85;
+
+/**
+ * Top up 2025/26 default-window sales to TARGET_DEFAULT_SEASON_SOLD.
+ * Extra rows reuse the existing default-filter plan mix so average check
+ * stays at catalog scale (0.65× previous prices) rather than drifting.
+ */
+function ensureDefaultSeasonSoldCount(
+  subs: Subscription[],
+  allMatches: Match[],
+  startId: number,
+): void {
+  const seasonMatches = allMatches.filter((match) => match.season === "2025/26");
+  const regularMatch =
+    seasonMatches.find((match) => match.tournamentStage === "regular") ??
+    seasonMatches[0];
+  if (!regularMatch) return;
+
+  const defaultSubs = subs.filter((sub) =>
+    subscriptionPassesDefaultSeasonFilter(sub, allMatches),
+  );
+  if (defaultSubs.length === 0) return;
+  if (defaultSubs.length >= TARGET_DEFAULT_SEASON_SOLD) return;
+
+  const planById = new Map(subscriptionPlans.map((plan) => [plan.id, plan]));
+  const needed = TARGET_DEFAULT_SEASON_SOLD - defaultSubs.length;
+  let id = startId;
+
+  for (let extraIndex = 0; extraIndex < needed; extraIndex += 1) {
+    const templateIndex = Math.floor(
+      (extraIndex * defaultSubs.length) / needed,
+    );
+    const template = defaultSubs[templateIndex];
+    const plan = planById.get(template.planId) ?? SEED_SUBSCRIPTION_PLAN;
+    const purchasedAt = randomDateInSeasonRange(
+      SUBSCRIPTIONS_PERIOD_START,
+      SUBSCRIPTIONS_PERIOD_END,
+    );
+    const extra = buildSubscription(
+      id++,
+      plan,
+      regularMatch,
+      purchasedAt,
+      "regular",
+    );
+    extra.price = template.price;
+    extra.planId = template.planId;
+    extra.planName = template.planName;
+    subs.push(extra);
+  }
 }
 
 /** Ensures rare but tested filter combinations have at least one subscription. */
@@ -1420,19 +1542,26 @@ function ensureCriticalSubscriptionCombos(
   subs: Subscription[],
   allMatches: Match[],
   startId: number,
-): void {
+): number {
   const hasCombo = subs.some(
     (sub) =>
       sub.season === "2024/25" &&
       sub.league === "VHL" &&
-      sub.ticketType === "parking",
+      sub.ticketType === "parking" &&
+      (sub.tournamentStage === "playoff"
+        ? isInPlayoffSubscriptionSalesWindow(
+            sub.purchasedAt,
+            sub.season,
+            allMatches,
+          )
+        : isInRegularSubscriptionSalesWindow(sub.purchasedAt)),
   );
-  if (hasCombo) return;
+  if (hasCombo) return startId;
 
   const vhlMatch = allMatches.find(
     (match) => match.season === "2024/25" && match.league === "VHL",
   );
-  if (!vhlMatch) return;
+  if (!vhlMatch) return startId;
 
   subs.push(
     buildSubscription(
@@ -1445,15 +1574,228 @@ function ensureCriticalSubscriptionCombos(
       "parking",
     ),
   );
+  return startId + 1;
+}
+
+function getSellableCampaignDays(
+  totalDays: number,
+  emptyDays: ReadonlySet<number>,
+): number[] {
+  const days: number[] = [];
+  for (let day = 1; day <= totalDays; day += 1) {
+    if (!emptyDays.has(day)) days.push(day);
+  }
+  return days.length > 0 ? days : [Math.max(1, totalDays)];
+}
+
+function assignPurchasedAtAlongCampaign(
+  items: Subscription[],
+  campaignStart: Date,
+  sellableDays: number[],
+): void {
+  const total = items.length;
+  for (let index = 0; index < items.length; index += 1) {
+    const t = total <= 1 ? 0 : index / (total - 1);
+    const biased = Math.pow(t, 1.35);
+    const dayIndex = Math.min(
+      sellableDays.length - 1,
+      Math.floor(biased * sellableDays.length),
+    );
+    items[index].purchasedAt = addDays(
+      campaignStart,
+      sellableDays[dayIndex] - 1,
+    );
+  }
+}
+
+/**
+ * Spreads (and, for older seasons, adds) purchases across each campaign
+ * calendar so pace charts are not flat. Empty early days stay on the axis.
+ */
+function seedCampaignPaceSubscriptions(
+  subs: Subscription[],
+  allMatches: Match[],
+  startId: number,
+): number {
+  const campaigns = getSeasonTicketCampaignConfigs();
+  const dashboardStartKey = toCalendarDateKey(SUBSCRIPTIONS_PERIOD_START);
+  let id = startId;
+
+  for (const campaign of campaigns) {
+    if (!campaign.endDate) continue;
+    const start = parseCalendarDate(campaign.startDate);
+    const end = parseCalendarDate(campaign.endDate);
+    if (end < start) continue;
+
+    const asOf = startOfDay(MOCK_TODAY);
+    if (asOf < start) continue;
+
+    const lastInclusive = end < asOf ? end : asOf;
+    const totalDays = getCampaignDayNumber(lastInclusive, start);
+    const emptyDays = new Set<number>([1, 2]);
+    if (totalDays >= 8) emptyDays.add(8);
+    const sellableDays = getSellableCampaignDays(totalDays, emptyDays);
+
+    const existing = subs.filter((sub) => {
+      if (sub.season !== campaign.seasonId) return false;
+      if (sub.tournamentStage !== "regular") return false;
+      const day = getCampaignDayNumber(sub.purchasedAt, campaign.startDate);
+      return day >= 1 && day <= totalDays;
+    });
+
+    const isDashboardCampaign = campaign.startDate === dashboardStartKey;
+
+    if (existing.length > 0) {
+      assignPurchasedAtAlongCampaign(existing, start, sellableDays);
+    }
+
+    if (isDashboardCampaign) continue;
+
+    const templateMatch =
+      allMatches.find(
+        (match) =>
+          match.season === campaign.seasonId &&
+          match.tournamentStage === "regular",
+      ) ??
+      allMatches.find((match) => match.tournamentStage === "regular") ??
+      allMatches[0];
+    if (!templateMatch) continue;
+
+    const targetCount = totalDays <= 18 ? 48 : 72;
+    const needed = Math.max(0, targetCount - existing.length);
+    if (needed === 0) continue;
+
+    const created: Subscription[] = [];
+    for (let index = 0; index < needed; index += 1) {
+      const plan = randomPick(subscriptionPlans);
+      const next = buildSubscription(
+        id++,
+        plan,
+        templateMatch,
+        start,
+        "regular",
+      );
+      next.season = campaign.seasonId;
+      created.push(next);
+      subs.push(next);
+    }
+
+    assignPurchasedAtAlongCampaign(created, start, sellableDays);
+
+    if (created.length >= 4) {
+      created[1].customerId = created[0].customerId;
+      created[1].purchasedAt = created[0].purchasedAt;
+    }
+  }
+
+  const dashboardCampaign = campaigns.find(
+    (campaign) => campaign.startDate === dashboardStartKey,
+  );
+  const previousCampaign = dashboardCampaign
+    ? getPreviousCampaignConfig(dashboardCampaign.seasonId, campaigns)
+    : null;
+  const cancelledTemplate =
+    (previousCampaign
+      ? allMatches.find((match) => match.season === previousCampaign.seasonId)
+      : null) ?? allMatches[0];
+  if (cancelledTemplate && previousCampaign) {
+    const cancelled = buildSubscription(
+      id++,
+      SEED_SUBSCRIPTION_PLAN,
+      cancelledTemplate,
+      parseCalendarDate(previousCampaign.startDate),
+      "regular",
+    );
+    cancelled.season = previousCampaign.seasonId;
+    cancelled.status = "cancelled";
+    cancelled.purchasedAt = addDays(
+      parseCalendarDate(previousCampaign.startDate),
+      2,
+    );
+    subs.push(cancelled);
+  }
+
+  return id;
+}
+
+function pickEvenlySpaced<T>(items: T[], count: number): T[] {
+  if (count <= 0 || items.length === 0) return [];
+  if (count >= items.length) return items.slice();
+
+  const selected: T[] = [];
+  const used = new Set<number>();
+  for (let i = 0; i < count; i++) {
+    let idx = Math.round((i * (items.length - 1)) / Math.max(count - 1, 1));
+    while (used.has(idx) && used.size < items.length) {
+      idx = (idx + 1) % items.length;
+    }
+    used.add(idx);
+    selected.push(items[idx]);
+  }
+  return selected;
+}
+
+function eligibleMatchesForSubscription(
+  sub: Subscription,
+  allMatches: Match[],
+): Match[] {
+  return allMatches
+    .filter(
+      (match) =>
+        match.season === sub.season &&
+        match.league === sub.league &&
+        match.arena === sub.arena &&
+        match.tournamentStage === sub.tournamentStage &&
+        match.date >= sub.purchasedAt &&
+        match.date <= MOCK_TODAY,
+    )
+    .sort((left, right) => left.date.getTime() - right.date.getTime());
+}
+
+export function generateSubscriptionRedemptions(
+  subscriptions: Subscription[],
+  allMatches: Match[],
+): SubscriptionRedemption[] {
+  const redemptions: SubscriptionRedemption[] = [];
+  let id = 1;
+  const uniqueSubs = [
+    ...new Map(subscriptions.map((sub) => [sub.id, sub])).values(),
+  ];
+
+  for (const sub of uniqueSubs) {
+    if (sub.status === "cancelled") continue;
+
+    const usedCount = Math.min(sub.matchesUsed, sub.matchesTotal);
+    if (usedCount <= 0) continue;
+
+    const eligible = eligibleMatchesForSubscription(sub, allMatches);
+    const picked = pickEvenlySpaced(eligible, usedCount);
+
+    for (const match of picked) {
+      redemptions.push({
+        id: `redemption-${id++}`,
+        subscriptionId: sub.id,
+        matchId: match.id,
+        redeemedAt: match.date,
+      });
+    }
+  }
+
+  return redemptions;
 }
 
 export function generateMockData(): {
   matches: Match[];
   transactions: Transaction[];
   subscriptions: Subscription[];
+  subscriptionRedemptions: SubscriptionRedemption[];
 } {
   const matches = generateMatches();
   const transactions = generateTransactions(matches);
   const subscriptions = generateSubscriptions(matches);
-  return { matches, transactions, subscriptions };
+  const subscriptionRedemptions = generateSubscriptionRedemptions(
+    subscriptions,
+    matches,
+  );
+  return { matches, transactions, subscriptions, subscriptionRedemptions };
 }

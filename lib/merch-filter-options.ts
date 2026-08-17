@@ -134,7 +134,7 @@ export const DEFAULT_MERCH_ORDER_DATE_RANGE: MerchFilters["orderDateRange"] = {
 
 export const DEFAULT_MERCH_FILTERS: MerchFilters = {
   season: "2025/26",
-  league: "all",
+  league: "KHL",
   tournamentStage: "all",
   matchClass: "all",
   matchId: [],

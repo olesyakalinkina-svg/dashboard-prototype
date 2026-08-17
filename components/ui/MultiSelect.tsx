@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type MultiSelectOption = {
@@ -22,6 +22,13 @@ type MultiSelectProps = {
   applyOnClose?: boolean;
   /** When emptyMeansAll is true, value used to represent an explicit empty selection */
   noneValue?: string;
+  /**
+   * Exclusive option rendered first. Empty `value` means it is selected.
+   * Picking it clears other options; picking a regular option deselects it.
+   */
+  leadingExclusiveOption?: MultiSelectOption;
+  searchable?: boolean;
+  searchPlaceholder?: string;
 };
 
 function arraysEqual(a: string[], b: string[]): boolean {
@@ -31,6 +38,8 @@ function arraysEqual(a: string[], b: string[]): boolean {
   }
   return true;
 }
+
+const EMPTY_SELECTED_SET = new Set<string>();
 
 function isNoneSelection(value: string[], noneValue?: string): boolean {
   return Boolean(noneValue && value.length === 1 && value[0] === noneValue);
@@ -107,8 +116,12 @@ export function MultiSelect({
   emptyMeansAll = false,
   applyOnClose = false,
   noneValue,
+  leadingExclusiveOption,
+  searchable = false,
+  searchPlaceholder = "Поиск...",
 }: MultiSelectProps) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const [draftValue, setDraftValue] = useState(value);
   const rootRef = useRef<HTMLDivElement>(null);
   const valueRef = useRef(value);
@@ -126,8 +139,11 @@ export function MultiSelect({
   );
 
   const selectedSet = useMemo(
-    () => buildSelectedSet(activeValue, options, emptyMeansAll, noneValue),
-    [activeValue, options, emptyMeansAll, noneValue],
+    () =>
+      open
+        ? buildSelectedSet(activeValue, options, emptyMeansAll, noneValue)
+        : EMPTY_SELECTED_SET,
+    [open, activeValue, options, emptyMeansAll, noneValue],
   );
 
   const displayText = useMemo(
@@ -141,6 +157,11 @@ export function MultiSelect({
     [activeValue, options, emptyMeansAll, allSelectedLabel, emptyLabel, noneValue],
   );
 
+  const exclusiveSelected =
+    leadingExclusiveOption != null &&
+    !emptyMeansAll &&
+    activeValue.length === 0;
+
   const effectivelyAll = isEffectivelyAll(
     activeValue,
     options.length,
@@ -148,9 +169,17 @@ export function MultiSelect({
     noneValue,
   );
 
+  const visibleOptions = useMemo(() => {
+    if (!searchable) return options;
+    const query = search.trim().toLowerCase();
+    if (!query) return options;
+    return options.filter((opt) => opt.label.toLowerCase().includes(query));
+  }, [options, searchable, search]);
+
   useEffect(() => {
     if (!open) {
       setDraftValue(value);
+      setSearch("");
     }
   }, [value, open]);
 
@@ -187,7 +216,16 @@ export function MultiSelect({
     setOpen(true);
   }
 
+  function toggleExclusive() {
+    commitValue([]);
+  }
+
   function toggleOption(optionValue: string) {
+    if (exclusiveSelected) {
+      commitValue([optionValue]);
+      return;
+    }
+
     const isSelected = selectedSet.has(optionValue);
 
     if (isSelected) {
@@ -243,6 +281,35 @@ export function MultiSelect({
       </button>
       {open && (
         <div className="absolute left-0 top-full z-20 mt-1 max-h-64 w-full max-w-[min(100vw-2rem,320px)] overflow-y-auto rounded-md border border-[var(--border)] bg-white py-1 shadow-lg">
+          {searchable && (
+            <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-white px-2 py-1.5">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted)]" />
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  onClick={(event) => event.stopPropagation()}
+                  placeholder={searchPlaceholder}
+                  className="h-8 w-full rounded-md border border-[var(--border)] bg-white pl-7 pr-2 text-sm outline-none focus:border-[var(--accent)]"
+                />
+              </div>
+            </div>
+          )}
+          {leadingExclusiveOption && (
+            <>
+              <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--background)]">
+                <input
+                  type="checkbox"
+                  checked={exclusiveSelected}
+                  onChange={toggleExclusive}
+                  className="rounded border-[var(--border)]"
+                />
+                <span className="font-medium">{leadingExclusiveOption.label}</span>
+              </label>
+              <div className="my-1 border-t border-[var(--border)]" />
+            </>
+          )}
           <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--background)]">
             <input
               type="checkbox"
@@ -253,7 +320,7 @@ export function MultiSelect({
             <span className="font-medium">{selectAllLabel}</span>
           </label>
           <div className="my-1 border-t border-[var(--border)]" />
-          {options.map((opt) => (
+          {visibleOptions.map((opt) => (
             <label
               key={opt.value}
               className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--background)]"
