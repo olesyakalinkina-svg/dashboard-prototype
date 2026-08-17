@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useFilterData } from "@/context/FilterContext";
-import { waitForPaint } from "@/lib/idle";
 import {
   collectMatchSalesNodeIds,
   computeMatchSalesTree,
@@ -54,44 +53,19 @@ export function useMatchSalesTreeState(matchRows: MatchSalesRow[]) {
     expanded.length > 0 ||
     branchFilters ||
     localFilters.matchId.length > 0;
-  const [txs, setTxs] = useState<Transaction[]>(EMPTY_TRANSACTIONS);
 
-  useEffect(() => {
-    if (!needsTransactions) {
-      setTxs(EMPTY_TRANSACTIONS);
-      return;
+  const txs = useMemo(() => {
+    if (!needsTransactions) return EMPTY_TRANSACTIONS;
+    const matchIds = [
+      ...new Set([...expandedMatchIds, ...localFilters.matchId]),
+    ];
+    if (branchFilters && matchIds.length === 0) {
+      return getMatchSalesTreeTransactions(filters, ticketFilters);
     }
-
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        await waitForPaint();
-        if (cancelled) return;
-        const next =
-          branchFilters && localFilters.matchId.length === 0
-            ? getMatchSalesTreeTransactions(filters, ticketFilters)
-            : (() => {
-                const matchIds = [
-                  ...new Set([...expandedMatchIds, ...localFilters.matchId]),
-                ];
-                if (matchIds.length > 0) {
-                  return getMatchSalesTreeTransactions(
-                    filters,
-                    ticketFilters,
-                    matchIds,
-                  );
-                }
-                return getMatchSalesTreeTransactions(filters, ticketFilters);
-              })();
-        if (cancelled) return;
-        setTxs(next);
-      })();
-    }, 0);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
+    if (matchIds.length > 0) {
+      return getMatchSalesTreeTransactions(filters, ticketFilters, matchIds);
+    }
+    return EMPTY_TRANSACTIONS;
   }, [
     needsTransactions,
     branchFilters,
@@ -99,18 +73,6 @@ export function useMatchSalesTreeState(matchRows: MatchSalesRow[]) {
     localFilters.matchId,
     filters,
     ticketFilters,
-    ticketFilters.season,
-    ticketFilters.league,
-    ticketFilters.tournamentStage,
-    ticketFilters.matchClass,
-    ticketFilters.arena,
-    ticketFilters.eventCompleted,
-    ticketFilters.matchId,
-    ticketFilters.ticketType,
-    ticketFilters.priceZone,
-    ticketFilters.orderSource,
-    ticketFilters.transactionDateRange.from,
-    ticketFilters.transactionDateRange.to,
   ]);
 
   const options = useMemo(
