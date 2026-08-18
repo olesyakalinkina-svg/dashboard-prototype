@@ -38,12 +38,85 @@ export const ALL_PRICE_ZONES: PriceZone[] = [
   "from_4000_to_6000",
 ];
 
+export const NON_VIP_SECTORS: Sector[] = ALL_SECTORS.filter(
+  (sector): sector is Exclude<Sector, "VIP"> => sector !== "VIP",
+);
+
+export const NON_VIP_PRICE_ZONES: PriceZone[] = [
+  "up_to_1500",
+  "from_1500_to_2500",
+  "from_2500_to_4000",
+];
+
+export const VIP_PRICE_ZONES: PriceZone[] = ["from_4000_to_6000"];
+
 export const PRICE_ZONE_LABELS: Record<PriceZone, string> = {
   up_to_1500: "до 1500",
   from_1500_to_2500: "от 1500 до 2500",
   from_2500_to_4000: "от 2500 до 4000",
   from_4000_to_6000: "от 4000 до 6000",
 };
+
+/** Max unit price for ordinary sectors so they never enter 4000–6000. */
+export const NON_VIP_MAX_UNIT_PRICE = 3999;
+/** Inclusive VIP price band — the only allowed zone for that sector. */
+export const VIP_MIN_UNIT_PRICE = 4000;
+export const VIP_MAX_UNIT_PRICE = 6000;
+
+export function allowedPriceZonesForSector(sector: Sector): PriceZone[] {
+  return sector === "VIP" ? [...VIP_PRICE_ZONES] : [...NON_VIP_PRICE_ZONES];
+}
+
+export function allowedSectorsForPriceZone(zone: PriceZone): Sector[] {
+  return zone === "from_4000_to_6000" ? ["VIP"] : [...NON_VIP_SECTORS];
+}
+
+export function isAllowedSectorPriceZone(
+  sector: Sector,
+  zone: PriceZone,
+): boolean {
+  if (sector === "VIP") return zone === "from_4000_to_6000";
+  return zone !== "from_4000_to_6000";
+}
+
+/**
+ * Local widget filters have an allowed intersection when at least one
+ * selected sector×zone pair exists in the matrix. Empty selections mean "all".
+ */
+export function hasAllowedFilterIntersection(
+  selectedZones: readonly PriceZone[],
+  selectedSectors: readonly Sector[],
+): boolean {
+  const zones = selectedZones.length ? selectedZones : ALL_PRICE_ZONES;
+  const sectors = selectedSectors.length ? selectedSectors : ALL_SECTORS;
+  return sectors.some((sector) =>
+    zones.some((zone) => isAllowedSectorPriceZone(sector, zone)),
+  );
+}
+
+export function visiblePriceZonesForFilters(
+  selectedZones: readonly PriceZone[],
+  selectedSectors: readonly Sector[],
+): PriceZone[] {
+  const zoneSet = selectedZones.length ? new Set(selectedZones) : null;
+  const sectors = selectedSectors.length ? selectedSectors : ALL_SECTORS;
+  return ALL_PRICE_ZONES.filter((zone) => {
+    if (zoneSet && !zoneSet.has(zone)) return false;
+    return sectors.some((sector) => isAllowedSectorPriceZone(sector, zone));
+  });
+}
+
+export function visibleSectorsForFilters(
+  selectedZones: readonly PriceZone[],
+  selectedSectors: readonly Sector[],
+): Sector[] {
+  const sectorSet = selectedSectors.length ? new Set(selectedSectors) : null;
+  const zones = selectedZones.length ? selectedZones : ALL_PRICE_ZONES;
+  return ALL_SECTORS.filter((sector) => {
+    if (sectorSet && !sectorSet.has(sector)) return false;
+    return zones.some((zone) => isAllowedSectorPriceZone(sector, zone));
+  });
+}
 
 export function priceZoneFromUnitPrice(unitPrice: number): PriceZone {
   if (unitPrice < 1500) return "up_to_1500";

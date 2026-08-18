@@ -29,6 +29,7 @@ export type MerchSalesTreeLevel =
 
 export type MerchSalesMetrics = {
   revenue: number;
+  planRevenue: number | null;
   avgCheck: number;
   receipts: number;
   units: number;
@@ -210,6 +211,7 @@ export function flattenExpandedMerchSalesTree(
       date: node.date,
       label: node.label,
       revenue: node.revenue,
+      planRevenue: node.planRevenue,
       avgCheck: node.avgCheck,
       receipts: node.receipts,
       units: node.units,
@@ -288,6 +290,7 @@ function metricsFromAgg(
     matchId: string;
     date: Date | null;
     label: string;
+    planRevenue: number | null;
     attendance: number;
     purchaseConversionPct: number;
     sharePct: number | null;
@@ -325,6 +328,7 @@ function leafNodesFromBuckets<K extends string>(
         matchId,
         date: null,
         label: labels[key],
+        planRevenue: null,
         attendance: 0,
         purchaseConversionPct: 0,
         sharePct: sharePct(agg.revenue, matchRevenue),
@@ -348,6 +352,7 @@ function sectionNodeFromMatchRow(
     date: null,
     label: MERCH_SALES_SECTION_LABELS[section],
     revenue: row.revenue,
+    planRevenue: row.planRevenue,
     avgCheck: row.avgCheck,
     receipts: row.receipts,
     units: row.units,
@@ -458,6 +463,7 @@ export function computeMerchSalesTree(
       date: row.date,
       label: row.eventLabel,
       revenue: row.revenue,
+      planRevenue: row.planRevenue,
       avgCheck: row.avgCheck,
       receipts: row.receipts,
       units: row.units,
@@ -487,7 +493,7 @@ export function getMerchSalesBarMaxima(nodes: MerchSalesTreeNode[]): {
   let units = 0;
 
   for (const node of nodes) {
-    revenue = Math.max(revenue, node.revenue);
+    revenue = Math.max(revenue, node.revenue, node.planRevenue ?? 0);
     avgCheck = Math.max(avgCheck, node.avgCheck);
     receipts = Math.max(receipts, node.receipts);
     units = Math.max(units, node.units);

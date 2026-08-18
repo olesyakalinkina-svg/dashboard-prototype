@@ -90,7 +90,7 @@ export function MerchSalesWidget({
     <Card className="flex h-full min-w-0 flex-col">
       <CardHeader>
         <div className="min-w-0">
-          <CardTitle>Продажи</CardTitle>
+          <CardTitle>Продажи - факт/план</CardTitle>
           <ChartZoomHint visible={!isZoomed} />
         </div>
         {isZoomed && <ChartZoomResetButton onClick={resetZoom} />}

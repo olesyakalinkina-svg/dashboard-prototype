@@ -60,6 +60,7 @@ import {
   LEGACY_TICKET_PLAN_AVG_PRICE,
   TICKET_PLAN_AVG_PRICE,
 } from "@/lib/ticket-plan";
+import { getMatchMerchPlanRevenue, merchPlanScale } from "@/lib/merch-plan";
 import {
   getPurchaseDateBounds,
   isDateInTournamentStage,
@@ -3264,18 +3265,21 @@ export function computeMerchMatchSalesTable(
   }
 
   const rows: MerchMatchSalesRow[] = [];
+  const scale = merchPlanScale(merchFilters);
 
   for (const match of allowedMatches) {
     const agg = aggByMatch.get(match.id);
     if (!agg || agg.revenue <= 0 || agg.receipts <= 0) continue;
 
     const attendance = getMatchAttendance(match);
+    const planRevenue = Math.round(getMatchMerchPlanRevenue(match) * scale);
 
     rows.push({
       matchId: match.id,
       eventLabel: `vs ${match.opponent}`,
       date: match.date,
       revenue: agg.revenue,
+      planRevenue,
       avgCheck: agg.revenue / agg.receipts,
       receipts: agg.receipts,
       units: agg.units,

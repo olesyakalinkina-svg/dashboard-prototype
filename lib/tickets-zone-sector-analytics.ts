@@ -1,20 +1,32 @@
-import { differenceInCalendarDays, endOfDay, isAfter } from "date-fns";
-import { ALL_PRICE_ZONES, ALL_SECTORS } from "@/lib/ticket-filter-options";
+import { endOfDay, isAfter } from "date-fns";
+import {
+  ALL_PRICE_ZONES,
+  ALL_SECTORS,
+  PRICE_ZONE_LABELS,
+  allowedPriceZonesForSector,
+  allowedSectorsForPriceZone,
+  hasAllowedFilterIntersection,
+  isAllowedSectorPriceZone,
+  visiblePriceZonesForFilters,
+  visibleSectorsForFilters,
+} from "@/lib/ticket-filter-options";
 import { getTicketFreeQuantity, getTicketIssuedQuantity } from "@/lib/ticket-sales-metrics";
 import type { Match, PriceZone, Sector, Transaction } from "@/types/dashboard";
 
+export {
+  allowedPriceZonesForSector,
+  allowedSectorsForPriceZone,
+  hasAllowedFilterIntersection,
+  isAllowedSectorPriceZone,
+  visiblePriceZonesForFilters,
+  visibleSectorsForFilters,
+};
+
 export type ZoneSectorMetric = "occupancy" | "sold" | "revenue" | "avgPrice";
-export type ComparisonSlice =
-  | "current"
-  | "days_before_1"
-  | "days_before_3"
-  | "days_before_7"
-  | "days_before_14"
-  | "days_before_30"
-  | "final";
+export type AutoSalesSlice = "current" | "final";
 export type DetailMode = "zones_to_sectors" | "sectors_to_zones";
 
-type Aggregate = {
+export type Aggregate = {
   revenue: number;
   sold: number;
   free: number;
@@ -34,7 +46,6 @@ export type MatrixRow = {
   date: Date;
   zones: Record<PriceZone, ZoneSectorCell>;
   totals: Aggregate & { avgPrice: number | null };
-  excludedFromFinalSlice: boolean;
 };
 
 export type AvailabilityIndex = {
@@ -49,50 +60,162 @@ export type OccupancyValues = {
   zoneInSector: number | null;
 };
 
+export type InvalidSectorPriceZoneRecord = {
+  id: string;
+  matchId: string;
+  sector: Sector;
+  priceZone: PriceZone;
+};
+
+export type AllowedCellKind = "values" | "zeros" | "dash";
+
+export type AllowedCellDisplay = {
+  revenue: number | null;
+  sold: number | null;
+  free: number | null;
+  issued: number | null;
+  avgPrice: number | null;
+  occupancy: number | null;
+  kind: AllowedCellKind;
+};
+
 type BuildOptions = {
   transactions: Transaction[];
   matchesById: Map<string, Match>;
   localMatchIds: string[];
   localPriceZones: PriceZone[];
   localSectors: Sector[];
-  slice: ComparisonSlice;
 };
 
-type KeyedAgg = Map<string, Aggregate>;
+export type ZoneSectorTreeContext = {
+  agg: KeyedAgg;
+  availability: AvailabilityIndex;
+  matchesById: Map<string, Match>;
+  localMatchIds: string[];
+  localPriceZones: PriceZone[];
+  localSectors: Sector[];
+};
+
+export type ZoneSectorTreeLevel = "match" | "section" | "leaf";
+
+export type ZoneSectorTreeNode = {
+  id: string;
+  level: ZoneSectorTreeLevel;
+  matchId: string;
+  date: Date | null;
+  label: string;
+  zoneId?: PriceZone;
+  sectorId?: Sector;
+  kind: AllowedCellKind;
+  revenue: number | null;
+  sold: number | null;
+  free: number | null;
+  issued: number | null;
+  avgPrice: number | null;
+  occupancy: number | null;
+  hasChildren: boolean;
+  children: ZoneSectorTreeNode[];
+};
+
+export type ZoneSectorFlatRow = Omit<ZoneSectorTreeNode, "children"> & {
+  depth: number;
+};
+
+export type KeyedAgg = Map<string, Aggregate>;
 
 function createAggregate(): Aggregate {
   return { revenue: 0, sold: 0, free: 0, issued: 0 };
+}
+
+function addAggregate(target: Aggregate, source: Aggregate): void {
+  target.revenue += source.revenue;
+  target.sold += source.sold;
+  target.free += source.free;
+  target.issued += source.issued;
 }
 
 function ticketStableKey(tx: Transaction): string {
   return tx.id;
 }
 
-function includeBySlice(tx: Transaction, matchDate: Date, slice: ComparisonSlice): boolean {
+function includeBySlice(tx: Transaction, matchDate: Date, slice: AutoSalesSlice): boolean {
   if (slice === "current") return true;
-  if (slice === "final") return !isAfter(tx.date, endOfDay(matchDate));
-  const day = Number(slice.replace("days_before_", ""));
-  const daysBefore = differenceInCalendarDays(matchDate, tx.date);
-  return daysBefore >= day;
+  return !isAfter(tx.date, endOfDay(matchDate));
+}
+
+/**
+ * Sales slice is automatic: completed matches use final sales (through
+ * match day); future or unfinished matches use the current snapshot.
+ * Unfinished matches are not forecasted.
+ */
+export function effectiveSliceForMatch(match: Match): AutoSalesSlice {
+  return match.eventCompleted ? "final" : "current";
+}
+
+export function comboKey(matchId: string, sectorId: Sector, zoneId: PriceZone): string {
+  return `${matchId}|${sectorId}|${zoneId}`;
+}
+
+export function collectInvalidSectorPriceZoneRecords(
+  transactions: Transaction[],
+): InvalidSectorPriceZoneRecord[] {
+  const invalid: InvalidSectorPriceZoneRecord[] = [];
+  for (const tx of transactions) {
+    if (tx.stream !== "tickets" || tx.ticketType !== "arena") continue;
+    if (!tx.matchId || !tx.sector || !tx.priceZone) continue;
+    if (isAllowedSectorPriceZone(tx.sector, tx.priceZone)) continue;
+    invalid.push({
+      id: tx.id,
+      matchId: tx.matchId,
+      sector: tx.sector,
+      priceZone: tx.priceZone,
+    });
+  }
+  return invalid;
+}
+
+function warnInvalidSectorPriceZoneRecords(
+  records: InvalidSectorPriceZoneRecord[],
+  total = records.length,
+): void {
+  if (process.env.NODE_ENV === "production" || total === 0) return;
+  console.warn(
+    `[tickets-zone-sector] ${total} invalid sector×priceZone records excluded from metrics`,
+    records.slice(0, 50),
+  );
 }
 
 export function preAggregateZoneSector(
   transactions: Transaction[],
   matchesById: Map<string, Match>,
-  slice: ComparisonSlice,
 ): KeyedAgg {
   const out: KeyedAgg = new Map();
   const dedupe = new Set<string>();
+  const invalidSample: InvalidSectorPriceZoneRecord[] = [];
+  let invalidCount = 0;
+
   for (const tx of transactions) {
     if (tx.stream !== "tickets" || tx.ticketType !== "arena") continue;
     if (!tx.matchId || !tx.sector || !tx.priceZone) continue;
+    if (!isAllowedSectorPriceZone(tx.sector, tx.priceZone)) {
+      invalidCount += 1;
+      if (invalidSample.length < 50) {
+        invalidSample.push({
+          id: tx.id,
+          matchId: tx.matchId,
+          sector: tx.sector,
+          priceZone: tx.priceZone,
+        });
+      }
+      continue;
+    }
     const match = matchesById.get(tx.matchId);
     if (!match) continue;
-    if (!includeBySlice(tx, match.date, slice)) continue;
+    if (!includeBySlice(tx, match.date, effectiveSliceForMatch(match))) continue;
     const dedupeKey = ticketStableKey(tx);
     if (dedupe.has(dedupeKey)) continue;
     dedupe.add(dedupeKey);
-    const key = `${tx.matchId}|${tx.sector}|${tx.priceZone}`;
+    const key = comboKey(tx.matchId, tx.sector, tx.priceZone);
     const agg = out.get(key) ?? createAggregate();
     agg.revenue += tx.amount;
     if (tx.amount > 0) agg.sold += tx.quantity;
@@ -100,6 +223,7 @@ export function preAggregateZoneSector(
     agg.issued += getTicketIssuedQuantity(tx);
     out.set(key, agg);
   }
+  warnInvalidSectorPriceZoneRecords(invalidSample, invalidCount);
   return out;
 }
 
@@ -112,7 +236,8 @@ export function buildAvailabilityIndex(base: KeyedAgg): AvailabilityIndex {
   const sectorInMatch = new Map<string, number>();
   const zoneInSector = new Map<string, number>();
   for (const [key, agg] of base) {
-    const [matchId, sectorId, zoneId] = key.split("|");
+    const [matchId, sectorId, zoneId] = key.split("|") as [string, Sector, PriceZone];
+    if (!isAllowedSectorPriceZone(sectorId, zoneId)) continue;
     const zm = `${matchId}|${zoneId}`;
     const sm = `${matchId}|${sectorId}`;
     zoneInMatch.set(zm, (zoneInMatch.get(zm) ?? 0) + agg.issued);
@@ -139,21 +264,121 @@ export function computeOccupancy(
   };
 }
 
+export function resolveAllowedCell(
+  matchId: string,
+  sectorId: Sector,
+  zoneId: PriceZone,
+  sliceAgg: KeyedAgg,
+  availability: AvailabilityIndex,
+): AllowedCellDisplay {
+  const key = comboKey(matchId, sectorId, zoneId);
+  const agg = sliceAgg.get(key);
+  const pairMass = availability.zoneInSector.get(key) ?? 0;
+  const hasMass = pairMass > 0;
+  const hasSliceActivity =
+    !!agg && (agg.issued > 0 || agg.sold > 0 || agg.free > 0 || agg.revenue > 0);
+
+  if (hasSliceActivity && agg) {
+    const occ = computeOccupancy(matchId, sectorId, zoneId, agg.issued, availability);
+    return {
+      revenue: agg.revenue,
+      sold: agg.sold,
+      free: agg.free,
+      issued: agg.issued,
+      avgPrice: aggregateValue(agg),
+      occupancy: occ.zoneInSector ?? (hasMass ? 0 : null),
+      kind: "values",
+    };
+  }
+
+  if (hasMass) {
+    return {
+      revenue: 0,
+      sold: 0,
+      free: 0,
+      issued: 0,
+      avgPrice: null,
+      occupancy: 0,
+      kind: "zeros",
+    };
+  }
+
+  return {
+    revenue: null,
+    sold: null,
+    free: null,
+    issued: null,
+    avgPrice: null,
+    occupancy: null,
+    kind: "dash",
+  };
+}
+
+export function emptyAggregate(): Aggregate {
+  return createAggregate();
+}
+
+export function sumAllowedCombos(
+  matchId: string,
+  agg: KeyedAgg,
+  selectedZones: readonly PriceZone[] = [],
+  selectedSectors: readonly Sector[] = [],
+): Aggregate {
+  const totals = createAggregate();
+  const sectors = visibleSectorsForFilters(selectedZones, selectedSectors);
+  const zones = visiblePriceZonesForFilters(selectedZones, selectedSectors);
+  for (const sector of sectors) {
+    for (const zone of allowedPriceZonesForSector(sector)) {
+      if (!zones.includes(zone)) continue;
+      const cell = agg.get(comboKey(matchId, sector, zone));
+      if (cell) addAggregate(totals, cell);
+    }
+  }
+  return totals;
+}
+
+export function sumMatchBySectors(
+  matchId: string,
+  agg: KeyedAgg,
+  selectedZones: readonly PriceZone[] = [],
+  selectedSectors: readonly Sector[] = [],
+): Aggregate {
+  return sumAllowedCombos(matchId, agg, selectedZones, selectedSectors);
+}
+
+export function sumMatchByZones(
+  matchId: string,
+  agg: KeyedAgg,
+  selectedZones: readonly PriceZone[] = [],
+  selectedSectors: readonly Sector[] = [],
+): Aggregate {
+  return sumAllowedCombos(matchId, agg, selectedZones, selectedSectors);
+}
+
 export function buildMatrixRows(options: BuildOptions): MatrixRow[] {
+  if (
+    !hasAllowedFilterIntersection(options.localPriceZones, options.localSectors)
+  ) {
+    return [];
+  }
+
   const matchFilterSet = options.localMatchIds.length
     ? new Set(options.localMatchIds)
     : null;
-  const zoneFilterSet = options.localPriceZones.length
-    ? new Set(options.localPriceZones)
-    : null;
-  const sectorFilterSet = options.localSectors.length
-    ? new Set(options.localSectors)
-    : null;
+  const visibleZones = visiblePriceZonesForFilters(
+    options.localPriceZones,
+    options.localSectors,
+  );
+  const visibleSectors = visibleSectorsForFilters(
+    options.localPriceZones,
+    options.localSectors,
+  );
+  const zoneFilterSet = new Set(visibleZones);
+  const sectorFilterSet = new Set(visibleSectors);
 
   const sliceAgg = preAggregateZoneSector(
     options.transactions,
     options.matchesById,
-    options.slice,
   );
 
   const rows = new Map<string, MatrixRow>();
@@ -161,8 +386,8 @@ export function buildMatrixRows(options: BuildOptions): MatrixRow[] {
   for (const [key, agg] of sliceAgg) {
     const [matchId, sectorId, zoneId] = key.split("|") as [string, Sector, PriceZone];
     if (matchFilterSet && !matchFilterSet.has(matchId)) continue;
-    if (zoneFilterSet && !zoneFilterSet.has(zoneId)) continue;
-    if (sectorFilterSet && !sectorFilterSet.has(sectorId)) continue;
+    if (!zoneFilterSet.has(zoneId)) continue;
+    if (!sectorFilterSet.has(sectorId)) continue;
     const match = options.matchesById.get(matchId);
     if (!match) continue;
     let row = rows.get(matchId);
@@ -186,7 +411,6 @@ export function buildMatrixRows(options: BuildOptions): MatrixRow[] {
         date: match.date,
         zones,
         totals: { revenue: 0, sold: 0, free: 0, issued: 0, avgPrice: null },
-        excludedFromFinalSlice: options.slice === "final" && !match.eventCompleted,
       };
       rows.set(matchId, row);
     }
@@ -207,25 +431,376 @@ export function buildMatrixRows(options: BuildOptions): MatrixRow[] {
 }
 
 export function inferChildZonesForSector(
-  matchId: string,
+  _matchId: string,
   sectorId: Sector,
-  agg: KeyedAgg,
+  _agg?: KeyedAgg,
+  selectedZones: readonly PriceZone[] = [],
 ): PriceZone[] {
-  const result: PriceZone[] = [];
-  for (const zone of ALL_PRICE_ZONES) {
-    if (agg.has(`${matchId}|${sectorId}|${zone}`)) result.push(zone);
-  }
-  return result;
+  const allowed = allowedPriceZonesForSector(sectorId);
+  if (!selectedZones.length) return allowed;
+  return allowed.filter((zone) => selectedZones.includes(zone));
 }
 
 export function inferChildSectorsForZone(
-  matchId: string,
+  _matchId: string,
   zoneId: PriceZone,
-  agg: KeyedAgg,
+  _agg?: KeyedAgg,
+  selectedSectors: readonly Sector[] = [],
 ): Sector[] {
-  const result: Sector[] = [];
-  for (const sector of ALL_SECTORS) {
-    if (agg.has(`${matchId}|${sector}|${zoneId}`)) result.push(sector);
-  }
-  return result;
+  const allowed = allowedSectorsForPriceZone(zoneId);
+  if (!selectedSectors.length) return allowed;
+  return allowed.filter((sector) => selectedSectors.includes(sector));
 }
+
+export function hierarchyParentsForMode(
+  mode: DetailMode,
+  selectedZones: readonly PriceZone[] = [],
+  selectedSectors: readonly Sector[] = [],
+): Array<{ kind: "zone"; id: PriceZone } | { kind: "sector"; id: Sector }> {
+  if (mode === "zones_to_sectors") {
+    return visiblePriceZonesForFilters(selectedZones, selectedSectors).map((id) => ({
+      kind: "zone" as const,
+      id,
+    }));
+  }
+  return visibleSectorsForFilters(selectedZones, selectedSectors).map((id) => ({
+    kind: "sector" as const,
+    id,
+  }));
+}
+
+function occupancyFromMass(issued: number, mass: number, kind: AllowedCellKind): number | null {
+  if (kind === "dash") return null;
+  if (mass > 0) return (issued / mass) * 100;
+  return kind === "zeros" ? 0 : null;
+}
+
+function rollupKind(children: ZoneSectorTreeNode[]): AllowedCellKind {
+  if (children.some((child) => child.kind === "values")) return "values";
+  if (children.some((child) => child.kind === "zeros")) return "zeros";
+  return "dash";
+}
+
+function rollupChildren(
+  children: ZoneSectorTreeNode[],
+  occupancy: number | null,
+): Pick<
+  ZoneSectorTreeNode,
+  "kind" | "revenue" | "sold" | "free" | "issued" | "avgPrice" | "occupancy"
+> {
+  const kind = rollupKind(children);
+  if (kind === "dash") {
+    return {
+      kind,
+      revenue: null,
+      sold: null,
+      free: null,
+      issued: null,
+      avgPrice: null,
+      occupancy: null,
+    };
+  }
+  let revenue = 0;
+  let sold = 0;
+  let free = 0;
+  let issued = 0;
+  for (const child of children) {
+    if (child.kind === "dash") continue;
+    revenue += child.revenue ?? 0;
+    sold += child.sold ?? 0;
+    free += child.free ?? 0;
+    issued += child.issued ?? 0;
+  }
+  return {
+    kind,
+    revenue,
+    sold,
+    free,
+    issued,
+    avgPrice: sold > 0 ? revenue / sold : null,
+    occupancy,
+  };
+}
+
+function leafFromCell(
+  id: string,
+  matchId: string,
+  label: string,
+  cell: AllowedCellDisplay,
+  extras: { zoneId?: PriceZone; sectorId?: Sector },
+): ZoneSectorTreeNode {
+  return {
+    id,
+    level: "leaf",
+    matchId,
+    date: null,
+    label,
+    zoneId: extras.zoneId,
+    sectorId: extras.sectorId,
+    kind: cell.kind,
+    revenue: cell.revenue,
+    sold: cell.sold,
+    free: cell.free,
+    issued: cell.issued,
+    avgPrice: cell.avgPrice,
+    occupancy: cell.occupancy,
+    hasChildren: false,
+    children: [],
+  };
+}
+
+function issuedFromNodes(nodes: ZoneSectorTreeNode[]): number {
+  let issued = 0;
+  for (const node of nodes) {
+    if (node.kind === "dash") continue;
+    issued += node.issued ?? 0;
+  }
+  return issued;
+}
+
+function matchTotalsKind(totals: Aggregate): AllowedCellKind {
+  if (totals.issued > 0 || totals.sold > 0 || totals.free > 0 || totals.revenue > 0) {
+    return "values";
+  }
+  return "dash";
+}
+
+function buildSectionChildren(
+  matchId: string,
+  options: ZoneSectorTreeContext & { mode: DetailMode },
+): ZoneSectorTreeNode[] {
+  const { agg, availability } = options;
+  if (options.mode === "zones_to_sectors") {
+    const visibleZones = visiblePriceZonesForFilters(
+      options.localPriceZones,
+      options.localSectors,
+    );
+    return visibleZones.map((zone) => {
+      const sectors = inferChildSectorsForZone(
+        matchId,
+        zone,
+        agg,
+        options.localSectors,
+      );
+      const leaves = sectors.map((sector) =>
+        leafFromCell(
+          `m:${matchId}|z:${zone}|s:${sector}`,
+          matchId,
+          sector,
+          resolveAllowedCell(matchId, sector, zone, agg, availability),
+          { zoneId: zone, sectorId: sector },
+        ),
+      );
+      const mass = availability.zoneInMatch.get(`${matchId}|${zone}`) ?? 0;
+      const kind = rollupKind(leaves);
+      return {
+        id: `m:${matchId}|z:${zone}`,
+        level: "section" as const,
+        matchId,
+        date: null,
+        label: PRICE_ZONE_LABELS[zone],
+        zoneId: zone,
+        ...rollupChildren(leaves, occupancyFromMass(issuedFromNodes(leaves), mass, kind)),
+        hasChildren: leaves.length > 0,
+        children: leaves,
+      };
+    });
+  }
+
+  const visibleSectors = visibleSectorsForFilters(
+    options.localPriceZones,
+    options.localSectors,
+  );
+  return visibleSectors.map((sector) => {
+    const zones = inferChildZonesForSector(
+      matchId,
+      sector,
+      agg,
+      options.localPriceZones,
+    );
+    const leaves = zones.map((zone) =>
+      leafFromCell(
+        `m:${matchId}|s:${sector}|z:${zone}`,
+        matchId,
+        PRICE_ZONE_LABELS[zone],
+        resolveAllowedCell(matchId, sector, zone, agg, availability),
+        { zoneId: zone, sectorId: sector },
+      ),
+    );
+    const mass = availability.sectorInMatch.get(`${matchId}|${sector}`) ?? 0;
+    const kind = rollupKind(leaves);
+    return {
+      id: `m:${matchId}|s:${sector}`,
+      level: "section" as const,
+      matchId,
+      date: null,
+      label: sector,
+      sectorId: sector,
+      ...rollupChildren(leaves, occupancyFromMass(issuedFromNodes(leaves), mass, kind)),
+      hasChildren: leaves.length > 0,
+      children: leaves,
+    };
+  });
+}
+
+/**
+ * Match-level rows only. Children stay empty until hydrateZoneSectorTree
+ * so callers can paginate before building zone/sector leaves.
+ */
+export function buildZoneSectorMatchTree(
+  options: ZoneSectorTreeContext,
+): ZoneSectorTreeNode[] {
+  if (
+    !hasAllowedFilterIntersection(options.localPriceZones, options.localSectors)
+  ) {
+    return [];
+  }
+
+  const matchFilterSet = options.localMatchIds.length
+    ? new Set(options.localMatchIds)
+    : null;
+  const visibleZones = visiblePriceZonesForFilters(
+    options.localPriceZones,
+    options.localSectors,
+  );
+  const visibleSectors = visibleSectorsForFilters(
+    options.localPriceZones,
+    options.localSectors,
+  );
+  const zoneSet = new Set(visibleZones);
+  const sectorSet = new Set(visibleSectors);
+  const matchIds = new Set<string>();
+
+  for (const key of options.agg.keys()) {
+    const [matchId, sectorId, zoneId] = key.split("|") as [string, Sector, PriceZone];
+    if (matchFilterSet && !matchFilterSet.has(matchId)) continue;
+    if (!zoneSet.has(zoneId) || !sectorSet.has(sectorId)) continue;
+    matchIds.add(matchId);
+  }
+
+  const hasChildren =
+    hierarchyParentsForMode(
+      "zones_to_sectors",
+      options.localPriceZones,
+      options.localSectors,
+    ).length > 0;
+
+  return [...options.matchesById.values()]
+    .filter((match) => matchIds.has(match.id))
+    .sort((a, b) => b.date.getTime() - a.date.getTime())
+    .map((match) => {
+      const totals = sumAllowedCombos(
+        match.id,
+        options.agg,
+        options.localPriceZones,
+        options.localSectors,
+      );
+      const kind = matchTotalsKind(totals);
+      const capacity = match.capacity > 0 ? match.capacity : 0;
+      const metrics =
+        kind === "dash"
+          ? {
+              kind,
+              revenue: null,
+              sold: null,
+              free: null,
+              issued: null,
+              avgPrice: null,
+              occupancy: null,
+            }
+          : {
+              kind,
+              revenue: totals.revenue,
+              sold: totals.sold,
+              free: totals.free,
+              issued: totals.issued,
+              avgPrice: totals.sold > 0 ? totals.revenue / totals.sold : null,
+              occupancy: occupancyFromMass(totals.issued, capacity, kind),
+            };
+      return {
+        id: `m:${match.id}`,
+        level: "match" as const,
+        matchId: match.id,
+        date: match.date,
+        label: `vs ${match.opponent}`,
+        ...metrics,
+        hasChildren,
+        children: [] as ZoneSectorTreeNode[],
+      };
+    });
+}
+
+/** Attach zone/sector children for the given match rows. Does not mutate input. */
+export function hydrateZoneSectorTree(
+  matchNodes: ZoneSectorTreeNode[],
+  options: ZoneSectorTreeContext & { mode: DetailMode },
+): ZoneSectorTreeNode[] {
+  return matchNodes.map((node) => {
+    const children = buildSectionChildren(node.matchId, options);
+    const match = options.matchesById.get(node.matchId);
+    const capacity = match && match.capacity > 0 ? match.capacity : 0;
+    const kind = rollupKind(children);
+    return {
+      ...node,
+      ...rollupChildren(
+        children,
+        occupancyFromMass(issuedFromNodes(children), capacity, kind),
+      ),
+      hasChildren: children.length > 0,
+      children,
+    };
+  });
+}
+
+export function buildZoneSectorTree(
+  options: BuildOptions & { mode: DetailMode },
+): ZoneSectorTreeNode[] {
+  if (
+    !hasAllowedFilterIntersection(options.localPriceZones, options.localSectors)
+  ) {
+    return [];
+  }
+
+  const agg = preAggregateZoneSector(options.transactions, options.matchesById);
+  const ctx: ZoneSectorTreeContext = {
+    agg,
+    availability: buildAvailabilityIndex(agg),
+    matchesById: options.matchesById,
+    localMatchIds: options.localMatchIds,
+    localPriceZones: options.localPriceZones,
+    localSectors: options.localSectors,
+  };
+  return hydrateZoneSectorTree(buildZoneSectorMatchTree(ctx), {
+    ...ctx,
+    mode: options.mode,
+  });
+}
+
+export function flattenZoneSectorTree(
+  nodes: ZoneSectorTreeNode[],
+  expanded: ReadonlySet<string>,
+): ZoneSectorFlatRow[] {
+  const rows: ZoneSectorFlatRow[] = [];
+  const walk = (node: ZoneSectorTreeNode, depth: number) => {
+    const { children, ...rest } = node;
+    rows.push({ ...rest, depth, hasChildren: node.hasChildren || children.length > 0 });
+    if (!node.hasChildren || !expanded.has(node.id)) return;
+    for (const child of children) walk(child, depth + 1);
+  };
+  for (const node of nodes) walk(node, 0);
+  return rows;
+}
+
+export function matchZoneSectorTreeQuery(
+  node: ZoneSectorTreeNode,
+  query: string,
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const dateText = node.date
+    ? node.date.toLocaleDateString("ru-RU")
+    : "";
+  return `${node.label} ${dateText}`.toLowerCase().includes(q);
+}
+
+export { ALL_PRICE_ZONES, ALL_SECTORS, PRICE_ZONE_LABELS };

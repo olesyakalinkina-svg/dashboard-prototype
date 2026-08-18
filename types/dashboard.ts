@@ -92,6 +92,8 @@ export type MerchMatchSalesRow = {
   eventLabel: string;
   date: Date;
   revenue: number;
+  /** Match-level merch sales plan (`getMatchMerchPlanRevenue`); 0 when the planning base is missing. */
+  planRevenue: number;
   avgCheck: number;
   receipts: number;
   units: number;

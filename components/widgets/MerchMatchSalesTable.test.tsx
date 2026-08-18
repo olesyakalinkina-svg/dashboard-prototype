@@ -23,6 +23,7 @@ import {
 } from "@/lib/merch-filter-options";
 import type { MerchMatchSalesRow } from "@/types/dashboard";
 import type { MerchSalesTreeState } from "@/hooks/useMerchSalesTree";
+import { formatPercent } from "@/lib/format";
 
 afterEach(() => {
   cleanup();
@@ -77,6 +78,17 @@ function renderMerch(
       initialExpanded={initialExpanded}
     />,
   );
+}
+
+function revenueCellForLabel(label: string) {
+  const row = screen.getByText(label).closest("tr");
+  expect(row).toBeTruthy();
+  const cells = within(row!).getAllByRole("cell");
+  return cells[2]!;
+}
+
+function cellText(el: HTMLElement): string {
+  return (el.textContent ?? "").replace(/\s/g, " ");
 }
 
 describe("MerchMatchSalesTable drill-down", () => {
@@ -211,5 +223,94 @@ describe("MerchMatchSalesTable drill-down", () => {
     }
     const labels = within(container).getAllByText(match.label);
     expect(labels).toHaveLength(1);
+  });
+
+  it("shows plan fulfillment % in Выручка on match rows, like tickets", () => {
+    const pipeline = buildDefaultMerchFixtureTree();
+    const ska = pipeline.tree.find(
+      (node) => node.matchId === MERCH_FIXTURE_ARENA_MATCH_ID,
+    )!;
+    const cska = pipeline.tree.find(
+      (node) => node.matchId === MERCH_FIXTURE_NORTH_MATCH_ID,
+    )!;
+    renderMerch(pipeline);
+
+    const skaPct = formatPercent((ska.revenue / ska.planRevenue!) * 100);
+    const cskaPct = formatPercent((cska.revenue / cska.planRevenue!) * 100);
+    expect(skaPct).not.toBe(cskaPct);
+    expect(cellText(revenueCellForLabel(ska.label))).toContain(
+      skaPct.replace(/\s/g, " "),
+    );
+    expect(cellText(revenueCellForLabel(cska.label))).toContain(
+      cskaPct.replace(/\s/g, " "),
+    );
+  });
+
+  it("shows em dash in Выручка when merch plan is missing, not 0%", () => {
+    const incomplete: MerchSalesTreeNode = {
+      id: "mm:incomplete",
+      level: "match",
+      matchId: "incomplete",
+      date: new Date(2025, 7, 1),
+      label: "vs Incomplete Plan",
+      revenue: 120_000,
+      planRevenue: 0,
+      avgCheck: 1_200,
+      receipts: 100,
+      units: 100,
+      upt: 1,
+      attendance: 0,
+      purchaseConversionPct: 0,
+      sharePct: null,
+      hasChildren: false,
+      children: [],
+    };
+    const row: MerchMatchSalesRow = {
+      matchId: incomplete.matchId,
+      eventLabel: incomplete.label,
+      date: incomplete.date!,
+      revenue: incomplete.revenue,
+      planRevenue: 0,
+      avgCheck: incomplete.avgCheck,
+      receipts: incomplete.receipts,
+      units: incomplete.units,
+      upt: incomplete.upt,
+      attendance: incomplete.attendance,
+      purchaseConversionPct: incomplete.purchaseConversionPct,
+    };
+    render(<Harness tree={[incomplete]} matchRows={[row]} />);
+
+    const cell = revenueCellForLabel("vs Incomplete Plan");
+    expect(within(cell).getByText("—")).toBeTruthy();
+    expect(within(cell).queryByText(formatPercent(0))).toBeNull();
+  });
+
+  it("shows em dash in Выручка on child rows because plan is match-level", async () => {
+    const user = userEvent.setup();
+    const pipeline = buildDefaultMerchFixtureTree();
+    const match = pipeline.tree.find(
+      (node) => node.matchId === MERCH_FIXTURE_ARENA_MATCH_ID,
+    )!;
+    renderMerch(pipeline);
+
+    await user.click(
+      screen.getByRole("button", { name: `Развернуть: ${match.label}` }),
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: `Развернуть: ${MERCH_SALES_SECTION_LABELS.salesChannel}`,
+      }),
+    );
+
+    const matchPct = formatPercent((match.revenue / match.planRevenue!) * 100);
+    expect(
+      cellText(revenueCellForLabel(MERCH_SALES_SECTION_LABELS.salesChannel)),
+    ).toContain(matchPct.replace(/\s/g, " "));
+    expect(
+      cellText(revenueCellForLabel(MERCH_SALES_POINT_LABELS.flagship)),
+    ).toContain("—");
+    expect(
+      cellText(revenueCellForLabel(MERCH_SALES_POINT_LABELS.flagship)),
+    ).not.toContain(formatPercent(0).replace(/\s/g, " "));
   });
 });

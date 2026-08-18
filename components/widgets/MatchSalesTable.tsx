@@ -213,7 +213,7 @@ const MATCH_SALES_COLUMNS: ColumnDef<MatchSalesFlatRow, unknown>[] = [
           value={row.original.ticketsSold}
           max={barMax.ticketsSold}
           formatted={`${formatNumber(row.original.ticketsSold)} шт`}
-          barClassName={getBarClass(row.original.level, "bg-slate-500", "bg-slate-300", "bg-slate-200")}
+          barClassName={getBarClass(row.original.level, "bg-slate-400", "bg-slate-300", "bg-slate-200")}
         />
       );
     },

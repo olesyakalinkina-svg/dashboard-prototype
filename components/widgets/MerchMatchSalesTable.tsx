@@ -167,21 +167,22 @@ const MERCH_SALES_COLUMNS: ColumnDef<MerchSalesFlatRow, unknown>[] = [
     header: "Выручка",
     cell: ({ row, table }) => {
       const item = row.original;
+      const { revenue, planRevenue } = item;
       const { barMax } = table.options.meta as MerchSalesTableMeta;
-      const isLeaf =
-        item.level === "salesChannel" || item.level === "productCategory";
+      const fulfillmentPct =
+        planRevenue != null && planRevenue > 0
+          ? (revenue / planRevenue) * 100
+          : null;
       return (
         <InlineBarCell
-          value={item.revenue}
+          value={revenue}
           max={barMax.revenue}
-          share={isLeaf ? (item.sharePct ?? undefined) : undefined}
-          formatted={formatCurrency(item.revenue)}
+          share={fulfillmentPct ?? undefined}
+          formatted={formatCurrency(revenue)}
           trailingFormatted={
-            isLeaf && item.sharePct != null
-              ? formatPercent(item.sharePct)
-              : undefined
+            fulfillmentPct !== null ? formatPercent(fulfillmentPct) : "—"
           }
-          barClassName={getBarClass(item.level, "bg-red-400", "bg-red-300", "bg-red-200")}
+          barClassName={getBarClass(item.level, "bg-rose-400", "bg-rose-300", "bg-rose-200")}
         />
       );
     },
@@ -198,9 +199,9 @@ const MERCH_SALES_COLUMNS: ColumnDef<MerchSalesFlatRow, unknown>[] = [
           formatted={formatCurrency(row.original.avgCheck)}
           barClassName={getBarClass(
             row.original.level,
-            "bg-red-300",
-            "bg-red-200",
-            "bg-red-100",
+            "bg-amber-500",
+            "bg-amber-300",
+            "bg-amber-200",
           )}
         />
       );
@@ -218,9 +219,9 @@ const MERCH_SALES_COLUMNS: ColumnDef<MerchSalesFlatRow, unknown>[] = [
           formatted={formatNumber(row.original.receipts)}
           barClassName={getBarClass(
             row.original.level,
-            "bg-gray-300",
-            "bg-gray-200",
-            "bg-gray-100",
+            "bg-slate-400",
+            "bg-slate-300",
+            "bg-slate-200",
           )}
         />
       );
@@ -238,9 +239,9 @@ const MERCH_SALES_COLUMNS: ColumnDef<MerchSalesFlatRow, unknown>[] = [
           formatted={`${formatNumber(row.original.units)} шт`}
           barClassName={getBarClass(
             row.original.level,
-            "bg-gray-300",
-            "bg-gray-200",
-            "bg-gray-100",
+            "bg-emerald-500",
+            "bg-emerald-300",
+            "bg-emerald-200",
           )}
         />
       );
@@ -265,9 +266,9 @@ const MERCH_SALES_COLUMNS: ColumnDef<MerchSalesFlatRow, unknown>[] = [
           formatted={formatPercent(row.original.purchaseConversionPct)}
           barClassName={getBarClass(
             row.original.level,
-            "bg-[var(--accent)]",
-            "bg-teal-300",
-            "bg-teal-200",
+            "bg-blue-500",
+            "bg-blue-300",
+            "bg-blue-200",
           )}
         />
       );

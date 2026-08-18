@@ -89,6 +89,7 @@ describe("merch sales tree", () => {
       expect(node.units).toBe(row.units);
       expect(node.upt).toBe(row.upt);
       expect(node.purchaseConversionPct).toBe(row.purchaseConversionPct);
+      expect(node.planRevenue).toBe(row.planRevenue);
       expect(node.label).toBe(row.eventLabel);
     }
   });
@@ -112,6 +113,10 @@ describe("merch sales tree", () => {
       expect(sumChildren(categories, "units")).toBe(match.units);
       expect(shareSum(channels)).toBeCloseTo(100, 8);
       expect(shareSum(categories)).toBeCloseTo(100, 8);
+      expect(channels.planRevenue).toBe(match.planRevenue);
+      expect(categories.planRevenue).toBe(match.planRevenue);
+      expect(channels.children[0]?.planRevenue).toBeNull();
+      expect(categories.children[0]?.planRevenue).toBeNull();
     }
   });
 
@@ -219,6 +224,8 @@ describe("merch sales tree vs live mock", () => {
       expect(match.avgCheck).toBe(row.avgCheck);
       expect(match.upt).toBe(row.upt);
       expect(match.purchaseConversionPct).toBe(row.purchaseConversionPct);
+      expect(match.planRevenue).toBe(row.planRevenue);
+      expect(match.planRevenue).toBeGreaterThan(0);
 
       const channels = findSection(
         match,
@@ -257,5 +264,17 @@ describe("merch sales tree vs live mock", () => {
 
     expect(channelVectors.size).toBeGreaterThan(1);
     expect(categoryVectors.size).toBeGreaterThan(1);
+
+    const fulfillmentKeys = new Set(
+      tree.map((match) => (match.revenue / (match.planRevenue ?? 0)).toFixed(3)),
+    );
+    expect(fulfillmentKeys.size).toBeGreaterThan(1);
+    expect(
+      tree.every((match) =>
+        match.children.every((section) =>
+          section.children.every((leaf) => leaf.planRevenue === null),
+        ),
+      ),
+    ).toBe(true);
   });
 });
