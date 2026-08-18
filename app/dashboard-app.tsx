@@ -74,17 +74,6 @@ const TicketsPlanFactWidget = dynamic(
   },
 );
 
-const TicketsSalesChannelsTrendWidget = dynamic(
-  () =>
-    import("@/components/widgets/TicketsSalesChannelsTrendWidget").then((mod) => ({
-      default: mod.TicketsSalesChannelsTrendWidget,
-    })),
-  {
-    ssr: false,
-    loading: () => <ChartSkeleton height={360} />,
-  },
-);
-
 const TicketsSeasonMatchDynamicsWidget = dynamic(
   () =>
     import("@/components/widgets/TicketsSeasonMatchDynamicsWidget").then(
@@ -95,6 +84,17 @@ const TicketsSeasonMatchDynamicsWidget = dynamic(
   {
     ssr: false,
     loading: () => <ChartSkeleton height={380} />,
+  },
+);
+
+const TicketsZoneSectorWidget = dynamic(
+  () =>
+    import("@/components/widgets/TicketsZoneSectorWidget").then((mod) => ({
+      default: mod.TicketsZoneSectorWidget,
+    })),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton height={420} />,
   },
 );
 
@@ -269,7 +269,6 @@ function DashboardPanels() {
     merchKpis,
     subscriptionsKpis,
     ticketsPlanFactTrend,
-    ticketsSalesChannelTrend,
     subscriptionsPlanFactTrend,
     topProducts,
     subscriptionPriceCategoryShares,
@@ -332,17 +331,11 @@ function DashboardPanels() {
               />
               <TicketsMatchDynamicsSection />
             </div>
-            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
-              <TicketsPlanFactWidget
-                data={ticketsPlanFactTrend}
-                timeGrouping={ticketChartTimeGrouping}
-              />
-              <TicketsSalesChannelsTrendWidget
-                data={ticketsSalesChannelTrend}
-                timeGrouping={ticketChartTimeGrouping}
-                orderSource={appliedTicketFilters.orderSource}
-              />
-            </div>
+            <TicketsZoneSectorWidget />
+            <TicketsPlanFactWidget
+              data={ticketsPlanFactTrend}
+              timeGrouping={ticketChartTimeGrouping}
+            />
           </>
         )}
 

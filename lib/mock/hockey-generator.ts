@@ -327,25 +327,60 @@ const SEASON_DEFINITIONS: SeasonDefinition[] = [
   },
 ];
 
-/** List prices in ₽: sectors stay A–VIP, cost buckets come from unit price. */
-const ZONE_PRICES: Record<Sector, number> = {
-  A: 2800,
-  B1: 2200,
-  B2: 2100,
-  B3: 2000,
-  B4: 1900,
-  C1: 1600,
-  C2: 1500,
-  C3: 1400,
-  C4: 1300,
-  D1: 1100,
-  D2: 1000,
-  D3: 900,
-  D4: 800,
-  VIP: 5500,
+const MAX_TICKET_UNIT_PRICE = 6000;
+
+/**
+ * Price range (min, max) per sector tier.
+ * VIP is always ≥ 4000, so it never falls below the top price zone.
+ */
+const SECTOR_PRICE_RANGE: Record<Sector, [number, number]> = {
+  A:   [2500, 3500],
+  B1:  [1800, 2800],
+  B2:  [1800, 2700],
+  B3:  [1800, 2600],
+  B4:  [1800, 2500],
+  C1:  [1300, 1800],
+  C2:  [1300, 1750],
+  C3:  [1300, 1700],
+  C4:  [1300, 1650],
+  D1:  [800, 1400],
+  D2:  [800, 1350],
+  D3:  [800, 1300],
+  D4:  [800, 1250],
+  VIP: [4000, 6000],
 };
 
-const MAX_TICKET_UNIT_PRICE = 6000;
+/**
+ * Returns a random unit price for a sector, scaled by a league/class factor.
+ * The sector range is the base (KHL class_2); other leagues/classes scale it.
+ */
+function randomUnitPriceForSector(
+  sector: Sector,
+  league: League,
+  matchClass: MatchClass = "class_2",
+): number {
+  const [minBase, maxBase] = SECTOR_PRICE_RANGE[sector];
+  let scaleFactor: number;
+  switch (league) {
+    case "VHL":
+      scaleFactor = getVhlPlanAvgPrice(matchClass) / TICKET_PLAN_AVG_PRICE;
+      break;
+    case "MHL":
+      scaleFactor = getMhlPlanAvgPrice(matchClass) / TICKET_PLAN_AVG_PRICE;
+      break;
+    default:
+      scaleFactor = getKhlPlanAvgPrice(matchClass) / TICKET_PLAN_AVG_PRICE;
+  }
+  // VIP always stays in the top zone regardless of scale factor
+  if (sector === "VIP") {
+    const min = 4000;
+    const max = MAX_TICKET_UNIT_PRICE;
+    return Math.round(min + rand() * (max - min));
+  }
+  const min = Math.round(minBase * scaleFactor);
+  const max = Math.round(maxBase * scaleFactor);
+  return Math.min(MAX_TICKET_UNIT_PRICE, Math.round(min + rand() * (max - min)));
+}
 
 const ORDER_SOURCES: OrderSource[] = [
   "box_office",
@@ -888,32 +923,30 @@ function getOpponentSalesFactor(opponent: string, matchClass: MatchClass): numbe
   return 0.96 + rand() * 0.06;
 }
 
-function getLeagueZonePrice(
-  zone: Sector,
+/**
+ * Returns the midpoint of the sector's price range scaled for league/class,
+ * used only for the "closestSector" heuristic when filling the last batch.
+ */
+function sectorMidPrice(
+  sector: Sector,
   league: League,
   matchClass: MatchClass = "class_2",
 ): number {
-  let unitPrice: number;
+  if (sector === "VIP") return 5000;
+  const [min, max] = SECTOR_PRICE_RANGE[sector];
+  const mid = (min + max) / 2;
+  let scaleFactor: number;
   switch (league) {
     case "VHL":
-      unitPrice = Math.round(
-        ZONE_PRICES[zone] *
-          (getVhlPlanAvgPrice(matchClass) / TICKET_PLAN_AVG_PRICE),
-      );
+      scaleFactor = getVhlPlanAvgPrice(matchClass) / TICKET_PLAN_AVG_PRICE;
       break;
     case "MHL":
-      unitPrice = Math.round(
-        ZONE_PRICES[zone] *
-          (getMhlPlanAvgPrice(matchClass) / TICKET_PLAN_AVG_PRICE),
-      );
+      scaleFactor = getMhlPlanAvgPrice(matchClass) / TICKET_PLAN_AVG_PRICE;
       break;
     default:
-      unitPrice = Math.round(
-        ZONE_PRICES[zone] *
-          (getKhlPlanAvgPrice(matchClass) / TICKET_PLAN_AVG_PRICE),
-      );
+      scaleFactor = getKhlPlanAvgPrice(matchClass) / TICKET_PLAN_AVG_PRICE;
   }
-  return Math.min(MAX_TICKET_UNIT_PRICE, unitPrice);
+  return Math.min(MAX_TICKET_UNIT_PRICE, Math.round(mid * scaleFactor));
 }
 
 function closestSector(
@@ -922,8 +955,8 @@ function closestSector(
   matchClass: MatchClass = "class_2",
 ): Sector {
   return ALL_SECTORS.reduce((best, zone) =>
-    Math.abs(getLeagueZonePrice(zone, league, matchClass) - targetPrice) <
-    Math.abs(getLeagueZonePrice(best, league, matchClass) - targetPrice)
+    Math.abs(sectorMidPrice(zone, league, matchClass) - targetPrice) <
+    Math.abs(sectorMidPrice(best, league, matchClass) - targetPrice)
       ? zone
       : best,
   ALL_SECTORS[0]);
@@ -986,7 +1019,7 @@ function buildDayTicketSales(
         league,
         matchClass,
       );
-      const unitPrice = getLeagueZonePrice(sector, league, matchClass);
+      const unitPrice = randomUnitPriceForSector(sector, league, matchClass);
       const qty = ticketsLeft;
       const gross = unitPrice * qty;
       const { amount, loyaltyDiscount } = resolveTicketPayment(gross, revenueLeft);
@@ -1012,7 +1045,7 @@ function buildDayTicketSales(
     }
 
     const sector = randomPick(ALL_SECTORS);
-    const unitPrice = getLeagueZonePrice(sector, league, matchClass);
+    const unitPrice = randomUnitPriceForSector(sector, league, matchClass);
     const qty = Math.min(randomInt(1, 4), ticketsLeft);
     const gross = unitPrice * qty;
     const { amount, loyaltyDiscount } = resolveTicketPayment(gross, revenueLeft);
@@ -1183,7 +1216,7 @@ function generateTransactions(allMatches: Match[]): Transaction[] {
       const channel: SalesChannel =
         orderSource === "box_office" ? "arena" : "online";
       const sector = randomPick(ALL_SECTORS);
-      const unitPrice = getLeagueZonePrice(sector, match.league, match.matchClass);
+      const unitPrice = randomUnitPriceForSector(sector, match.league, match.matchClass);
       transactions.push({
         id: `tx-${id++}`,
         date: randomSaleDate(match),
@@ -1276,74 +1309,128 @@ const PRICE_ZONE_SEED_UNIT_PRICE: Record<PriceZone, number> = {
   from_4000_to_6000: 5000,
 };
 
-const PRICE_ZONE_SEED_SECTOR: Record<PriceZone, Sector> = {
-  up_to_1500: "D4",
-  from_1500_to_2500: "B1",
-  from_2500_to_4000: "A",
-  from_4000_to_6000: "VIP",
-};
+const NON_VIP_SEED_ZONES: PriceZone[] = [
+  "up_to_1500",
+  "from_1500_to_2500",
+  "from_2500_to_4000",
+];
 
 const PRICE_ZONE_SEED_QUANTITY = 8;
 
-function arenaPriceZonesByMatch(
+/** Returns set of priceZones present per (matchId, sector) pair. */
+function arenaPriceZonesBySectorAndMatch(
   transactions: Transaction[],
 ): Map<string, Set<PriceZone>> {
-  const byMatch = new Map<string, Set<PriceZone>>();
+  const byKey = new Map<string, Set<PriceZone>>();
   for (const tx of transactions) {
     if (tx.stream !== "tickets" || tx.ticketType !== "arena" || !tx.matchId) {
       continue;
     }
-    if (!tx.priceZone) continue;
-    let zones = byMatch.get(tx.matchId);
+    if (!tx.priceZone || !tx.sector) continue;
+    const key = `${tx.matchId}::${tx.sector}`;
+    let zones = byKey.get(key);
     if (!zones) {
       zones = new Set();
-      byMatch.set(tx.matchId, zones);
+      byKey.set(key, zones);
     }
     zones.add(tx.priceZone);
   }
-  return byMatch;
+  return byKey;
+}
+
+/** Returns all (matchId, sector) pairs that appear in arena ticket transactions. */
+function arenaMatchSectorPairs(
+  transactions: Transaction[],
+): Map<string, Set<Sector>> {
+  const bySector = new Map<string, Set<Sector>>();
+  for (const tx of transactions) {
+    if (tx.stream !== "tickets" || tx.ticketType !== "arena" || !tx.matchId) {
+      continue;
+    }
+    if (!tx.sector) continue;
+    let sectors = bySector.get(tx.matchId);
+    if (!sectors) {
+      sectors = new Set();
+      bySector.set(tx.matchId, sectors);
+    }
+    sectors.add(tx.sector);
+  }
+  return bySector;
 }
 
 /**
- * Guarantee every match with arena ticket sales has txs in all four
- * unit-price buckets. Parking rows are skipped (no price zone).
+ * Guarantee:
+ * - Every non-VIP sector in every match has tickets in all three lower price
+ *   zones (up_to_1500, from_1500_to_2500, from_2500_to_4000).
+ * - VIP sector only ever gets from_4000_to_6000 seeds (already correct from
+ *   random generation; we do not inject lower zones into VIP).
+ * - If VIP is missing from_4000_to_6000 it is seeded as before.
+ * Parking rows are skipped (no price zone).
  */
 function ensureTicketPriceZoneCoverage(
   allMatches: Match[],
   transactions: Transaction[],
   startId: number,
 ): { txs: Transaction[]; nextId: number } {
-  const zonesByMatch = arenaPriceZonesByMatch(transactions);
-  if (zonesByMatch.size === 0) return { txs: [], nextId: startId };
+  const matchSectors = arenaMatchSectorPairs(transactions);
+  if (matchSectors.size === 0) return { txs: [], nextId: startId };
 
+  const zonesBySectorAndMatch = arenaPriceZonesBySectorAndMatch(transactions);
   const matchById = new Map(allMatches.map((match) => [match.id, match]));
   const txs: Transaction[] = [];
   let id = startId;
 
-  for (const [matchId, present] of zonesByMatch) {
+  for (const [matchId, sectors] of matchSectors) {
     const match = matchById.get(matchId);
     if (!match) continue;
 
-    for (const zone of ALL_PRICE_ZONES) {
-      if (present.has(zone)) continue;
-      const unitPrice = PRICE_ZONE_SEED_UNIT_PRICE[zone];
-      const sector = PRICE_ZONE_SEED_SECTOR[zone];
-      const qty = PRICE_ZONE_SEED_QUANTITY;
-      const orderSource = pickOrderSource();
-      txs.push({
-        id: `tx-${id++}`,
-        date: randomSaleDate(match),
-        stream: "tickets",
-        description: `Билет на арену, сектор ${sector}`,
-        matchId,
-        channel: orderSource === "box_office" ? "arena" : "online",
-        amount: unitPrice * qty,
-        quantity: qty,
-        sector,
-        ticketType: "arena",
-        priceZone: priceZoneFromUnitPrice(unitPrice),
-        orderSource,
-      });
+    for (const sector of sectors) {
+      const key = `${matchId}::${sector}`;
+      const present = zonesBySectorAndMatch.get(key) ?? new Set<PriceZone>();
+
+      if (sector === "VIP") {
+        const vipZone: PriceZone = "from_4000_to_6000";
+        if (!present.has(vipZone)) {
+          const unitPrice = PRICE_ZONE_SEED_UNIT_PRICE[vipZone];
+          const qty = PRICE_ZONE_SEED_QUANTITY;
+          const orderSource = pickOrderSource();
+          txs.push({
+            id: `tx-${id++}`,
+            date: randomSaleDate(match),
+            stream: "tickets",
+            description: `Билет на арену, сектор ${sector}`,
+            matchId,
+            channel: orderSource === "box_office" ? "arena" : "online",
+            amount: unitPrice * qty,
+            quantity: qty,
+            sector,
+            ticketType: "arena",
+            priceZone: priceZoneFromUnitPrice(unitPrice),
+            orderSource,
+          });
+        }
+      } else {
+        for (const zone of NON_VIP_SEED_ZONES) {
+          if (present.has(zone)) continue;
+          const unitPrice = PRICE_ZONE_SEED_UNIT_PRICE[zone];
+          const qty = PRICE_ZONE_SEED_QUANTITY;
+          const orderSource = pickOrderSource();
+          txs.push({
+            id: `tx-${id++}`,
+            date: randomSaleDate(match),
+            stream: "tickets",
+            description: `Билет на арену, сектор ${sector}`,
+            matchId,
+            channel: orderSource === "box_office" ? "arena" : "online",
+            amount: unitPrice * qty,
+            quantity: qty,
+            sector,
+            ticketType: "arena",
+            priceZone: priceZoneFromUnitPrice(unitPrice),
+            orderSource,
+          });
+        }
+      }
     }
   }
 

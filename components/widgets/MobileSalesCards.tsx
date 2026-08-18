@@ -34,6 +34,18 @@ const MATCH_SALES_EXCEL_HEADERS = [
   "Скидка ПЛ",
 ];
 
+function getNestedBranchBorderClass(node: MatchSalesTreeNode): string {
+  if (node.level === "section") {
+    if (node.id.includes("|sec:ticketType")) return "border-l-blue-500";
+    if (node.id.includes("|sec:orderSource")) return "border-l-green-500";
+    if (node.id.includes("|sec:priceZone")) return "border-l-violet-500";
+  }
+  if (node.level === "ticketType") return "border-l-blue-300";
+  if (node.level === "orderSource") return "border-l-green-300";
+  if (node.level === "priceZone") return "border-l-violet-300";
+  return "border-l-[var(--border)]";
+}
+
 function matchSalesTreeNodeMatchesQuery(
   node: MatchSalesTreeNode,
   query: string,
@@ -132,8 +144,9 @@ const NestedBranch = memo(function NestedBranch({
   const expanded = expandedSet.has(node.id);
   const hasChildren = node.hasChildren || node.children.length > 0;
 
+  const borderClass = getNestedBranchBorderClass(node);
   return (
-    <div className="rounded-md border border-[var(--border)] bg-white p-2.5">
+    <div className={clsx("rounded-md border border-[var(--border)] border-l-4 p-2.5", borderClass)}>
       <p
         className={clsx(
           "text-xs font-medium",

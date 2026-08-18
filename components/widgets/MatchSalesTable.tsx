@@ -49,6 +49,17 @@ type MatchSalesTableMeta = {
   };
 };
 
+function getBarClass(
+  level: MatchSalesFlatRow["level"],
+  matchClass: string,
+  sectionClass: string,
+  leafClass: string,
+): string {
+  if (level === "match") return matchClass;
+  if (level === "section") return sectionClass;
+  return leafClass;
+}
+
 function isMatchSalesSortId(id: string): id is MatchSalesSortId {
   return (
     id === "eventLabel" ||
@@ -156,7 +167,8 @@ const MATCH_SALES_COLUMNS: ColumnDef<MatchSalesFlatRow, unknown>[] = [
     accessorKey: "revenue",
     header: "Выручка",
     cell: ({ row, table }) => {
-      const { revenue, planRevenue } = row.original;
+      const item = row.original;
+      const { revenue, planRevenue } = item;
       const { barMax } = table.options.meta as MatchSalesTableMeta;
       const fulfillmentPct =
         planRevenue != null && planRevenue > 0
@@ -171,13 +183,7 @@ const MATCH_SALES_COLUMNS: ColumnDef<MatchSalesFlatRow, unknown>[] = [
           trailingFormatted={
             fulfillmentPct !== null ? formatPercent(fulfillmentPct) : "—"
           }
-          barClassName={
-            fulfillmentPct !== null && fulfillmentPct >= 100
-              ? "bg-emerald-500"
-              : fulfillmentPct !== null
-                ? "bg-red-400"
-                : "bg-[var(--accent)]"
-          }
+          barClassName={getBarClass(item.level, "bg-rose-400", "bg-rose-300", "bg-rose-200")}
         />
       );
     },
@@ -192,7 +198,7 @@ const MATCH_SALES_COLUMNS: ColumnDef<MatchSalesFlatRow, unknown>[] = [
           value={row.original.avgPrice}
           max={barMax.avgPrice}
           formatted={formatCurrency(row.original.avgPrice)}
-          barClassName="bg-[var(--accent)]"
+          barClassName={getBarClass(row.original.level, "bg-blue-500", "bg-blue-300", "bg-blue-200")}
         />
       );
     },
@@ -207,7 +213,7 @@ const MATCH_SALES_COLUMNS: ColumnDef<MatchSalesFlatRow, unknown>[] = [
           value={row.original.ticketsSold}
           max={barMax.ticketsSold}
           formatted={`${formatNumber(row.original.ticketsSold)} шт`}
-          barClassName="bg-gray-300"
+          barClassName={getBarClass(row.original.level, "bg-slate-500", "bg-slate-300", "bg-slate-200")}
         />
       );
     },
@@ -223,6 +229,7 @@ const MATCH_SALES_COLUMNS: ColumnDef<MatchSalesFlatRow, unknown>[] = [
     cell: ({ row, table }) => {
       const { issuedTickets, capacity } = row.original;
       const { barMax } = table.options.meta as MatchSalesTableMeta;
+      const issuedBarClass = getBarClass(row.original.level, "bg-emerald-500", "bg-emerald-300", "bg-emerald-200");
       if (capacity != null && capacity > 0) {
         const fillPct = (issuedTickets / capacity) * 100;
         return (
@@ -230,7 +237,7 @@ const MATCH_SALES_COLUMNS: ColumnDef<MatchSalesFlatRow, unknown>[] = [
             value={issuedTickets}
             max={capacity}
             formatted={`${formatNumber(issuedTickets)} шт (${formatPercent(fillPct)})`}
-            barClassName="bg-emerald-500"
+            barClassName={issuedBarClass}
           />
         );
       }
@@ -240,7 +247,7 @@ const MATCH_SALES_COLUMNS: ColumnDef<MatchSalesFlatRow, unknown>[] = [
           max={barMax.issuedTickets}
           formatted={`${formatNumber(issuedTickets)} шт`}
           trailingFormatted="—"
-          barClassName="bg-emerald-500"
+          barClassName={issuedBarClass}
         />
       );
     },
@@ -255,7 +262,7 @@ const MATCH_SALES_COLUMNS: ColumnDef<MatchSalesFlatRow, unknown>[] = [
           value={row.original.loyaltyDiscountPct}
           max={barMax.loyaltyDiscountPct}
           formatted={`${row.original.loyaltyDiscountPct.toFixed(1)}%`}
-          barClassName="bg-amber-400"
+          barClassName={getBarClass(row.original.level, "bg-amber-500", "bg-amber-300", "bg-amber-200")}
         />
       );
     },
@@ -427,10 +434,7 @@ export const MatchSalesTable = memo(function MatchSalesTable({
           {table.getRowModel().rows.map((row) => (
             <tr
               key={row.id}
-              className={clsx(
-                "border-b border-[var(--border)] last:border-0 hover:bg-[var(--background)]",
-                row.original.level !== "match" && "bg-[var(--background)]/60",
-              )}
+              className="border-b border-[var(--border)] last:border-0"
             >
               {row.getVisibleCells().map((cell) => (
                 <td
