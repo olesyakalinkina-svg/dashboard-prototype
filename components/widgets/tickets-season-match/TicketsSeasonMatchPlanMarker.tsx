@@ -1,9 +1,6 @@
 "use client";
 
-import {
-  formatRevenueThousandsLabel,
-  seasonMatchPlanKey,
-} from "@/lib/tickets-season-match-chart";
+import { seasonMatchPlanKey } from "@/lib/tickets-season-match-chart";
 
 type PlanMarkerProps = {
   cx?: number;
@@ -12,7 +9,6 @@ type PlanMarkerProps = {
   color: string;
   matchId: string;
   visible?: boolean;
-  showLabel?: boolean;
 };
 
 export function TicketsSeasonMatchPlanMarker({
@@ -22,7 +18,6 @@ export function TicketsSeasonMatchPlanMarker({
   color,
   matchId,
   visible = true,
-  showLabel = false,
 }: PlanMarkerProps) {
   if (!visible || cx == null || cy == null) return null;
 
@@ -47,18 +42,6 @@ export function TicketsSeasonMatchPlanMarker({
         stroke={color}
         strokeWidth={1.5}
       />
-      {showLabel && (
-        <text
-          x={cx}
-          y={cy - 16}
-          textAnchor="middle"
-          fill={color}
-          fontSize={10}
-          fontWeight={600}
-        >
-          {`План ${formatRevenueThousandsLabel(value)}`}
-        </text>
-      )}
     </g>
   );
 }

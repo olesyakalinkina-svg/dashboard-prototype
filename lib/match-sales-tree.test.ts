@@ -7,37 +7,29 @@ import {
   buildSalesTree,
   collectMatchSalesNodeIds,
   computeMatchSalesTree,
-  countActiveMatchSalesLocalFilters,
-  EMPTY_MATCH_SALES_LOCAL_FILTERS,
   flattenExpandedMatchSalesTree,
   getMatchSalesExpandScopeKey,
-  getMatchSalesLocalFilterOptions,
   getMatchSalesTreeTransactions,
   paginateTopLevel,
   pruneExpandedKeys,
   pruneExpandedKeysForMatches,
-  sanitizeMatchSalesLocalFilters,
   sortMatchSalesNodes,
   toggleExpandedKey,
-  transactionPassesLocalFilters,
-  type MatchSalesLocalFilters,
   type MatchSalesTreeNode,
 } from "@/lib/match-sales-tree";
 import { DEFAULT_TICKET_FILTERS, ALL_PRICE_ZONES, PRICE_ZONE_LABELS, priceZoneFromUnitPrice } from "@/lib/ticket-filter-options";
 import { getMatches, getTicketTransactionsByMatchId } from "@/lib/mock/data-store";
-import type { PriceZone, Transaction } from "@/types/dashboard";
+import type { PriceZone, TicketFilters, Transaction } from "@/types/dashboard";
 
 const filters = DEFAULT_DASHBOARD_FILTERS;
 const ticketFilters = DEFAULT_TICKET_FILTERS;
 
-function buildTree(
-  local: MatchSalesLocalFilters = EMPTY_MATCH_SALES_LOCAL_FILTERS,
-) {
-  const matchRows = computeMatchSalesTable(filters, ticketFilters);
+function buildTree(nextTicketFilters: TicketFilters = ticketFilters) {
+  const matchRows = computeMatchSalesTable(filters, nextTicketFilters);
   return {
     matchRows,
-    txs: getMatchSalesTreeTransactions(filters, ticketFilters),
-    tree: computeMatchSalesTree(filters, ticketFilters, local, matchRows),
+    txs: getMatchSalesTreeTransactions(filters, nextTicketFilters),
+    tree: computeMatchSalesTree(filters, nextTicketFilters, matchRows),
   };
 }
 
@@ -59,14 +51,6 @@ function findArenaBranch(tree: MatchSalesTreeNode[]) {
     return { match, arena, source, zone };
   }
   return null;
-}
-
-function zoneCodeFromLabel(label: string): PriceZone {
-  const text = label.split(" · ")[1] ?? "";
-  const found = (Object.entries(PRICE_ZONE_LABELS) as [PriceZone, string][]).find(
-    ([, name]) => name === text,
-  );
-  return found?.[0] ?? (text as PriceZone);
 }
 
 describe("price zone buckets", () => {
@@ -147,7 +131,7 @@ describe("match sales tree", () => {
     ).toBe(true);
   });
 
-  it("keeps match KPIs identical to computeMatchSalesTable without local branch filters", () => {
+  it("keeps match KPIs identical to computeMatchSalesTable", () => {
     const { matchRows, tree } = buildTree();
     const byId = new Map(matchRows.map((row) => [row.matchId, row]));
     for (const node of tree) {
@@ -203,69 +187,36 @@ describe("match sales tree", () => {
     expect(match!.loyaltyDiscountPct).toBeGreaterThanOrEqual(0);
   });
 
-  it("applies AND between filters and OR within a filter", () => {
-    const { tree } = buildTree();
-    let match: MatchSalesTreeNode | undefined;
-    let zoneA: PriceZone | undefined;
-    let zoneB: PriceZone | undefined;
-    for (const node of tree) {
-      const zones = node.children.flatMap((typeNode) =>
+  it("follows global ticket filters for match set and expanded branches", () => {
+    const allRows = computeMatchSalesTable(filters, ticketFilters);
+    const vhlFilters: TicketFilters = { ...ticketFilters, league: "VHL" };
+    const vhl = buildTree(vhlFilters);
+    expect(vhl.tree.length).toBe(vhl.matchRows.length);
+    expect(vhl.matchRows.length).toBeGreaterThan(0);
+    expect(vhl.matchRows.length).toBeLessThan(allRows.length);
+
+    const zone: PriceZone = "up_to_1500";
+    const zoneFilters: TicketFilters = { ...ticketFilters, priceZone: zone };
+    const zoneRows = computeMatchSalesTable(filters, zoneFilters);
+    const zoneTxs = getMatchSalesTreeTransactions(filters, zoneFilters);
+    const zoneTree = computeMatchSalesTree(filters, zoneFilters, zoneRows, {
+      transactions: zoneTxs,
+    });
+    expect(zoneTree.length).toBe(zoneRows.length);
+    expect(zoneRows.length).toBeGreaterThan(0);
+    expect(zoneRows.length).toBeLessThanOrEqual(allRows.length);
+
+    const zoneNodes = zoneTree.flatMap((match) =>
+      match.children.flatMap((typeNode) =>
         typeNode.children.flatMap((sourceNode) => sourceNode.children),
-      );
-      if (zones.length < 2) continue;
-      match = node;
-      zoneA = zoneCodeFromLabel(zones[0]!.label);
-      zoneB = zoneCodeFromLabel(zones[1]!.label);
-      break;
-    }
-    expect(match).toBeDefined();
-    expect(zoneA).toBeDefined();
-    expect(zoneB).toBeDefined();
-
-    const local: MatchSalesLocalFilters = {
-      matchId: [match!.matchId],
-      ticketType: ["arena"],
-      orderSource: [],
-      sector: [],
-      priceZone: [zoneA!, zoneB!],
-    };
-
-    const tx: Transaction = {
-      id: "tx-and-or",
-      date: new Date(),
-      stream: "tickets",
-      description: "test",
-      matchId: match!.matchId,
-      channel: "online",
-      amount: 100,
-      quantity: 1,
-      ticketType: "arena",
-      orderSource: "official_site",
-      priceZone: zoneA,
-    };
-    expect(transactionPassesLocalFilters(tx, local)).toBe(true);
-    expect(
-      transactionPassesLocalFilters({ ...tx, priceZone: zoneB }, local),
-    ).toBe(true);
-    expect(
-      transactionPassesLocalFilters(
-        { ...tx, ticketType: "parking", priceZone: undefined },
-        local,
       ),
-    ).toBe(false);
+    );
+    expect(zoneNodes.length).toBeGreaterThan(0);
     expect(
-      transactionPassesLocalFilters({ ...tx, matchId: "missing-match" }, local),
-    ).toBe(false);
-
-    const { tree: filtered } = buildTree(local);
-    expect(filtered).toHaveLength(1);
-    expect(filtered[0]?.matchId).toBe(match!.matchId);
-    expect(filtered[0]?.revenue).toBeLessThan(match!.revenue);
-    expect(
-      filtered[0]?.children.every((child) => child.label.includes("Арена")),
+      zoneNodes.every((row) =>
+        row.label.endsWith(`· ${PRICE_ZONE_LABELS[zone]}`),
+      ),
     ).toBe(true);
-    expect(sumChildren(filtered[0]!, "revenue")).toBe(filtered[0]!.revenue);
-    expect(countActiveMatchSalesLocalFilters(local)).toBe(3);
   });
 
   it("paginates top-level matches only and keeps children under the parent after sort", () => {
@@ -315,77 +266,6 @@ describe("match sales tree", () => {
     );
   });
 
-  it("drops invalid zones when the selected match set no longer contains them", () => {
-    const { matchRows, txs, tree } = buildTree();
-    const withZones = tree.find((node) =>
-      node.children.some((typeNode) =>
-        typeNode.children.some((sourceNode) => sourceNode.children.length > 0),
-      ),
-    );
-    expect(withZones).toBeDefined();
-
-    const presentZones = new Set(
-      withZones!.children.flatMap((typeNode) =>
-        typeNode.children.flatMap((sourceNode) =>
-          sourceNode.children.map((zoneNode) =>
-            zoneCodeFromLabel(zoneNode.label),
-          ),
-        ),
-      ),
-    );
-    const keptZone = [...presentZones][0]!;
-    const missingZone = "ZZ" as PriceZone;
-
-    const dirty: MatchSalesLocalFilters = {
-      matchId: [withZones!.matchId],
-      ticketType: [],
-      orderSource: [],
-      sector: [],
-      priceZone: [missingZone, keptZone],
-    };
-    const options = getMatchSalesLocalFilterOptions(txs, matchRows, dirty);
-    const sanitized = sanitizeMatchSalesLocalFilters(dirty, options);
-
-    expect(sanitized.matchId).toEqual([withZones!.matchId]);
-    expect(sanitized.priceZone).not.toContain(missingZone);
-    expect(options.priceZones.every((opt) => presentZones.has(opt.value as PriceZone))).toBe(
-      true,
-    );
-  });
-
-  it("filters a match by zone and expands down to that zone", () => {
-    const { tree } = buildTree();
-    const sample = findArenaBranch(tree);
-    expect(sample).not.toBeNull();
-    const zone = zoneCodeFromLabel(sample!.zone.label);
-    const { tree: filtered } = buildTree({
-      matchId: [sample!.match.matchId],
-      ticketType: [],
-      orderSource: [],
-      sector: [],
-      priceZone: [zone],
-    });
-
-    expect(filtered).toHaveLength(1);
-    expect(filtered[0]?.matchId).toBe(sample!.match.matchId);
-    expect(filtered[0]?.revenue).toBeLessThanOrEqual(sample!.match.revenue);
-    expect(filtered[0]?.planRevenue).toBe(sample!.match.planRevenue);
-    expect(filtered[0]?.capacity).toBe(sample!.match.capacity);
-
-    const expanded = collectMatchSalesNodeIds(filtered);
-    const flat = flattenExpandedMatchSalesTree(filtered, expanded);
-    expect(flat.some((row) => row.level === "match")).toBe(true);
-    expect(flat.some((row) => row.level === "ticketType")).toBe(true);
-    expect(flat.some((row) => row.level === "orderSource")).toBe(true);
-    const zoneRows = flat.filter((row) => row.level === "priceZone");
-    expect(zoneRows.length).toBeGreaterThan(0);
-    expect(
-      zoneRows.every((row) => row.label.endsWith(`· ${PRICE_ZONE_LABELS[zone]}`)),
-    ).toBe(true);
-    expect(zoneRows.every((row) => row.planRevenue === null)).toBe(true);
-    expect(sumChildren(filtered[0]!, "revenue")).toBe(filtered[0]!.revenue);
-  });
-
   it("does not scan transactions when collapsed with empty provided list", () => {
     const matchRows = computeMatchSalesTable(filters, ticketFilters);
     const trap = () => {
@@ -418,7 +298,6 @@ describe("match sales tree", () => {
     const collapsed = computeMatchSalesTree(
       filters,
       ticketFilters,
-      EMPTY_MATCH_SALES_LOCAL_FILTERS,
       matchRows,
       { transactions: guardedTxs },
     );
@@ -434,7 +313,6 @@ describe("match sales tree", () => {
     const withoutScan = computeMatchSalesTree(
       filters,
       ticketFilters,
-      EMPTY_MATCH_SALES_LOCAL_FILTERS,
       matchRows,
       { transactions: [] },
     );
@@ -454,7 +332,6 @@ describe("match sales tree", () => {
     const tree = buildSalesTree(
       txs,
       pageItems,
-      EMPTY_MATCH_SALES_LOCAL_FILTERS,
       filters,
       ticketFilters,
     );
@@ -496,7 +373,6 @@ describe("match sales tree", () => {
     const expanded = computeMatchSalesTree(
       filters,
       ticketFilters,
-      EMPTY_MATCH_SALES_LOCAL_FILTERS,
       matchRows,
       { transactions: [] },
     );

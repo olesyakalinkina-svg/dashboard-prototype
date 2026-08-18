@@ -1,7 +1,4 @@
-import { format } from "date-fns";
-import { ru } from "date-fns/locale";
 import {
-  filterMatchesByTicketFilters,
   filterTicketTransactions,
   filterTicketTransactionsForMatchIds,
 } from "@/lib/filters";
@@ -17,7 +14,6 @@ import {
 import {
   ALL_ORDER_SOURCES,
   ALL_PRICE_ZONES,
-  ALL_SECTORS,
   ORDER_SOURCE_LABELS,
   PRICE_ZONE_LABELS,
   TICKET_TYPE_LABELS,
@@ -27,7 +23,6 @@ import type {
   MatchSalesRow,
   OrderSource,
   PriceZone,
-  Sector,
   TicketFilters,
   TicketType,
   Transaction,
@@ -38,35 +33,6 @@ export type MatchSalesTreeLevel =
   | "ticketType"
   | "orderSource"
   | "priceZone";
-
-export type MatchSalesLocalFilters = {
-  matchId: string[];
-  ticketType: TicketType[];
-  orderSource: OrderSource[];
-  sector: Sector[];
-  priceZone: PriceZone[];
-};
-
-export const EMPTY_MATCH_SALES_LOCAL_FILTERS: MatchSalesLocalFilters = {
-  matchId: [],
-  ticketType: [],
-  orderSource: [],
-  sector: [],
-  priceZone: [],
-};
-
-export type MatchSalesFilterOption = {
-  value: string;
-  label: string;
-};
-
-export type MatchSalesLocalFilterOptions = {
-  matches: MatchSalesFilterOption[];
-  ticketTypes: MatchSalesFilterOption[];
-  orderSources: MatchSalesFilterOption[];
-  sectors: MatchSalesFilterOption[];
-  priceZones: MatchSalesFilterOption[];
-};
 
 export type MatchSalesTreeNode = {
   id: string;
@@ -165,107 +131,6 @@ function zoneKey(
 
 export function matchSalesNodeId(matchId: string): string {
   return `m:${matchId}`;
-}
-
-export function isMatchSalesLocalFiltersEmpty(
-  filters: MatchSalesLocalFilters,
-): boolean {
-  return (
-    filters.matchId.length === 0 &&
-    filters.ticketType.length === 0 &&
-    filters.orderSource.length === 0 &&
-    filters.sector.length === 0 &&
-    filters.priceZone.length === 0
-  );
-}
-
-export function hasMatchSalesBranchFilters(
-  filters: MatchSalesLocalFilters,
-): boolean {
-  return (
-    filters.ticketType.length > 0 ||
-    filters.orderSource.length > 0 ||
-    filters.sector.length > 0 ||
-    filters.priceZone.length > 0
-  );
-}
-
-export function countActiveMatchSalesLocalFilters(
-  filters: MatchSalesLocalFilters,
-): number {
-  let count = 0;
-  if (filters.matchId.length > 0) count += 1;
-  if (filters.ticketType.length > 0) count += 1;
-  if (filters.orderSource.length > 0) count += 1;
-  if (filters.sector.length > 0) count += 1;
-  if (filters.priceZone.length > 0) count += 1;
-  return count;
-}
-
-export function localFilterArraysEqual(
-  a: MatchSalesLocalFilters,
-  b: MatchSalesLocalFilters,
-): boolean {
-  return (
-    arraysEqual(a.matchId, b.matchId) &&
-    arraysEqual(a.ticketType, b.ticketType) &&
-    arraysEqual(a.orderSource, b.orderSource) &&
-    arraysEqual(a.sector, b.sector) &&
-    arraysEqual(a.priceZone, b.priceZone)
-  );
-}
-
-function arraysEqual(a: readonly string[], b: readonly string[]): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i += 1) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
-}
-
-export function transactionPassesLocalFilters(
-  tx: Transaction,
-  filters: MatchSalesLocalFilters,
-): boolean {
-  if (
-    filters.matchId.length > 0 &&
-    (!tx.matchId || !filters.matchId.includes(tx.matchId))
-  ) {
-    return false;
-  }
-  if (
-    filters.ticketType.length > 0 &&
-    (!tx.ticketType || !filters.ticketType.includes(tx.ticketType))
-  ) {
-    return false;
-  }
-  if (
-    filters.orderSource.length > 0 &&
-    (!tx.orderSource || !filters.orderSource.includes(tx.orderSource))
-  ) {
-    return false;
-  }
-  if (
-    filters.sector.length > 0 &&
-    (!tx.sector || !filters.sector.includes(tx.sector))
-  ) {
-    return false;
-  }
-  if (
-    filters.priceZone.length > 0 &&
-    (!tx.priceZone || !filters.priceZone.includes(tx.priceZone))
-  ) {
-    return false;
-  }
-  return true;
-}
-
-function passesExcept(
-  tx: Transaction,
-  filters: MatchSalesLocalFilters,
-  except: keyof MatchSalesLocalFilters,
-): boolean {
-  return transactionPassesLocalFilters(tx, { ...filters, [except]: [] });
 }
 
 export function getMatchSalesExpandScopeKey(
@@ -422,170 +287,6 @@ export function flattenExpandedMatchSalesTree(
   return rows;
 }
 
-export function getMatchSalesLocalFilterOptions(
-  txs: Transaction[],
-  matchRows: MatchSalesRow[],
-  filters: MatchSalesLocalFilters,
-): MatchSalesLocalFilterOptions {
-  if (isMatchSalesLocalFiltersEmpty(filters)) {
-    return {
-      matches: matchRows
-        .slice()
-        .sort((a, b) => b.date.getTime() - a.date.getTime())
-        .map((row) => ({
-          value: row.matchId,
-          label: `${row.eventLabel}`,
-        })),
-      ticketTypes: TICKET_TYPE_ORDER.map((type) => ({
-        value: type,
-        label: TICKET_TYPE_LABELS[type],
-      })),
-      orderSources: ALL_ORDER_SOURCES.map((source) => ({
-        value: source,
-        label: ORDER_SOURCE_LABELS[source],
-      })),
-      sectors: ALL_SECTORS.map((sector) => ({
-        value: sector,
-        label: sector,
-      })),
-      priceZones: ALL_PRICE_ZONES.map((zone) => ({
-        value: zone,
-        label: PRICE_ZONE_LABELS[zone],
-      })),
-    };
-  }
-
-  const matchById = new Map(matchRows.map((row) => [row.matchId, row]));
-
-  const matchIds = new Set<string>();
-  const ticketTypes = new Set<TicketType>();
-  const orderSources = new Set<OrderSource>();
-  const sectors = new Set<Sector>();
-  const priceZones = new Set<PriceZone>();
-
-  for (const tx of txs) {
-    if (!tx.matchId || !matchById.has(tx.matchId)) continue;
-    if (passesExcept(tx, filters, "matchId")) matchIds.add(tx.matchId);
-    if (tx.ticketType && passesExcept(tx, filters, "ticketType")) {
-      ticketTypes.add(tx.ticketType);
-    }
-    if (tx.orderSource && passesExcept(tx, filters, "orderSource")) {
-      orderSources.add(tx.orderSource);
-    }
-    if (tx.sector && passesExcept(tx, filters, "sector")) {
-      sectors.add(tx.sector);
-    }
-    if (tx.priceZone && passesExcept(tx, filters, "priceZone")) {
-      priceZones.add(tx.priceZone);
-    }
-  }
-
-  const matches = matchRows
-    .filter((row) => matchIds.has(row.matchId))
-    .slice()
-    .sort((a, b) => b.date.getTime() - a.date.getTime())
-    .map((row) => ({
-      value: row.matchId,
-      label: `${row.eventLabel}`,
-    }));
-
-  return {
-    matches,
-    ticketTypes: TICKET_TYPE_ORDER.filter((type) => ticketTypes.has(type)).map(
-      (type) => ({ value: type, label: TICKET_TYPE_LABELS[type] }),
-    ),
-    orderSources: ALL_ORDER_SOURCES.filter((source) =>
-      orderSources.has(source),
-    ).map((source) => ({
-      value: source,
-      label: ORDER_SOURCE_LABELS[source],
-    })),
-    sectors: ALL_SECTORS.filter((sector) => sectors.has(sector)).map(
-      (sector) => ({ value: sector, label: sector }),
-    ),
-    priceZones: ALL_PRICE_ZONES.filter((zone) => priceZones.has(zone)).map(
-      (zone) => ({ value: zone, label: PRICE_ZONE_LABELS[zone] }),
-    ),
-  };
-}
-
-export function sanitizeMatchSalesLocalFilters(
-  filters: MatchSalesLocalFilters,
-  options: MatchSalesLocalFilterOptions,
-): MatchSalesLocalFilters {
-  const matchValues = new Set(options.matches.map((opt) => opt.value));
-  const typeValues = new Set(options.ticketTypes.map((opt) => opt.value));
-  const sourceValues = new Set(options.orderSources.map((opt) => opt.value));
-  const sectorValues = new Set(options.sectors.map((opt) => opt.value));
-  const zoneValues = new Set(options.priceZones.map((opt) => opt.value));
-
-  return {
-    matchId: filters.matchId.filter((id) => matchValues.has(id)),
-    ticketType: filters.ticketType.filter((type) => typeValues.has(type)),
-    orderSource: filters.orderSource.filter((source) =>
-      sourceValues.has(source),
-    ),
-    sector: filters.sector.filter((sector) => sectorValues.has(sector)),
-    priceZone: filters.priceZone.filter((zone) => zoneValues.has(zone)),
-  };
-}
-
-export type MatchSalesLocalFilterChip = {
-  key: string;
-  dimension: keyof MatchSalesLocalFilters;
-  value: string;
-  label: string;
-};
-
-export function getMatchSalesLocalFilterChips(
-  filters: MatchSalesLocalFilters,
-  options: MatchSalesLocalFilterOptions,
-): MatchSalesLocalFilterChip[] {
-  const chips: MatchSalesLocalFilterChip[] = [];
-  const push = (
-    dimension: keyof MatchSalesLocalFilters,
-    value: string,
-    optionList: MatchSalesFilterOption[],
-  ) => {
-    const label =
-      optionList.find((opt) => opt.value === value)?.label ?? value;
-    chips.push({
-      key: `${dimension}:${value}`,
-      dimension,
-      value,
-      label,
-    });
-  };
-
-  for (const value of filters.matchId) {
-    push("matchId", value, options.matches);
-  }
-  for (const value of filters.ticketType) {
-    push("ticketType", value, options.ticketTypes);
-  }
-  for (const value of filters.orderSource) {
-    push("orderSource", value, options.orderSources);
-  }
-  for (const value of filters.sector) {
-    push("sector", value, options.sectors);
-  }
-  for (const value of filters.priceZone) {
-    push("priceZone", value, options.priceZones);
-  }
-  return chips;
-}
-
-export function removeMatchSalesLocalFilterValue(
-  filters: MatchSalesLocalFilters,
-  dimension: keyof MatchSalesLocalFilters,
-  value: string,
-): MatchSalesLocalFilters {
-  return {
-    ...filters,
-    [dimension]: filters[dimension].filter((item) => item !== value),
-  };
-}
-
 export function matchIdFromExpandedNodeId(id: string): string | null {
   if (!id.startsWith("m:")) return null;
   const rest = id.slice(2);
@@ -614,14 +315,11 @@ export type MatchAggregate = {
  */
 export function buildMatchAggregateIndex(
   transactions: Transaction[],
-  localFilters: MatchSalesLocalFilters = EMPTY_MATCH_SALES_LOCAL_FILTERS,
 ): Map<string, MatchAggregate> {
   const index = new Map<string, MatchAggregate>();
-  const applyLocal = !isMatchSalesLocalFiltersEmpty(localFilters);
 
   for (const tx of transactions) {
     if (!tx.matchId) continue;
-    if (applyLocal && !transactionPassesLocalFilters(tx, localFilters)) continue;
 
     let match = index.get(tx.matchId);
     if (!match) {
@@ -748,11 +446,10 @@ export function getMatchSalesTreeTransactions(
 export function buildSalesTree(
   filteredTransactions: Transaction[],
   matchRows: MatchSalesRow[],
-  localFilters: MatchSalesLocalFilters,
   filters: DashboardFilters,
   ticketFilters: TicketFilters,
 ): MatchSalesTreeNode[] {
-  return computeMatchSalesTree(filters, ticketFilters, localFilters, matchRows, {
+  return computeMatchSalesTree(filters, ticketFilters, matchRows, {
     transactions: filteredTransactions,
   });
 }
@@ -760,11 +457,9 @@ export function buildSalesTree(
 export function computeMatchSalesTree(
   filters: DashboardFilters,
   ticketFilters: TicketFilters,
-  localFilters: MatchSalesLocalFilters,
   matchRows: MatchSalesRow[],
   options?: ComputeMatchSalesTreeOptions,
 ): MatchSalesTreeNode[] {
-  const branchFilters = hasMatchSalesBranchFilters(localFilters);
   const providedTransactions = options != null && "transactions" in options;
   const providedTxs = providedTransactions
     ? (options.transactions ?? [])
@@ -778,96 +473,49 @@ export function computeMatchSalesTree(
   const index =
     globalTxs.length === 0
       ? new Map<string, MatchAggregate>()
-      : buildMatchAggregateIndex(globalTxs, localFilters);
+      : buildMatchAggregateIndex(globalTxs);
 
-  const matchById = new Map(matchRows.map((row) => [row.matchId, row]));
-  const allowedMatches = filterMatchesByTicketFilters(ticketFilters);
-  const matchMeta = new Map(allowedMatches.map((match) => [match.id, match]));
-  const useRowMetrics = !branchFilters;
   const childrenReady = index.size > 0;
-
   const nodes: MatchSalesTreeNode[] = [];
-  const matchIds = localFilters.matchId.length
-    ? localFilters.matchId
-    : matchRows.map((row) => row.matchId);
 
-  const seen = new Set<string>();
-  for (const matchId of matchIds) {
-    if (seen.has(matchId)) continue;
-    seen.add(matchId);
-
-    const row = matchById.get(matchId);
-    const aggregate = index.get(matchId);
-    const agg = aggregate?.agg ?? createBranchAgg();
-    const issuedForEmptyCheck = useRowMetrics
-      ? (row?.issuedTickets ?? agg.issuedTickets)
-      : agg.issuedTickets;
-
-    if (useRowMetrics && row) {
-      if (
-        isEmptyTicketSalesAgg(
-          {
-            revenue: row.revenue,
-            loyaltyDiscount: 0,
-            ticketsSold: row.ticketsSold,
-            freeTickets: row.freeTickets,
-          },
-          row.issuedTickets,
-        )
-      ) {
-        continue;
-      }
-    } else if (isEmptyTicketSalesAgg(agg, issuedForEmptyCheck)) {
+  for (const row of matchRows) {
+    if (
+      isEmptyTicketSalesAgg(
+        {
+          revenue: row.revenue,
+          loyaltyDiscount: 0,
+          ticketsSold: row.ticketsSold,
+          freeTickets: row.freeTickets,
+        },
+        row.issuedTickets,
+      )
+    ) {
       continue;
     }
 
-    const match = matchMeta.get(matchId);
-    const eventLabel =
-      row?.eventLabel ??
-      (match
-        ? `${match.opponent} ${format(match.date, "dd-MM-yy", { locale: ru })}`
-        : matchId);
-    const date = row?.date ?? match?.date ?? null;
-    const planRevenue = row?.planRevenue ?? null;
-    const capacity = row?.capacity ?? match?.capacity ?? null;
-    const typeNodes = typeNodesFromAggregate(matchId, aggregate);
+    const aggregate = index.get(row.matchId);
+    const typeNodes = typeNodesFromAggregate(row.matchId, aggregate);
     const hasChildren = childrenReady
       ? typeNodes.length > 0
-      : Boolean(row && (row.ticketsSold > 0 || row.issuedTickets > 0));
+      : row.ticketsSold > 0 || row.issuedTickets > 0;
 
-    if (useRowMetrics && row) {
-      nodes.push({
-        id: matchSalesNodeId(matchId),
-        level: "match",
-        matchId,
-        date,
-        label: eventLabel,
-        revenue: row.revenue,
-        planRevenue,
-        avgPrice: row.avgPrice,
-        ticketsSold: row.ticketsSold,
-        freeTickets: row.freeTickets,
-        issuedTickets: row.issuedTickets,
-        capacity,
-        loyaltyDiscountPct: row.loyaltyDiscountPct,
-        hasChildren,
-        children: typeNodes,
-      });
-    } else {
-      nodes.push(
-        metricsFromAgg(agg, {
-          id: matchSalesNodeId(matchId),
-          level: "match",
-          matchId,
-          date,
-          label: eventLabel,
-          planRevenue,
-          capacity,
-          hasChildren,
-          children: typeNodes,
-        }),
-      );
-    }
+    nodes.push({
+      id: matchSalesNodeId(row.matchId),
+      level: "match",
+      matchId: row.matchId,
+      date: row.date,
+      label: row.eventLabel,
+      revenue: row.revenue,
+      planRevenue: row.planRevenue,
+      avgPrice: row.avgPrice,
+      ticketsSold: row.ticketsSold,
+      freeTickets: row.freeTickets,
+      issuedTickets: row.issuedTickets,
+      capacity: row.capacity,
+      loyaltyDiscountPct: row.loyaltyDiscountPct,
+      hasChildren,
+      children: typeNodes,
+    });
   }
 
   return nodes.sort(

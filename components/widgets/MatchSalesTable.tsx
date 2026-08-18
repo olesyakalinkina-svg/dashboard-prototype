@@ -13,11 +13,6 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { TableExcelButton } from "@/components/ui/ExcelDownloadButton";
 import { InlineBarCell } from "@/components/ui/InlineBarCell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import {
-  MatchSalesExpandButton,
-  MatchSalesFilterBanner,
-  MatchSalesLocalFiltersBar,
-} from "@/components/widgets/MatchSalesLocalFilters";
 import { MobileSalesCards } from "@/components/widgets/MobileSalesCards";
 import {
   useMatchSalesPageTree,
@@ -63,6 +58,41 @@ function isMatchSalesSortId(id: string): id is MatchSalesSortId {
     id === "freeTickets" ||
     id === "issuedTickets" ||
     id === "loyaltyDiscountPct"
+  );
+}
+
+function MatchSalesExpandButton({
+  expanded,
+  hasChildren,
+  label,
+  onToggle,
+}: {
+  expanded: boolean;
+  hasChildren: boolean;
+  label: string;
+  onToggle: () => void;
+}) {
+  if (!hasChildren) {
+    return <span className="inline-block w-5 shrink-0" aria-hidden />;
+  }
+
+  return (
+    <button
+      type="button"
+      onPointerDown={(event) => {
+        event.stopPropagation();
+      }}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onToggle();
+      }}
+      className="relative z-20 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-[var(--border)] bg-white text-xs font-medium leading-none text-[var(--foreground)]"
+      aria-expanded={expanded}
+      aria-label={expanded ? `Свернуть: ${label}` : `Развернуть: ${label}`}
+    >
+      {expanded ? "−" : "+"}
+    </button>
   );
 }
 
@@ -323,15 +353,11 @@ export const MatchSalesTable = memo(function MatchSalesTable({
 
   const tableContent = (
     <>
-      <div className="mb-3 space-y-2">
-        <MatchSalesFilterBanner />
-        <MatchSalesLocalFiltersBar state={treeState} />
-        {embedded && (
-          <div className="flex justify-end">
-            <TableExcelButton table={excelTable} fileName="Продажи" />
-          </div>
-        )}
-      </div>
+      {embedded && (
+        <div className="mb-3 flex justify-end">
+          <TableExcelButton table={excelTable} fileName="Продажи" />
+        </div>
+      )}
       <table className="w-full text-sm">
         <thead>
           {table.getHeaderGroups().map((hg) => (

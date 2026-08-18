@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
 import { Card, CardContent } from "@/components/ui/Card";
 import {
   formatCurrency,
@@ -30,7 +30,17 @@ type KpiCardProps = {
   hideTrend?: boolean;
   compactCurrency?: boolean;
   rawCurrencyValue?: number;
+  compact?: boolean;
 };
+
+/** Two KPI cards sharing one grid slot, stacked to the height of a normal card. */
+function KpiCardStack({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex h-full min-w-0 flex-col gap-3 md:gap-4 xl:gap-2 [&>*]:min-h-0 [&>*]:flex-1">
+      {children}
+    </div>
+  );
+}
 
 export const KpiCard = memo(function KpiCard({
   title,
@@ -43,6 +53,7 @@ export const KpiCard = memo(function KpiCard({
   hideTrend = false,
   compactCurrency = false,
   rawCurrencyValue,
+  compact = false,
 }: KpiCardProps) {
   const isPositive = change >= 0;
   const isGood = positiveIsGood ? isPositive : !isPositive;
@@ -52,32 +63,49 @@ export const KpiCard = memo(function KpiCard({
       : value;
   const tooltipValue = fullValue ?? (compactCurrency ? value : undefined);
 
+  const body = (
+    <>
+      <p className="text-xs leading-snug text-[var(--muted)]">{title}</p>
+      <p
+        className={clsx(
+          "mt-1 break-words font-semibold text-[var(--foreground)]",
+          compact
+            ? "text-base min-[480px]:text-lg sm:text-xl"
+            : "text-lg min-[480px]:text-xl sm:text-2xl",
+        )}
+        title={tooltipValue}
+      >
+        {displayValue}
+      </p>
+      {subtitle && (
+        <p className="mt-0.5 text-xs leading-snug text-[var(--muted)]">{subtitle}</p>
+      )}
+      {!hideTrend && (
+        <div className="mt-2 flex items-end justify-between gap-2">
+          <span
+            className={clsx(
+              "text-xs font-medium leading-snug",
+              isGood ? "text-emerald-600" : "text-red-500",
+            )}
+          >
+            {formatPercentSigned(change)} {changeLabel}
+          </span>
+        </div>
+      )}
+    </>
+  );
+
   return (
-    <Card className="min-w-0">
-      <CardContent className="pt-3 sm:pt-4">
-        <p className="text-xs leading-snug text-[var(--muted)]">{title}</p>
-        <p
-          className="mt-1 break-words text-lg font-semibold text-[var(--foreground)] min-[480px]:text-xl sm:text-2xl"
-          title={tooltipValue}
-        >
-          {displayValue}
-        </p>
-        {subtitle && (
-          <p className="mt-0.5 text-xs leading-snug text-[var(--muted)]">{subtitle}</p>
-        )}
-        {!hideTrend && (
-          <div className="mt-2 flex items-end justify-between gap-2">
-            <span
-              className={clsx(
-                "text-xs font-medium leading-snug",
-                isGood ? "text-emerald-600" : "text-red-500",
-              )}
-            >
-              {formatPercentSigned(change)} {changeLabel}
-            </span>
-          </div>
-        )}
-      </CardContent>
+    <Card
+      className={clsx("min-w-0", compact && "flex h-full min-h-0 flex-col")}
+    >
+      {compact ? (
+        <div className="flex flex-1 flex-col justify-center px-3 py-2">
+          {body}
+        </div>
+      ) : (
+        <CardContent className="pt-3 sm:pt-4">{body}</CardContent>
+      )}
     </Card>
   );
 });
@@ -263,7 +291,7 @@ export const TabKpiCards = memo(function TabKpiCards({
         : 0;
 
     return (
-      <div className="grid min-w-0 grid-cols-1 gap-3 min-[480px]:grid-cols-2 md:gap-4 lg:grid-cols-4">
+      <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 min-[480px]:grid-cols-2 sm:grid-cols-3 md:gap-4 xl:grid-cols-6 xl:gap-2">
         <KpiCard
           title="Выручка"
           value={formatCurrency(ticketsKpis.revenue)}
@@ -280,13 +308,24 @@ export const TabKpiCards = memo(function TabKpiCards({
           changeLabel="к плану"
           hideTrend={false}
         />
-        <KpiCard
-          title="Средняя цена"
-          value={formatCurrency(ticketsKpis.avgPrice)}
-          compactCurrency
-          rawCurrencyValue={ticketsKpis.avgPrice}
-          hideTrend
-        />
+        <KpiCardStack>
+          <KpiCard
+            title="Выручка сегодня"
+            value={formatCurrency(ticketsKpis.revenueToday)}
+            compactCurrency
+            rawCurrencyValue={ticketsKpis.revenueToday}
+            subtitle="За текущий день"
+            hideTrend
+            compact
+          />
+          <KpiCard
+            title="Билеты сегодня"
+            value={formatNumber(ticketsKpis.ticketsToday)}
+            subtitle="За текущий день"
+            hideTrend
+            compact
+          />
+        </KpiCardStack>
         <KpiCard
           title="Скидка программы лояльности"
           value={formatPercent(ticketsKpis.loyaltyDiscountPct)}
@@ -299,17 +338,10 @@ export const TabKpiCards = memo(function TabKpiCards({
           hideTrend
         />
         <KpiCard
-          title="Выручка сегодня"
-          value={formatCurrency(ticketsKpis.revenueToday)}
+          title="Средняя цена"
+          value={formatCurrency(ticketsKpis.avgPrice)}
           compactCurrency
-          rawCurrencyValue={ticketsKpis.revenueToday}
-          subtitle="За текущий день"
-          hideTrend
-        />
-        <KpiCard
-          title="Билеты сегодня"
-          value={formatNumber(ticketsKpis.ticketsToday)}
-          subtitle="За текущий день"
+          rawCurrencyValue={ticketsKpis.avgPrice}
           hideTrend
         />
       </div>

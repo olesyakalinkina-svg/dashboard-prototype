@@ -3,21 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   computeMatchSalesTree,
-  countActiveMatchSalesLocalFilters,
-  EMPTY_MATCH_SALES_LOCAL_FILTERS,
   getMatchSalesBarMaxima,
   getMatchSalesExpandScopeKey,
-  getMatchSalesLocalFilterChips,
-  getMatchSalesLocalFilterOptions,
   getMatchSalesTreeTransactions,
-  hasMatchSalesBranchFilters,
-  localFilterArraysEqual,
   matchSalesNodeId,
   pruneExpandedKeysForMatches,
-  removeMatchSalesLocalFilterValue,
-  sanitizeMatchSalesLocalFilters,
   toggleExpandedKey,
-  type MatchSalesLocalFilters,
   type MatchSalesTreeNode,
 } from "@/lib/match-sales-tree";
 import type {
@@ -35,59 +26,21 @@ export function useMatchSalesTreeState(
   filters: DashboardFilters,
   ticketFilters: TicketFilters,
 ) {
-  const [localFilters, setLocalFilters] = useState<MatchSalesLocalFilters>(
-    EMPTY_MATCH_SALES_LOCAL_FILTERS,
-  );
   const [expanded, setExpanded] = useState<string[]>([]);
   const expandedSet = useMemo(() => new Set(expanded), [expanded]);
-  const branchFilters = hasMatchSalesBranchFilters(localFilters);
 
-  const matchIdKey = localFilters.matchId.join("\0");
   const matchRowIdsKey = useMemo(
     () => matchRows.map((row) => row.matchId).join("\0"),
     [matchRows],
   );
 
-  const txsForFilters = useMemo(() => {
-    if (!branchFilters && localFilters.matchId.length === 0) {
-      return EMPTY_TRANSACTIONS;
-    }
-    if (branchFilters && localFilters.matchId.length === 0) {
-      return getMatchSalesTreeTransactions(filters, ticketFilters);
-    }
-    return getMatchSalesTreeTransactions(
-      filters,
-      ticketFilters,
-      localFilters.matchId,
-    );
-  }, [branchFilters, matchIdKey, filters, ticketFilters, localFilters.matchId]);
-
   const tree = useMemo(
     () =>
-      computeMatchSalesTree(filters, ticketFilters, localFilters, matchRows, {
-        transactions: branchFilters ? txsForFilters : EMPTY_TRANSACTIONS,
+      computeMatchSalesTree(filters, ticketFilters, matchRows, {
+        transactions: EMPTY_TRANSACTIONS,
       }),
-    [
-      filters,
-      ticketFilters,
-      localFilters,
-      matchRows,
-      branchFilters,
-      txsForFilters,
-    ],
+    [filters, ticketFilters, matchRows],
   );
-
-  const options = useMemo(
-    () => getMatchSalesLocalFilterOptions(txsForFilters, matchRows, localFilters),
-    [txsForFilters, matchRows, localFilters],
-  );
-
-  useEffect(() => {
-    const sanitized = sanitizeMatchSalesLocalFilters(localFilters, options);
-    if (!localFilterArraysEqual(sanitized, localFilters)) {
-      setLocalFilters(sanitized);
-    }
-  }, [localFilters, options]);
 
   const scopeKey = getMatchSalesExpandScopeKey(ticketFilters);
 
@@ -108,44 +61,19 @@ export function useMatchSalesTreeState(
   }, [scopeKey, matchRowIdsKey, matchRows]);
 
   const barMax = useMemo(() => getMatchSalesBarMaxima(tree), [tree]);
-  const activeFilterCount = countActiveMatchSalesLocalFilters(localFilters);
-  const chips = useMemo(
-    () => getMatchSalesLocalFilterChips(localFilters, options),
-    [localFilters, options],
-  );
 
   const toggleExpanded = useCallback((id: string) => {
     setExpanded((current) => toggleExpandedKey(current, id));
   }, []);
-
-  const resetLocalFilters = useCallback(() => {
-    setLocalFilters(EMPTY_MATCH_SALES_LOCAL_FILTERS);
-  }, []);
-
-  const removeChip = useCallback(
-    (dimension: keyof MatchSalesLocalFilters, value: string) => {
-      setLocalFilters((current) =>
-        removeMatchSalesLocalFilterValue(current, dimension, value),
-      );
-    },
-    [],
-  );
 
   return {
     tree,
     matchRows,
     filters,
     ticketFilters,
-    localFilters,
-    setLocalFilters,
-    options,
     expandedSet,
     toggleExpanded,
     barMax,
-    activeFilterCount,
-    chips,
-    resetLocalFilters,
-    removeChip,
   };
 }
 
@@ -159,10 +87,9 @@ export function useMatchSalesPageTree(
     matchRows: MatchSalesRow[];
     filters: DashboardFilters;
     ticketFilters: TicketFilters;
-    localFilters: MatchSalesLocalFilters;
   },
 ): MatchSalesTreeNode[] {
-  const { matchRows, filters, ticketFilters, localFilters } = state;
+  const { matchRows, filters, ticketFilters } = state;
   const matchIdsKey = pageNodes.map((node) => node.matchId).join("\0");
   const needsHydration = pageNodes.some(
     (node) => node.hasChildren && node.children.length === 0,
@@ -192,19 +119,14 @@ export function useMatchSalesPageTree(
   return useMemo(() => {
     if (pageNodes.length === 0) return EMPTY_PAGE_TREE;
     if (!needsHydration) return pageNodes;
-    return computeMatchSalesTree(
-      filters,
-      ticketFilters,
-      localFilters,
-      pageRows,
-      { transactions: txs },
-    );
+    return computeMatchSalesTree(filters, ticketFilters, pageRows, {
+      transactions: txs,
+    });
   }, [
     pageNodes,
     needsHydration,
     filters,
     ticketFilters,
-    localFilters,
     pageRows,
     txs,
   ]);

@@ -5,10 +5,6 @@ import { memo, useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { RowsExcelButton } from "@/components/ui/ExcelDownloadButton";
 import {
-  MatchSalesFilterBanner,
-  MatchSalesMobileLocalFilters,
-} from "@/components/widgets/MatchSalesLocalFilters";
-import {
   useMatchSalesPageTree,
   type MatchSalesTreeState,
 } from "@/hooks/useMatchSalesTree";
@@ -207,8 +203,6 @@ export const MobileSalesCards = memo(function MobileSalesCards({
         />
       </CardHeader>
       <CardContent className="space-y-3">
-        <MatchSalesFilterBanner />
-        <MatchSalesMobileLocalFilters state={treeState} />
         {pageTree.length === 0 ? (
           <p className="py-6 text-center text-sm text-[var(--muted)]">
             Нет данных
