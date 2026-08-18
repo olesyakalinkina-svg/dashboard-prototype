@@ -1,8 +1,21 @@
 /** @vitest-environment jsdom */
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { format } from "date-fns";
+import { ru } from "date-fns/locale";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TicketsZoneSectorWidget } from "@/components/widgets/TicketsZoneSectorWidget";
+import type { PriceZone } from "@/types/dashboard";
+
+function matchEventLabel(day: number) {
+  return `Оппонент ${day} ${format(new Date(2026, 4, day), "dd-MM-yy", { locale: ru })}`;
+}
+
+const { ticketFilterState } = vi.hoisted(() => ({
+  ticketFilterState: {
+    priceZone: "all" as PriceZone | "all",
+  },
+}));
 
 vi.mock("@/context/FilterContext", () => ({
   useFilterData: () => ({
@@ -16,7 +29,7 @@ vi.mock("@/context/FilterContext", () => ({
       eventCompleted: "all",
       matchId: [],
       ticketType: "all",
-      priceZone: "all",
+      priceZone: ticketFilterState.priceZone,
       orderSource: "all",
       transactionDateRange: { from: null, to: null },
       timeGrouping: "day",
@@ -35,7 +48,7 @@ vi.mock("@/lib/filters", () => ({
       season: "2025/26",
       league: "KHL",
       tournamentStage: "regular",
-      matchClass: "class_1",
+      matchClass: "class_2",
       arena: "main",
       eventCompleted: true,
       ticketSalesWindowDays: 14,
@@ -117,18 +130,23 @@ vi.mock("@/lib/filters", () => ({
 }));
 
 afterEach(() => {
+  ticketFilterState.priceZone = "all";
   cleanup();
 });
 
-async function expandMatch(user: ReturnType<typeof userEvent.setup>, opponent = "Оппонент 10") {
-  await user.click(screen.getByRole("button", { name: `Развернуть: vs ${opponent}` }));
+async function expandMatch(user: ReturnType<typeof userEvent.setup>, day = 10) {
+  await user.click(
+    screen.getByRole("button", { name: `Развернуть: ${matchEventLabel(day)}` }),
+  );
 }
 
 describe("TicketsZoneSectorWidget integration", () => {
-  it("renders hierarchical table with Продажи-like columns and pagination", () => {
+  it("renders hierarchical table with Продажи-like event names and all filtered matches", () => {
     render(<TicketsZoneSectorWidget />);
     expect(screen.getByText("Продажи по ценовым зонам и секторам")).toBeTruthy();
-    expect(screen.getByText("Сравнение заполняемости, продаж и выручки по матчам")).toBeTruthy();
+    expect(
+      screen.queryByText("Сравнение заполняемости, продаж и выручки по матчам"),
+    ).toBeNull();
     expect(screen.getByRole("columnheader", { name: "Мероприятие" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Дата" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Выручка" })).toBeTruthy();
@@ -141,6 +159,12 @@ describe("TicketsZoneSectorWidget integration", () => {
     expect(screen.queryByText("Легенда шкалы")).toBeNull();
     expect(screen.queryByText("Выберите матч или ячейку")).toBeNull();
     expect(screen.getByText("10 мероприятий")).toBeTruthy();
+    expect(screen.queryByText("1 / 2")).toBeNull();
+    expect(screen.queryByText("Назад")).toBeNull();
+    expect(screen.queryByText("Вперёд")).toBeNull();
+    for (let day = 1; day <= 10; day += 1) {
+      expect(screen.getByText(matchEventLabel(day))).toBeTruthy();
+    }
   });
 
   it("does not render extra settings, slice switcher, or Показатель", () => {
@@ -150,9 +174,24 @@ describe("TicketsZoneSectorWidget integration", () => {
     expect(screen.queryByLabelText("Показатель")).toBeNull();
     expect(screen.queryByText("Текущее состояние")).toBeNull();
     expect(screen.queryByText("Итоговые продажи")).toBeNull();
-    expect(screen.getByText("Матчи")).toBeTruthy();
-    expect(screen.getByText("Ценовые зоны")).toBeTruthy();
+    expect(screen.queryByText("Матчи")).toBeNull();
+    expect(screen.queryByText("Ценовые зоны")).toBeNull();
     expect(screen.getByText("Секторы")).toBeTruthy();
+  });
+
+  it("grows with expanded rows instead of nesting a vertical table scroll", async () => {
+    const user = userEvent.setup();
+    render(<TicketsZoneSectorWidget />);
+    const table = screen.getByRole("table");
+    const wrapper = table.parentElement;
+    expect(wrapper?.className).not.toMatch(/max-h-/);
+    expect(wrapper?.className).not.toMatch(/overflow-(auto|y-auto|y-scroll)/);
+    expect(wrapper?.className).toMatch(/overflow-x-auto/);
+    expect(table.querySelectorAll("tbody tr")).toHaveLength(10);
+
+    const collapsedRows = table.querySelectorAll("tbody tr").length;
+    await expandMatch(user);
+    expect(table.querySelectorAll("tbody tr").length).toBeGreaterThan(collapsedRows);
   });
 
   it("keeps collapsed children out of the DOM until expanded", async () => {
@@ -223,14 +262,61 @@ describe("TicketsZoneSectorWidget integration", () => {
     expect(document.querySelector("[data-parent-sector='A']")).toBeNull();
   });
 
-  it("shows empty state for an illegal VIP + lower-zone filter combo", async () => {
+  it("opens a contained 14-sector list without match names", async () => {
     const user = userEvent.setup();
     render(<TicketsZoneSectorWidget />);
-    await user.click(screen.getByRole("button", { name: "Все зоны" }));
-    await user.click(screen.getByText("до 1500"));
-    await user.click(screen.getByText("от 2500 до 4000"));
-    await user.click(screen.getByText("от 4000 до 6000"));
-    await user.click(screen.getByRole("button", { name: /от 1500 до 2500/ }));
+    await user.click(screen.getByRole("button", { name: "Все секторы" }));
+
+    const menu = screen.getByTestId("multi-select-menu");
+    expect(menu.className).toMatch(/overflow-auto/);
+    expect(menu.className).toMatch(/z-50/);
+    expect(menu.className).toMatch(/max-h-64/);
+
+    const expected = [
+      "VIP",
+      "A",
+      "B1",
+      "B2",
+      "B3",
+      "B4",
+      "C1",
+      "C2",
+      "C3",
+      "C4",
+      "D1",
+      "D2",
+      "D3",
+      "D4",
+    ];
+    const optionLabels = [...menu.querySelectorAll("label span")].map(
+      (node) => node.textContent,
+    );
+    expect(optionLabels).toEqual(["Все секторы", ...expected]);
+    expect(optionLabels.some((label) => label?.includes("vs "))).toBe(false);
+    expect(menu.querySelectorAll("label")).toHaveLength(15);
+    for (const label of menu.querySelectorAll("label")) {
+      expect(label.className).toMatch(/\bh-9\b/);
+    }
+  });
+
+  it("hides zero-sale sectors under a price zone", async () => {
+    const user = userEvent.setup();
+    render(<TicketsZoneSectorWidget />);
+    await expandMatch(user);
+    await user.click(screen.getByRole("button", { name: "Развернуть: от 1500 до 2500" }));
+    const childSectors = [...document.querySelectorAll("[data-child-sector]")].map(
+      (node) => node.getAttribute("data-child-sector"),
+    );
+    expect(childSectors).toEqual(["A"]);
+    expect(childSectors).not.toContain("C1");
+    expect(childSectors).not.toContain("D4");
+    expect(screen.queryByText("0%")).toBeNull();
+  });
+
+  it("shows empty state for an illegal VIP + lower-zone filter combo", async () => {
+    ticketFilterState.priceZone = "from_1500_to_2500";
+    const user = userEvent.setup();
+    render(<TicketsZoneSectorWidget />);
     await user.click(screen.getByRole("button", { name: "Все секторы" }));
     for (const sector of ["A", "B1", "B2", "B3", "B4", "C1", "C2", "C3", "C4", "D1", "D2", "D3", "D4"]) {
       await user.click(screen.getByText(sector, { selector: "span" }));
@@ -239,7 +325,6 @@ describe("TicketsZoneSectorWidget integration", () => {
       "Нет данных для выбранного сочетания фильтров",
     );
     expect(screen.getByRole("button", { name: "VIP" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "от 1500 до 2500" })).toBeTruthy();
-    expect(screen.queryByText("vs Оппонент 1")).toBeNull();
+    expect(screen.queryByText(matchEventLabel(1))).toBeNull();
   });
 });

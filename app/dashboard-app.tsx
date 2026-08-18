@@ -308,7 +308,10 @@ function DashboardPanels() {
                 </div>
               </div>
             </div>
-            <TicketsZoneSectorWidget />
+            <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2">
+              <TicketsZoneSectorWidget />
+              <div aria-hidden="true" className="hidden xl:block" />
+            </div>
           </>
         )}
 

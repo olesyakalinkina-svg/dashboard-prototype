@@ -1,4 +1,4 @@
-import type { League, MatchClass } from "@/types/dashboard";
+import type { League, MatchClass, TournamentStage } from "@/types/dashboard";
 
 export const MAIN_ARENA_CAPACITY = 12000;
 export const SECONDARY_ARENA_CAPACITY = 3000;
@@ -49,6 +49,18 @@ export function getVhlPlanAvgPrice(matchClass: MatchClass): number {
 
 export function getMhlPlanAvgPrice(matchClass: MatchClass): number {
   return Math.round(MHL_BASE_AVG_PRICE * CLASS_PRICE_SCALE[matchClass]);
+}
+
+/** Class 1 and playoff games are treated as sold out (100% occupancy). */
+export function isSoldOutOccupancyMatch(match: {
+  matchClass: MatchClass;
+  tournamentStage?: TournamentStage;
+}): boolean {
+  return (
+    match.matchClass === "class_1" ||
+    match.matchClass === "playoff" ||
+    match.tournamentStage === "playoff"
+  );
 }
 
 export function getMatchTicketPlanProfile(match: {

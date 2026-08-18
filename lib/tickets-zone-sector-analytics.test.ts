@@ -11,23 +11,34 @@ import {
   visibleSectorsForFilters,
 } from "@/lib/ticket-filter-options";
 import {
+  MAIN_ARENA_SECTOR_CAPACITY,
+  getComboAvailableMass,
+  getSectorCapacitiesForMatch,
+  leftoverSectorCapacity,
+  splitSectorCapacity,
+  sumSectorCapacities,
+} from "@/lib/arena-sector-inventory";
+import {
   buildAvailabilityIndex,
   buildMatrixRows,
   buildZoneSectorMatchTree,
   buildZoneSectorTree,
   collectInvalidSectorPriceZoneRecords,
+  comboKey,
   computeOccupancy,
   effectiveSliceForMatch,
   flattenZoneSectorTree,
   hydrateZoneSectorTree,
   inferChildSectorsForZone,
   inferChildZonesForSector,
+  occupancyPercent,
   preAggregateZoneSector,
   resolveAllowedCell,
   sumMatchBySectors,
   sumMatchByZones,
 } from "@/lib/tickets-zone-sector-analytics";
 import type { Match, PriceZone, Sector, Transaction } from "@/types/dashboard";
+import { isSoldOutOccupancyMatch } from "@/lib/ticket-plan";
 
 const MATCHES: Match[] = [
   {
@@ -39,7 +50,7 @@ const MATCHES: Match[] = [
     season: "2025/26",
     league: "KHL",
     tournamentStage: "regular",
-    matchClass: "class_1",
+    matchClass: "class_2",
     arena: "main",
     eventCompleted: true,
     ticketSalesWindowDays: 14,
@@ -69,6 +80,26 @@ function tx(
     orderSource: "official_site",
     ...extras,
   };
+}
+
+function fillMatchInventory(match: Match): Transaction[] {
+  const sectors = getSectorCapacitiesForMatch(match);
+  if (!sectors) return [];
+  const txs: Transaction[] = [];
+  let n = 0;
+  for (const sector of ALL_SECTORS) {
+    const split = splitSectorCapacity(sector, sectors[sector]);
+    for (const zone of allowedPriceZonesForSector(sector)) {
+      const mass = split[zone] ?? 0;
+      if (!(mass > 0)) continue;
+      txs.push(
+        tx(`fill-${match.id}-${n++}`, sector, zone, mass * 2000, mass, {
+          matchId: match.id,
+        }),
+      );
+    }
+  }
+  return txs;
 }
 
 const TXS: Transaction[] = [
@@ -187,15 +218,8 @@ describe("filters against the allowed matrix", () => {
 });
 
 describe("empty allowed vs illegal combos", () => {
-  it("10. empty allowed combo with ticket mass shows zeros", () => {
-    const massTxs: Transaction[] = [
-      tx("mass-b2-low", "B2", "up_to_1500", 900, 2),
-      tx("mass-b2-mid", "B2", "from_1500_to_2500", 2000, 1),
-      tx("mass-b2-high", "B2", "from_2500_to_4000", 3200, 4),
-    ];
-    const availability = buildAvailabilityIndex(
-      preAggregateZoneSector(massTxs, matchesById),
-    );
+  it("10. empty allowed combo with ticket mass is zeros at cell level, not a tree row", () => {
+    const availability = buildAvailabilityIndex(matchesById);
     const emptySlice = new Map();
     const empty = resolveAllowedCell(
       "m1",
@@ -213,13 +237,14 @@ describe("empty allowed vs illegal combos", () => {
   });
 
   it("10b. empty allowed combo with no mass shows em dash", () => {
-    const agg = preAggregateZoneSector(TXS, matchesById);
-    const availability = buildAvailabilityIndex(agg);
+    const noCap: Match = { ...MATCHES[0]!, id: "m0", capacity: 0 };
+    const noCapById = new Map([[noCap.id, noCap]]);
+    const availability = buildAvailabilityIndex(noCapById);
     const empty = resolveAllowedCell(
-      "m1",
+      "m0",
       "C4",
       "from_2500_to_4000",
-      agg,
+      new Map(),
       availability,
     );
     expect(empty.kind).toBe("dash");
@@ -352,12 +377,25 @@ describe("tickets-zone-sector analytics", () => {
       zoneInMatch: new Map([["m1|from_1500_to_2500", 10]]),
       sectorInMatch: new Map([["m1|A", 6]]),
       zoneInSector: new Map([["m1|A|from_1500_to_2500", 4]]),
+      leftoverByMatch: new Map([["m1", 0]]),
     };
-    const aOcc = computeOccupancy("m1", "A", "from_1500_to_2500", 3, availability);
+    const aOcc = computeOccupancy(
+      "m1",
+      "A",
+      "from_1500_to_2500",
+      { inZone: 3, inSector: 3, inCombo: 3 },
+      availability,
+    );
     expect(aOcc.zoneInMatch).toBe(30);
     expect(aOcc.sectorInMatch).toBe(50);
     expect(aOcc.zoneInSector).toBe(75);
-    const miss = computeOccupancy("m1", "D4", "up_to_1500", 1, availability);
+    const miss = computeOccupancy(
+      "m1",
+      "D4",
+      "up_to_1500",
+      { inZone: 1, inSector: 1, inCombo: 1 },
+      availability,
+    );
     expect(miss.zoneInMatch).toBeNull();
     expect(miss.sectorInMatch).toBeNull();
     expect(miss.zoneInSector).toBeNull();
@@ -533,13 +571,25 @@ describe("zone-sector hierarchical tree", () => {
     const topZone = match.children.find((child) => child.zoneId === "from_4000_to_6000")!;
     expect(topZone.children.map((leaf) => leaf.sectorId)).toEqual(["VIP"]);
     const lowZone = match.children.find((child) => child.zoneId === "up_to_1500")!;
-    expect(lowZone.children.map((leaf) => leaf.sectorId)).toEqual(NON_VIP_SECTORS);
+    expect(lowZone.children.map((leaf) => leaf.sectorId)).toEqual(["A", "C2"]);
     expect(lowZone.children.some((leaf) => leaf.sectorId === "VIP")).toBe(false);
+    const midZone = match.children.find((child) => child.zoneId === "from_1500_to_2500")!;
+    expect(midZone.children.map((leaf) => leaf.sectorId)).toEqual(["A", "D4"]);
+    expect(
+      midZone.children.every((leaf) => (leaf.issued ?? 0) > 0 || (leaf.revenue ?? 0) > 0),
+    ).toBe(true);
   });
 
   it("sectors mode is match → allowed sectors → allowed zones", () => {
     const tree = buildZoneSectorTree({ ...treeOptions, mode: "sectors_to_zones" });
     const match = tree[0]!;
+    expect(match.children.map((child) => child.sectorId)).toEqual([
+      "A",
+      "B1",
+      "C2",
+      "D4",
+      "VIP",
+    ]);
     const sectorA = match.children.find((child) => child.sectorId === "A")!;
     expect(sectorA.children.map((leaf) => leaf.zoneId)).toEqual(NON_VIP_PRICE_ZONES);
     expect(sectorA.children.some((leaf) => leaf.zoneId === "from_4000_to_6000")).toBe(false);
@@ -589,7 +639,7 @@ describe("zone-sector hierarchical tree", () => {
     const agg = preAggregateZoneSector(TXS, matchesById);
     const ctx = {
       agg,
-      availability: buildAvailabilityIndex(agg),
+      availability: buildAvailabilityIndex(matchesById, agg),
       matchesById,
       localMatchIds: [] as string[],
       localPriceZones: [] as PriceZone[],
@@ -625,7 +675,7 @@ describe("zone-sector hierarchical tree", () => {
     const agg = preAggregateZoneSector(extraTxs, extraById);
     const ctx = {
       agg,
-      availability: buildAvailabilityIndex(agg),
+      availability: buildAvailabilityIndex(extraById, agg),
       matchesById: extraById,
       localMatchIds: [] as string[],
       localPriceZones: [] as PriceZone[],
@@ -648,3 +698,304 @@ describe("zone-sector hierarchical tree", () => {
     expect(collapsed.every((row) => row.level === "match")).toBe(true);
   });
 });
+
+describe("sector capacity occupancy (not issued/issued)", () => {
+  const agg = preAggregateZoneSector(TXS, matchesById);
+  const availability = buildAvailabilityIndex(matchesById, agg);
+
+  it("does not use issued as the availability denominator", () => {
+    const combo = comboKey("m1", "A", "from_1500_to_2500");
+    const issued = agg.get(combo)!.issued;
+    const mass = availability.zoneInSector.get(combo)!;
+    expect(issued).toBe(3);
+    expect(mass).toBeGreaterThan(issued);
+    expect(mass).not.toBe(issued);
+    expect(occupancyPercent(issued, mass)).not.toBe(100);
+  });
+
+  it("produces different occupancy % across combos, not all 100%", () => {
+    const tree = buildZoneSectorTree({
+      transactions: TXS,
+      matchesById,
+      localMatchIds: [],
+      localPriceZones: [],
+      localSectors: [],
+      mode: "sectors_to_zones",
+    });
+    const leaves = tree[0]!.children.flatMap((section) => section.children);
+    const occupancies = leaves
+      .filter((leaf) => leaf.kind === "values")
+      .map((leaf) => leaf.occupancy);
+    expect(occupancies.length).toBeGreaterThan(1);
+    expect(occupancies.every((value) => value != null && value !== 100)).toBe(true);
+    expect(new Set(occupancies.map((value) => value!.toFixed(4))).size).toBeGreaterThan(1);
+
+    const sectorA = tree[0]!.children.find((child) => child.sectorId === "A")!;
+    const mid = sectorA.children.find((leaf) => leaf.zoneId === "from_1500_to_2500")!;
+    const aMass = getComboAvailableMass(MATCHES[0]!, "A", "from_1500_to_2500");
+    expect(aMass).toBe(320);
+    expect(mid.issued).toBe(3);
+    expect(mid.occupancy).toBeCloseTo((3 / 320) * 100);
+    expect(sectorA.occupancy).toBeCloseTo((5 / 800) * 100);
+  });
+
+  it("uses match.capacity for match occupancy, not issued", () => {
+    const tree = buildZoneSectorTree({
+      transactions: TXS,
+      matchesById,
+      localMatchIds: [],
+      localPriceZones: [],
+      localSectors: [],
+      mode: "zones_to_sectors",
+    });
+    const match = tree[0]!;
+    expect(match.issued).toBe(10);
+    expect(match.occupancy).toBeCloseTo((10 / 12_000) * 100);
+    expect(match.occupancy).not.toBe(100);
+  });
+
+  it("returns null occupancy when mass is missing or 0", () => {
+    expect(occupancyPercent(5, 0)).toBeNull();
+    const noCap: Match = { ...MATCHES[0]!, id: "m0", capacity: 0 };
+    const tree = buildZoneSectorTree({
+      transactions: [tx("zero-cap", "A", "from_1500_to_2500", 3000, 2, { matchId: "m0" })],
+      matchesById: new Map([[noCap.id, noCap]]),
+      localMatchIds: [],
+      localPriceZones: [],
+      localSectors: [],
+      mode: "zones_to_sectors",
+    });
+    expect(tree[0]!.occupancy).toBeNull();
+    const zone = tree[0]!.children.find((child) => child.zoneId === "from_1500_to_2500");
+    expect(zone?.occupancy).toBeNull();
+  });
+
+  it("sums combo masses to match.capacity with leftover 0", () => {
+    let comboSum = 0;
+    for (const mass of availability.zoneInSector.values()) comboSum += mass;
+    expect(comboSum).toBe(12_000);
+    expect(availability.leftoverByMatch.get("m1")).toBe(0);
+
+    let sectorSum = 0;
+    for (const mass of availability.sectorInMatch.values()) sectorSum += mass;
+    expect(sectorSum).toBe(12_000);
+    expect(sectorSum).toBe(sumSectorCapacities(MAIN_ARENA_SECTOR_CAPACITY));
+  });
+
+  it("splits non-VIP sector capacity across three zones and VIP into 4000–6000 only", () => {
+    const splitA = splitSectorCapacity("A", 800);
+    expect(splitA.up_to_1500).toBe(240);
+    expect(splitA.from_1500_to_2500).toBe(320);
+    expect(splitA.from_2500_to_4000).toBe(240);
+    expect(
+      (splitA.up_to_1500 ?? 0) +
+        (splitA.from_1500_to_2500 ?? 0) +
+        (splitA.from_2500_to_4000 ?? 0),
+    ).toBe(800);
+    expect(splitA.from_4000_to_6000).toBeUndefined();
+
+    const splitVip = splitSectorCapacity("VIP", 400);
+    expect(splitVip).toEqual({ from_4000_to_6000: 400 });
+    expect(leftoverSectorCapacity(MATCHES[0]!)).toBe(0);
+  });
+
+  it("hides zero-sale leaves and empty parent sections", () => {
+    const tree = buildZoneSectorTree({
+      transactions: TXS,
+      matchesById,
+      localMatchIds: [],
+      localPriceZones: [],
+      localSectors: [],
+      mode: "zones_to_sectors",
+    });
+    const rows = flattenZoneSectorTree(
+      tree,
+      new Set(tree.flatMap((match) => [match.id, ...match.children.map((child) => child.id)])),
+    );
+    const zeroRows = rows.filter(
+      (row) => row.level !== "match" && (row.issued ?? 0) === 0 && (row.revenue ?? 0) === 0,
+    );
+    expect(zeroRows).toEqual([]);
+    expect(rows.some((row) => row.sectorId === "C1")).toBe(false);
+    expect(rows.some((row) => row.sectorId === "B2")).toBe(false);
+  });
+
+  it("reallocates oversold zone mass so leaf occupancy is ≤ 100% and not issued/issued", () => {
+    const oversold: Transaction[] = [
+      tx("os-a", "A", "from_1500_to_2500", 1_000_000, 540),
+      tx("os-b1", "B1", "from_1500_to_2500", 900_000, 500),
+      tx("os-b2", "B2", "from_1500_to_2500", 880_000, 490),
+      tx("os-b3", "B3", "from_1500_to_2500", 860_000, 480),
+      tx("os-b4", "B4", "from_1500_to_2500", 840_000, 470),
+    ];
+    const tree = buildZoneSectorTree({
+      transactions: oversold,
+      matchesById,
+      localMatchIds: [],
+      localPriceZones: [],
+      localSectors: [],
+      mode: "zones_to_sectors",
+    });
+    const match = tree[0]!;
+    const mid = match.children.find((child) => child.zoneId === "from_1500_to_2500")!;
+    expect(mid.children.map((leaf) => leaf.sectorId)).toEqual(["A", "B1", "B2", "B3", "B4"]);
+    expect(mid.children.some((leaf) => leaf.sectorId?.startsWith("C"))).toBe(false);
+    expect(mid.children.some((leaf) => leaf.sectorId?.startsWith("D"))).toBe(false);
+
+    for (const leaf of mid.children) {
+      expect(leaf.occupancy).not.toBeNull();
+      expect(leaf.occupancy!).toBeLessThanOrEqual(100);
+      expect(leaf.issued).toBeGreaterThan(0);
+      const combo = comboKey("m1", leaf.sectorId!, "from_1500_to_2500");
+      const leafAgg = preAggregateZoneSector(oversold, matchesById);
+      const availability = buildAvailabilityIndex(matchesById, leafAgg);
+      const mass = availability.zoneInSector.get(combo)!;
+      expect(mass).toBeGreaterThanOrEqual(leaf.issued!);
+      expect(leaf.occupancy).toBeCloseTo(
+        Math.min(100, (leaf.issued! / mass) * 100),
+      );
+    }
+
+    expect(mid.occupancy).not.toBeNull();
+    expect(mid.occupancy!).toBeLessThanOrEqual(100);
+    expect(mid.occupancy!).toBeLessThan(mid.children[0]!.occupancy!);
+  });
+
+  it("caps occupancy at 100% when issued exceeds sector capacity", () => {
+    const overflow: Transaction[] = [
+      tx("overflow-a", "A", "from_1500_to_2500", 2_000_000, 900),
+    ];
+    const tree = buildZoneSectorTree({
+      transactions: overflow,
+      matchesById,
+      localMatchIds: [],
+      localPriceZones: [],
+      localSectors: [],
+      mode: "sectors_to_zones",
+    });
+    const sectorA = tree[0]!.children.find((child) => child.sectorId === "A")!;
+    expect(sectorA.issued).toBe(900);
+    expect(sectorA.occupancy).toBe(100);
+    const leaf = sectorA.children.find((child) => child.zoneId === "from_1500_to_2500")!;
+    expect(leaf.occupancy).toBe(100);
+    const overflowAgg = preAggregateZoneSector(overflow, matchesById);
+    const overflowAvailability = buildAvailabilityIndex(matchesById, overflowAgg);
+    expect(overflowAvailability.zoneInSector.get(comboKey("m1", "A", "from_1500_to_2500"))).toBe(
+      800,
+    );
+  });
+});
+
+describe("class_1 and playoff sellout occupancy", () => {
+  function soldOutMatch(
+    id: string,
+    extras: Partial<Match>,
+  ): Match {
+    return {
+      ...MATCHES[0]!,
+      id,
+      ...extras,
+    };
+  }
+
+  it("treats class_1 and playoff as sold-out occupancy matches", () => {
+    expect(isSoldOutOccupancyMatch({ matchClass: "class_1" })).toBe(true);
+    expect(
+      isSoldOutOccupancyMatch({ matchClass: "playoff", tournamentStage: "playoff" }),
+    ).toBe(true);
+    expect(
+      isSoldOutOccupancyMatch({ matchClass: "class_2", tournamentStage: "playoff" }),
+    ).toBe(true);
+    expect(
+      isSoldOutOccupancyMatch({ matchClass: "class_2", tournamentStage: "regular" }),
+    ).toBe(false);
+    expect(
+      isSoldOutOccupancyMatch({ matchClass: "class_3", tournamentStage: "regular" }),
+    ).toBe(false);
+  });
+
+  it("fills class_1 matches to 100% occupancy with no zero rows", () => {
+    const match = soldOutMatch("c1", { matchClass: "class_1", opponent: "СКА" });
+    const byId = new Map([[match.id, match]]);
+    const txs = fillMatchInventory(match);
+    const tree = buildZoneSectorTree({
+      transactions: txs,
+      matchesById: byId,
+      localMatchIds: [],
+      localPriceZones: [],
+      localSectors: [],
+      mode: "zones_to_sectors",
+    });
+    const root = tree[0]!;
+    expect(root.issued).toBe(match.capacity);
+    expect(root.occupancy).toBeCloseTo(100);
+    const rows = flattenZoneSectorTree(
+      tree,
+      new Set(tree.flatMap((node) => [node.id, ...node.children.map((child) => child.id)])),
+    );
+    expect(
+      rows.some((row) => (row.issued ?? 0) === 0 && (row.revenue ?? 0) === 0),
+    ).toBe(false);
+    for (const row of rows) {
+      expect(row.occupancy).not.toBeNull();
+      expect(row.occupancy!).toBeCloseTo(100);
+      expect(row.occupancy!).toBeLessThanOrEqual(100);
+    }
+  });
+
+  it("fills playoff matches to 100% occupancy", () => {
+    const match = soldOutMatch("po", {
+      matchClass: "playoff",
+      tournamentStage: "playoff",
+      opponent: "Динамо Мск",
+    });
+    const byId = new Map([[match.id, match]]);
+    const tree = buildZoneSectorTree({
+      transactions: fillMatchInventory(match),
+      matchesById: byId,
+      localMatchIds: [],
+      localPriceZones: [],
+      localSectors: [],
+      mode: "sectors_to_zones",
+    });
+    expect(tree[0]!.occupancy).toBeCloseTo(100);
+    for (const section of tree[0]!.children) {
+      expect(section.occupancy).toBeCloseTo(100);
+      for (const leaf of section.children) {
+        expect(leaf.occupancy).toBeCloseTo(100);
+      }
+    }
+  });
+
+  it("does not force class_2 / class_3 occupancy to 100%", () => {
+    const class2 = buildZoneSectorTree({
+      transactions: TXS,
+      matchesById,
+      localMatchIds: [],
+      localPriceZones: [],
+      localSectors: [],
+      mode: "zones_to_sectors",
+    });
+    expect(isSoldOutOccupancyMatch(MATCHES[0]!)).toBe(false);
+    expect(class2[0]!.occupancy).toBeCloseTo((10 / 12_000) * 100);
+    expect(class2[0]!.occupancy).not.toBe(100);
+
+    const class3 = soldOutMatch("c3", {
+      matchClass: "class_3",
+      tournamentStage: "regular",
+    });
+    const class3Tree = buildZoneSectorTree({
+      transactions: [
+        tx("c3-a", "A", "from_1500_to_2500", 3000, 2, { matchId: "c3" }),
+      ],
+      matchesById: new Map([[class3.id, class3]]),
+      localMatchIds: [],
+      localPriceZones: [],
+      localSectors: [],
+      mode: "zones_to_sectors",
+    });
+    expect(isSoldOutOccupancyMatch(class3)).toBe(false);
+    expect(class3Tree[0]!.occupancy).toBeLessThan(100);
+  });
+});
+

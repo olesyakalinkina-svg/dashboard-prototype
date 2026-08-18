@@ -16,14 +16,11 @@ import { InlineBarCell } from "@/components/ui/InlineBarCell";
 import { MultiSelect } from "@/components/ui/MultiSelect";
 import { useFilterData } from "@/context/FilterContext";
 import {
-  ALL_PRICE_ZONES,
   ALL_SECTORS,
-  PRICE_ZONE_LABELS,
   hasAllowedFilterIntersection,
 } from "@/lib/ticket-filter-options";
 import { filterMatchesByTicketFilters, filterTicketTransactions } from "@/lib/filters";
 import { formatCurrency, formatDate, formatPercent } from "@/lib/format";
-import { paginateTopLevel } from "@/lib/match-sales-tree";
 import {
   buildAvailabilityIndex,
   buildZoneSectorMatchTree,
@@ -37,8 +34,26 @@ import {
 } from "@/lib/tickets-zone-sector-analytics";
 import type { DashboardFilters, PriceZone, Sector, TicketFilters } from "@/types/dashboard";
 
-const PAGE_SIZE = 15;
 const EMPTY_FILTER_COMBO_MESSAGE = "Нет данных для выбранного сочетания фильтров";
+
+const COLUMN_WIDTH_CLASS: Record<string, string> = {
+  eventLabel: "w-auto min-w-0",
+  date: "w-[6.75rem]",
+  revenue: "w-[10.5rem]",
+  occupancy: "w-[11rem]",
+};
+
+function columnAlignClass(columnId: string, header: boolean): string {
+  if (columnId === "date") {
+    return header
+      ? "text-right"
+      : "whitespace-nowrap text-right tabular-nums";
+  }
+  if (columnId === "revenue" || columnId === "occupancy") {
+    return header ? "text-left" : "";
+  }
+  return "text-left";
+}
 
 function ticketsQueryKey(
   filters: DashboardFilters,
@@ -206,11 +221,13 @@ const COLUMNS: ColumnDef<ZoneSectorFlatRow, unknown>[] = [
   {
     accessorKey: "date",
     header: "Дата",
+    size: 108,
     cell: ({ row }) => (row.original.date ? formatDate(row.original.date) : ""),
   },
   {
     accessorKey: "revenue",
     header: "Выручка",
+    size: 168,
     cell: ({ row, table }) => {
       const item = row.original;
       const { barMax } = table.options.meta as ZoneSectorTableMeta;
@@ -227,6 +244,7 @@ const COLUMNS: ColumnDef<ZoneSectorFlatRow, unknown>[] = [
   {
     accessorKey: "occupancy",
     header: "% заполняемости",
+    size: 176,
     cell: ({ row, table }) => {
       const item = row.original;
       const { barMax } = table.options.meta as ZoneSectorTableMeta;
@@ -259,23 +277,30 @@ export function TicketsZoneSectorWidget() {
   const matchesById = useMemo(() => new Map(matches.map((m) => [m.id, m])), [matches]);
 
   const [mode, setMode] = useState<DetailMode>("zones_to_sectors");
-  const [selectedMatchIds, setSelectedMatchIds] = useState<string[]>([]);
-  const [selectedZoneIds, setSelectedZoneIds] = useState<PriceZone[]>([]);
   const [selectedSectorIds, setSelectedSectorIds] = useState<Sector[]>([]);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
-  const [invalidHint, setInvalidHint] = useState<string | null>(null);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([{ id: "date", desc: true }]);
-  const [pageIndex, setPageIndex] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const filterComboValid = hasAllowedFilterIntersection(selectedZoneIds, selectedSectorIds);
+  const globalPriceZones = useMemo<PriceZone[]>(
+    () =>
+      appliedTicketFilters.priceZone === "all" ? [] : [appliedTicketFilters.priceZone],
+    [appliedTicketFilters.priceZone],
+  );
+  const filterComboValid = hasAllowedFilterIntersection(
+    globalPriceZones,
+    selectedSectorIds,
+  );
 
   const agg = useMemo(
     () => preAggregateZoneSector(transactions, matchesById),
     [transactions, matchesById],
   );
-  const availability = useMemo(() => buildAvailabilityIndex(agg), [agg]);
+  const availability = useMemo(
+    () => buildAvailabilityIndex(matchesById, agg),
+    [matchesById, agg],
+  );
 
   const treeContext = useMemo<ZoneSectorTreeContext>(
     () => ({
@@ -283,58 +308,25 @@ export function TicketsZoneSectorWidget() {
       availability,
       matchesById,
       localMatchIds: [],
-      localPriceZones: selectedZoneIds,
+      localPriceZones: globalPriceZones,
       localSectors: selectedSectorIds,
     }),
-    [agg, availability, matchesById, selectedZoneIds, selectedSectorIds],
+    [agg, availability, matchesById, globalPriceZones, selectedSectorIds],
   );
 
-  const allTree = useMemo(
+  const tree = useMemo(
     () => (filterComboValid ? buildZoneSectorMatchTree(treeContext) : []),
     [filterComboValid, treeContext],
   );
 
-  const tree = useMemo(
-    () =>
-      selectedMatchIds.length
-        ? allTree.filter((node) => selectedMatchIds.includes(node.matchId))
-        : allTree,
-    [allTree, selectedMatchIds],
-  );
-
-  const existingMatchIds = useMemo(() => new Set(allTree.map((row) => row.matchId)), [allTree]);
-
-  useEffect(() => {
-    if (!filterComboValid) return;
-    const stale = selectedMatchIds.filter((id) => !existingMatchIds.has(id));
-    if (stale.length) {
-      setSelectedMatchIds((prev) => prev.filter((id) => existingMatchIds.has(id)));
-      setInvalidHint("Часть локально выбранных матчей снята из-за изменения глобальных фильтров.");
-    }
-  }, [existingMatchIds, selectedMatchIds, filterComboValid]);
-
   useEffect(() => {
     setExpandedKeys(new Set());
-    setPageIndex(0);
   }, [mode]);
 
-  useEffect(() => {
-    setPageIndex(0);
-  }, [selectedMatchIds, selectedZoneIds, selectedSectorIds, searchQuery]);
-
-  const matchOptions = useMemo(
-    () =>
-      allTree.map((row) => ({
-        value: row.matchId,
-        label: `${row.label} · ${row.date ? formatDate(row.date) : ""}`,
-      })),
-    [allTree],
-  );
-  const zoneOptions = ALL_PRICE_ZONES.map((zone) => ({
-    value: zone,
-    label: PRICE_ZONE_LABELS[zone],
-  }));
-  const sectorOptions = ALL_SECTORS.map((sector) => ({ value: sector, label: sector }));
+  const sectorOptions = [
+    ...ALL_SECTORS.filter((sector) => sector === "VIP"),
+    ...ALL_SECTORS.filter((sector) => sector !== "VIP"),
+  ].map((sector) => ({ value: sector, label: sector }));
 
   const sort = sorting[0];
   const sortedTree = useMemo(
@@ -357,15 +349,6 @@ export function TicketsZoneSectorWidget() {
     });
   }, [sortedTree, searchQuery]);
 
-  const pagination = useMemo(
-    () => paginateTopLevel(filteredTree, pageIndex, PAGE_SIZE),
-    [filteredTree, pageIndex],
-  );
-
-  useEffect(() => {
-    if (pageIndex !== pagination.pageIndex) setPageIndex(pagination.pageIndex);
-  }, [pageIndex, pagination.pageIndex]);
-
   const toggleExpanded = useCallback((id: string) => {
     setExpandedKeys((prev) => {
       const next = new Set(prev);
@@ -377,11 +360,11 @@ export function TicketsZoneSectorWidget() {
 
   const pageTree = useMemo(
     () =>
-      hydrateZoneSectorTree(pagination.pageItems, {
+      hydrateZoneSectorTree(filteredTree, {
         ...treeContext,
         mode,
       }),
-    [pagination.pageItems, treeContext, mode],
+    [filteredTree, treeContext, mode],
   );
 
   const flatRows = useMemo(
@@ -393,7 +376,9 @@ export function TicketsZoneSectorWidget() {
     let occupancy = 0;
     let revenue = 0;
     for (const node of filteredTree) {
-      occupancy = Math.max(occupancy, node.occupancy ?? 0);
+      if (node.occupancy != null) {
+        occupancy = Math.max(occupancy, node.occupancy);
+      }
       revenue = Math.max(revenue, node.revenue ?? 0);
     }
     return { occupancy, revenue };
@@ -411,7 +396,6 @@ export function TicketsZoneSectorWidget() {
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     manualSorting: true,
-    manualPagination: true,
     getRowId: (row) => row.id,
     meta: tableMeta,
   });
@@ -424,16 +408,7 @@ export function TicketsZoneSectorWidget() {
     meta: tableMeta,
   });
 
-  const goPrev = useCallback(() => setPageIndex((value) => Math.max(0, value - 1)), []);
-  const goNext = useCallback(
-    () => setPageIndex((value) => Math.min(pagination.pageCount - 1, value + 1)),
-    [pagination.pageCount],
-  );
-
-  const activeFilterCount =
-    Number(selectedMatchIds.length > 0) +
-    Number(selectedZoneIds.length > 0) +
-    Number(selectedSectorIds.length > 0);
+  const hasLocalFilters = selectedSectorIds.length > 0;
 
   function rowTestAttrs(row: ZoneSectorFlatRow) {
     const parentId = row.id.includes("|")
@@ -453,15 +428,10 @@ export function TicketsZoneSectorWidget() {
   return (
     <Card className="flex h-full min-w-0 flex-col">
       <CardHeader>
-        <div className="flex w-full flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 space-y-1">
-            <h3 className="text-[18px] font-semibold leading-tight text-[var(--foreground)]">
-              Продажи по ценовым зонам и секторам
-            </h3>
-            <p className="text-[13px] leading-5 text-[var(--muted)]">
-              Сравнение заполняемости, продаж и выручки по матчам
-            </p>
-          </div>
+        <div className="flex w-full flex-wrap items-center justify-between gap-3">
+          <h3 className="min-w-0 text-[18px] font-semibold leading-tight text-[var(--foreground)]">
+            Продажи по ценовым зонам и секторам
+          </h3>
           <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
             <div className="relative min-w-0 flex-1 sm:w-auto sm:flex-none">
               <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
@@ -477,7 +447,7 @@ export function TicketsZoneSectorWidget() {
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-3 overflow-x-auto">
+      <CardContent className="space-y-3">
         <div className="md:hidden">
           <button
             type="button"
@@ -488,28 +458,13 @@ export function TicketsZoneSectorWidget() {
           </button>
         </div>
 
-        <div className={clsx("hidden md:block", showMobileFilters && "block")}>
+        <div
+          className={clsx(
+            "relative z-40",
+            showMobileFilters ? "block" : "hidden md:block",
+          )}
+        >
           <div className="flex flex-wrap items-end gap-2">
-            <MultiSelect
-              label="Матчи"
-              options={matchOptions}
-              value={selectedMatchIds}
-              onChange={setSelectedMatchIds}
-              emptyMeansAll
-              searchable
-              searchPlaceholder="Поиск матча..."
-              selectAllLabel="Все матчи"
-              allSelectedLabel="Все матчи"
-            />
-            <MultiSelect
-              label="Ценовые зоны"
-              options={zoneOptions}
-              value={selectedZoneIds}
-              onChange={(value) => setSelectedZoneIds(value as PriceZone[])}
-              emptyMeansAll
-              selectAllLabel="Все зоны"
-              allSelectedLabel="Все зоны"
-            />
             <MultiSelect
               label="Секторы"
               options={sectorOptions}
@@ -521,16 +476,11 @@ export function TicketsZoneSectorWidget() {
               selectAllLabel="Все секторы"
               allSelectedLabel="Все секторы"
             />
-            {activeFilterCount > 0 && (
+            {hasLocalFilters && (
               <button
                 type="button"
                 className="h-10 rounded-md border border-[var(--border)] px-3 text-sm"
-                onClick={() => {
-                  setSelectedMatchIds([]);
-                  setSelectedZoneIds([]);
-                  setSelectedSectorIds([]);
-                  setInvalidHint(null);
-                }}
+                onClick={() => setSelectedSectorIds([])}
               >
                 Сбросить фильтры
               </button>
@@ -561,13 +511,12 @@ export function TicketsZoneSectorWidget() {
               По секторам
             </button>
           </div>
-          {activeFilterCount > 0 && (
+          {hasLocalFilters && (
             <span className="rounded-full border border-[var(--border)] px-2 py-1 text-xs">
-              Фильтры · {activeFilterCount}
+              Фильтры · 1
             </span>
           )}
         </div>
-        {invalidHint && <p className="text-xs text-amber-700">{invalidHint}</p>}
 
         {!filterComboValid && (
           <div
@@ -580,78 +529,76 @@ export function TicketsZoneSectorWidget() {
 
         {filterComboValid && (
           <>
-            <table className="w-full text-sm">
-              <thead>
-                {table.getHeaderGroups().map((headerGroup) => (
-                  <tr key={headerGroup.id} className="border-b border-[var(--border)]">
-                    {headerGroup.headers.map((header) => (
-                      <th
-                        key={header.id}
-                        className="cursor-pointer px-3 py-2 text-left text-xs font-medium text-[var(--muted)]"
-                        onClick={header.column.getToggleSortingHandler()}
-                      >
-                        <span className="inline-flex items-center gap-1">
-                          {flexRender(header.column.columnDef.header, header.getContext())}
-                          {{
-                            asc: <ChevronUp className="h-3 w-3" />,
-                            desc: <ChevronDown className="h-3 w-3" />,
-                          }[header.column.getIsSorted() as string] ?? null}
-                        </span>
-                      </th>
-                    ))}
-                  </tr>
-                ))}
-              </thead>
-              <tbody>
-                {table.getRowModel().rows.map((row) => (
-                  <tr
-                    key={row.id}
-                    className="border-b border-[var(--border)] last:border-0"
-                    {...rowTestAttrs(row.original)}
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <td
-                        key={cell.id}
-                        className={clsx(
-                          "px-3 py-2.5 text-[var(--foreground)]",
-                          cell.column.id === "eventLabel" && "relative z-20",
-                        )}
-                        onClick={
-                          cell.column.id === "eventLabel"
-                            ? (event) => event.stopPropagation()
-                            : undefined
-                        }
-                      >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted)]">
+            <div className="min-w-0 overflow-x-auto">
+              <table className="w-full min-w-[36rem] table-fixed text-sm">
+                <colgroup>
+                  <col />
+                  <col className={COLUMN_WIDTH_CLASS.date} />
+                  <col className={COLUMN_WIDTH_CLASS.revenue} />
+                  <col className={COLUMN_WIDTH_CLASS.occupancy} />
+                </colgroup>
+                <thead>
+                  {table.getHeaderGroups().map((headerGroup) => (
+                    <tr key={headerGroup.id} className="border-b border-[var(--border)]">
+                      {headerGroup.headers.map((header) => (
+                        <th
+                          key={header.id}
+                          className={clsx(
+                            "cursor-pointer whitespace-nowrap px-3 py-2 text-xs font-medium text-[var(--muted)]",
+                            COLUMN_WIDTH_CLASS[header.column.id],
+                            columnAlignClass(header.column.id, true),
+                          )}
+                          onClick={header.column.getToggleSortingHandler()}
+                        >
+                          <span
+                            className={clsx(
+                              "inline-flex items-center gap-1",
+                              header.column.id === "date" && "justify-end",
+                            )}
+                          >
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                            {{
+                              asc: <ChevronUp className="h-3 w-3" />,
+                              desc: <ChevronDown className="h-3 w-3" />,
+                            }[header.column.getIsSorted() as string] ?? null}
+                          </span>
+                        </th>
+                      ))}
+                    </tr>
+                  ))}
+                </thead>
+                <tbody>
+                  {table.getRowModel().rows.map((row) => (
+                    <tr
+                      key={row.id}
+                      className="border-b border-[var(--border)] last:border-0"
+                      {...rowTestAttrs(row.original)}
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <td
+                          key={cell.id}
+                          className={clsx(
+                            "px-3 py-2.5 text-[var(--foreground)]",
+                            COLUMN_WIDTH_CLASS[cell.column.id],
+                            columnAlignClass(cell.column.id, false),
+                            cell.column.id === "eventLabel" && "relative z-[1]",
+                          )}
+                          onClick={
+                            cell.column.id === "eventLabel"
+                              ? (event) => event.stopPropagation()
+                              : undefined
+                          }
+                        >
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-3 text-xs text-[var(--muted)]">
               <span>{filteredTree.length} мероприятий</span>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={goPrev}
-                  disabled={pagination.pageIndex === 0}
-                  className="rounded border border-[var(--border)] px-2 py-1 disabled:opacity-40"
-                >
-                  Назад
-                </button>
-                <span>
-                  {pagination.pageIndex + 1} / {pagination.pageCount}
-                </span>
-                <button
-                  type="button"
-                  onClick={goNext}
-                  disabled={pagination.pageIndex >= pagination.pageCount - 1}
-                  className="rounded border border-[var(--border)] px-2 py-1 disabled:opacity-40"
-                >
-                  Вперёд
-                </button>
-              </div>
             </div>
           </>
         )}

@@ -41,6 +41,9 @@ export type Sector =
   | "D3"
   | "D4"
   | "VIP";
+
+/** Seat inventory for the 14 arena sectors. Shared by matches at the same venue. */
+export type SectorCapacityMap = Record<Sector, number>;
 /** Ticket unit-price buckets. Tickets at or above 6000 stay in the last bucket. */
 export type PriceZone =
   | "up_to_1500"

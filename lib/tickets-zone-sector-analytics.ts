@@ -1,4 +1,9 @@
-import { endOfDay, isAfter } from "date-fns";
+import { endOfDay, format, isAfter } from "date-fns";
+import { ru } from "date-fns/locale";
+import {
+  getSectorCapacitiesForMatch,
+  splitSectorCapacityForDemand,
+} from "@/lib/arena-sector-inventory";
 import {
   ALL_PRICE_ZONES,
   ALL_SECTORS,
@@ -49,9 +54,14 @@ export type MatrixRow = {
 };
 
 export type AvailabilityIndex = {
+  /** Sum of combo masses for this zone across sectors that allow it. */
   zoneInMatch: Map<string, number>;
+  /** Sector capacity (not issued). */
   sectorInMatch: Map<string, number>;
+  /** Available ticket mass at match × sector × zone. Covers issued when possible. */
   zoneInSector: Map<string, number>;
+  /** match.capacity − sum(combo masses). 0 when the venue map covers the bowl. */
+  leftoverByMatch: Map<string, number>;
 };
 
 export type OccupancyValues = {
@@ -231,36 +241,92 @@ function aggregateValue(agg: Aggregate): number | null {
   return agg.sold > 0 ? agg.revenue / agg.sold : null;
 }
 
-export function buildAvailabilityIndex(base: KeyedAgg): AvailabilityIndex {
+function issuedByZoneForSector(
+  agg: KeyedAgg | undefined,
+  matchId: string,
+  sector: Sector,
+): Partial<Record<PriceZone, number>> {
+  if (!agg) return {};
+  const issued: Partial<Record<PriceZone, number>> = {};
+  for (const zone of allowedPriceZonesForSector(sector)) {
+    const cell = agg.get(comboKey(matchId, sector, zone));
+    if (cell && cell.issued > 0) issued[zone] = cell.issued;
+  }
+  return issued;
+}
+
+/**
+ * Venue seat inventory for occupancy denominators.
+ * Built from per-sector capacities (arena map), split across allowed zones only.
+ * When sales exist, zone slices are enlarged to cover issued (taken from
+ * unused zones in the same sector) so combo occupancy stays ≤ 100% when
+ * issued fits in the sector.
+ */
+export function buildAvailabilityIndex(
+  matchesById: Map<string, Match>,
+  agg?: KeyedAgg,
+): AvailabilityIndex {
   const zoneInMatch = new Map<string, number>();
   const sectorInMatch = new Map<string, number>();
   const zoneInSector = new Map<string, number>();
-  for (const [key, agg] of base) {
-    const [matchId, sectorId, zoneId] = key.split("|") as [string, Sector, PriceZone];
-    if (!isAllowedSectorPriceZone(sectorId, zoneId)) continue;
-    const zm = `${matchId}|${zoneId}`;
-    const sm = `${matchId}|${sectorId}`;
-    zoneInMatch.set(zm, (zoneInMatch.get(zm) ?? 0) + agg.issued);
-    sectorInMatch.set(sm, (sectorInMatch.get(sm) ?? 0) + agg.issued);
-    zoneInSector.set(key, agg.issued);
+  const leftoverByMatch = new Map<string, number>();
+
+  for (const match of matchesById.values()) {
+    const sectors = getSectorCapacitiesForMatch(match);
+    if (!sectors) {
+      leftoverByMatch.set(match.id, match.capacity);
+      continue;
+    }
+
+    let comboSum = 0;
+    for (const sector of ALL_SECTORS) {
+      const sectorCap = sectors[sector] ?? 0;
+      if (sectorCap > 0) {
+        sectorInMatch.set(`${match.id}|${sector}`, sectorCap);
+      }
+      const zoneMasses = splitSectorCapacityForDemand(
+        sector,
+        sectorCap,
+        issuedByZoneForSector(agg, match.id, sector),
+      );
+      for (const zone of allowedPriceZonesForSector(sector)) {
+        const mass = zoneMasses[zone] ?? 0;
+        if (!(mass > 0)) continue;
+        const key = comboKey(match.id, sector, zone);
+        zoneInSector.set(key, mass);
+        const zoneKey = `${match.id}|${zone}`;
+        zoneInMatch.set(zoneKey, (zoneInMatch.get(zoneKey) ?? 0) + mass);
+        comboSum += mass;
+      }
+    }
+    leftoverByMatch.set(match.id, match.capacity - comboSum);
   }
-  return { zoneInMatch, sectorInMatch, zoneInSector };
+
+  return { zoneInMatch, sectorInMatch, zoneInSector, leftoverByMatch };
+}
+
+export function occupancyPercent(
+  issued: number,
+  availableMass: number,
+): number | null {
+  if (!(availableMass > 0)) return null;
+  return Math.min(100, (issued / availableMass) * 100);
 }
 
 export function computeOccupancy(
   matchId: string,
   sectorId: Sector,
   zoneId: PriceZone,
-  issued: number,
+  issued: { inZone: number; inSector: number; inCombo: number },
   availability: AvailabilityIndex,
 ): OccupancyValues {
   const zoneDen = availability.zoneInMatch.get(`${matchId}|${zoneId}`) ?? 0;
   const sectorDen = availability.sectorInMatch.get(`${matchId}|${sectorId}`) ?? 0;
-  const pairDen = availability.zoneInSector.get(`${matchId}|${sectorId}|${zoneId}`) ?? 0;
+  const pairDen = availability.zoneInSector.get(comboKey(matchId, sectorId, zoneId)) ?? 0;
   return {
-    zoneInMatch: zoneDen > 0 ? (issued / zoneDen) * 100 : null,
-    sectorInMatch: sectorDen > 0 ? (issued / sectorDen) * 100 : null,
-    zoneInSector: pairDen > 0 ? (issued / pairDen) * 100 : null,
+    zoneInMatch: occupancyPercent(issued.inZone, zoneDen),
+    sectorInMatch: occupancyPercent(issued.inSector, sectorDen),
+    zoneInSector: occupancyPercent(issued.inCombo, pairDen),
   };
 }
 
@@ -279,14 +345,13 @@ export function resolveAllowedCell(
     !!agg && (agg.issued > 0 || agg.sold > 0 || agg.free > 0 || agg.revenue > 0);
 
   if (hasSliceActivity && agg) {
-    const occ = computeOccupancy(matchId, sectorId, zoneId, agg.issued, availability);
     return {
       revenue: agg.revenue,
       sold: agg.sold,
       free: agg.free,
       issued: agg.issued,
       avgPrice: aggregateValue(agg),
-      occupancy: occ.zoneInSector ?? (hasMass ? 0 : null),
+      occupancy: occupancyPercent(agg.issued, pairMass),
       kind: "values",
     };
   }
@@ -469,10 +534,29 @@ export function hierarchyParentsForMode(
   }));
 }
 
-function occupancyFromMass(issued: number, mass: number, kind: AllowedCellKind): number | null {
-  if (kind === "dash") return null;
-  if (mass > 0) return (issued / mass) * 100;
-  return kind === "zeros" ? 0 : null;
+function occupancyFromMass(issued: number, mass: number): number | null {
+  return occupancyPercent(issued, mass);
+}
+
+function comboMassForLeaf(
+  availability: AvailabilityIndex,
+  matchId: string,
+  leaf: Pick<ZoneSectorTreeNode, "sectorId" | "zoneId" | "kind">,
+): number {
+  if (leaf.kind === "dash" || !leaf.sectorId || !leaf.zoneId) return 0;
+  return availability.zoneInSector.get(comboKey(matchId, leaf.sectorId, leaf.zoneId)) ?? 0;
+}
+
+function massFromLeaves(
+  availability: AvailabilityIndex,
+  matchId: string,
+  leaves: ZoneSectorTreeNode[],
+): number {
+  let mass = 0;
+  for (const leaf of leaves) {
+    mass += comboMassForLeaf(availability, matchId, leaf);
+  }
+  return mass;
 }
 
 function rollupKind(children: ZoneSectorTreeNode[]): AllowedCellKind {
@@ -558,6 +642,14 @@ function issuedFromNodes(nodes: ZoneSectorTreeNode[]): number {
   return issued;
 }
 
+function isZeroSaleRow(node: ZoneSectorTreeNode): boolean {
+  return (node.issued ?? 0) === 0 && (node.revenue ?? 0) === 0;
+}
+
+function visibleTreeChildren(nodes: ZoneSectorTreeNode[]): ZoneSectorTreeNode[] {
+  return nodes.filter((node) => !isZeroSaleRow(node));
+}
+
 function matchTotalsKind(totals: Aggregate): AllowedCellKind {
   if (totals.issued > 0 || totals.sold > 0 || totals.free > 0 || totals.revenue > 0) {
     return "values";
@@ -591,7 +683,8 @@ function buildSectionChildren(
           { zoneId: zone, sectorId: sector },
         ),
       );
-      const mass = availability.zoneInMatch.get(`${matchId}|${zone}`) ?? 0;
+      const mass = massFromLeaves(availability, matchId, leaves);
+      const visibleLeaves = visibleTreeChildren(leaves);
       const kind = rollupKind(leaves);
       return {
         id: `m:${matchId}|z:${zone}`,
@@ -600,11 +693,14 @@ function buildSectionChildren(
         date: null,
         label: PRICE_ZONE_LABELS[zone],
         zoneId: zone,
-        ...rollupChildren(leaves, occupancyFromMass(issuedFromNodes(leaves), mass, kind)),
-        hasChildren: leaves.length > 0,
-        children: leaves,
+        ...rollupChildren(
+          leaves,
+          kind === "dash" ? null : occupancyFromMass(issuedFromNodes(leaves), mass),
+        ),
+        hasChildren: visibleLeaves.length > 0,
+        children: visibleLeaves,
       };
-    });
+    }).filter((section) => !isZeroSaleRow(section));
   }
 
   const visibleSectors = visibleSectorsForFilters(
@@ -627,7 +723,8 @@ function buildSectionChildren(
         { zoneId: zone, sectorId: sector },
       ),
     );
-    const mass = availability.sectorInMatch.get(`${matchId}|${sector}`) ?? 0;
+    const mass = massFromLeaves(availability, matchId, leaves);
+    const visibleLeaves = visibleTreeChildren(leaves);
     const kind = rollupKind(leaves);
     return {
       id: `m:${matchId}|s:${sector}`,
@@ -636,11 +733,14 @@ function buildSectionChildren(
       date: null,
       label: sector,
       sectorId: sector,
-      ...rollupChildren(leaves, occupancyFromMass(issuedFromNodes(leaves), mass, kind)),
-      hasChildren: leaves.length > 0,
-      children: leaves,
+      ...rollupChildren(
+        leaves,
+        kind === "dash" ? null : occupancyFromMass(issuedFromNodes(leaves), mass),
+      ),
+      hasChildren: visibleLeaves.length > 0,
+      children: visibleLeaves,
     };
-  });
+  }).filter((section) => !isZeroSaleRow(section));
 }
 
 /**
@@ -715,14 +815,14 @@ export function buildZoneSectorMatchTree(
               free: totals.free,
               issued: totals.issued,
               avgPrice: totals.sold > 0 ? totals.revenue / totals.sold : null,
-              occupancy: occupancyFromMass(totals.issued, capacity, kind),
+              occupancy: occupancyFromMass(totals.issued, capacity),
             };
       return {
         id: `m:${match.id}`,
         level: "match" as const,
         matchId: match.id,
         date: match.date,
-        label: `vs ${match.opponent}`,
+        label: `${match.opponent} ${format(match.date, "dd-MM-yy", { locale: ru })}`,
         ...metrics,
         hasChildren,
         children: [] as ZoneSectorTreeNode[],
@@ -739,12 +839,11 @@ export function hydrateZoneSectorTree(
     const children = buildSectionChildren(node.matchId, options);
     const match = options.matchesById.get(node.matchId);
     const capacity = match && match.capacity > 0 ? match.capacity : 0;
-    const kind = rollupKind(children);
     return {
       ...node,
       ...rollupChildren(
         children,
-        occupancyFromMass(issuedFromNodes(children), capacity, kind),
+        occupancyFromMass(issuedFromNodes(children), capacity),
       ),
       hasChildren: children.length > 0,
       children,
@@ -764,7 +863,7 @@ export function buildZoneSectorTree(
   const agg = preAggregateZoneSector(options.transactions, options.matchesById);
   const ctx: ZoneSectorTreeContext = {
     agg,
-    availability: buildAvailabilityIndex(agg),
+    availability: buildAvailabilityIndex(options.matchesById, agg),
     matchesById: options.matchesById,
     localMatchIds: options.localMatchIds,
     localPriceZones: options.localPriceZones,

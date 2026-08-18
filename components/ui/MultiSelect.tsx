@@ -31,6 +31,9 @@ type MultiSelectProps = {
   searchPlaceholder?: string;
 };
 
+const OPTION_ROW_CLASS =
+  "relative flex h-9 shrink-0 cursor-pointer items-center gap-2 bg-white px-3 text-sm hover:bg-[var(--background)]";
+
 function arraysEqual(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i += 1) {
@@ -264,7 +267,14 @@ export function MultiSelect({
   }
 
   return (
-    <div ref={rootRef} className={clsx("relative flex w-full min-w-0 flex-col gap-1 sm:w-auto", className)}>
+    <div
+      ref={rootRef}
+      className={clsx(
+        "relative flex w-full min-w-0 flex-col gap-1 sm:w-auto",
+        open && "z-50",
+        className,
+      )}
+    >
       {label && <span className="text-xs text-[var(--muted)]">{label}</span>}
       <button
         type="button"
@@ -280,7 +290,10 @@ export function MultiSelect({
         />
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-20 mt-1 max-h-64 w-full max-w-[min(100vw-2rem,320px)] overflow-y-auto rounded-md border border-[var(--border)] bg-white py-1 shadow-lg">
+        <div
+          data-testid="multi-select-menu"
+          className="absolute left-0 top-full z-50 mt-1 max-h-64 w-full max-w-[min(100vw-2rem,320px)] isolate overflow-auto rounded-md border border-[var(--border)] bg-white py-1 shadow-lg"
+        >
           {searchable && (
             <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-white px-2 py-1.5">
               <div className="relative">
@@ -298,40 +311,37 @@ export function MultiSelect({
           )}
           {leadingExclusiveOption && (
             <>
-              <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--background)]">
+              <label className={OPTION_ROW_CLASS}>
                 <input
                   type="checkbox"
                   checked={exclusiveSelected}
                   onChange={toggleExclusive}
-                  className="rounded border-[var(--border)]"
+                  className="h-4 w-4 shrink-0 rounded border-[var(--border)]"
                 />
-                <span className="font-medium">{leadingExclusiveOption.label}</span>
+                <span className="truncate font-medium">{leadingExclusiveOption.label}</span>
               </label>
               <div className="my-1 border-t border-[var(--border)]" />
             </>
           )}
-          <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--background)]">
+          <label className={OPTION_ROW_CLASS}>
             <input
               type="checkbox"
               checked={effectivelyAll}
               onChange={toggleAll}
-              className="rounded border-[var(--border)]"
+              className="h-4 w-4 shrink-0 rounded border-[var(--border)]"
             />
-            <span className="font-medium">{selectAllLabel}</span>
+            <span className="truncate font-medium">{selectAllLabel}</span>
           </label>
           <div className="my-1 border-t border-[var(--border)]" />
           {visibleOptions.map((opt) => (
-            <label
-              key={opt.value}
-              className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--background)]"
-            >
+            <label key={opt.value} className={OPTION_ROW_CLASS}>
               <input
                 type="checkbox"
                 checked={selectedSet.has(opt.value)}
                 onChange={() => toggleOption(opt.value)}
-                className="rounded border-[var(--border)]"
+                className="h-4 w-4 shrink-0 rounded border-[var(--border)]"
               />
-              <span>{opt.label}</span>
+              <span className="truncate">{opt.label}</span>
             </label>
           ))}
         </div>

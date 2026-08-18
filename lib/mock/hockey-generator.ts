@@ -46,11 +46,17 @@ import {
 } from "@/lib/ticket-sales-window";
 import { getMerchListAmount } from "@/lib/merch-catalog";
 import {
+  allocateIntegerShares,
+  getSectorCapacitiesForMatch,
+  splitSectorCapacity,
+} from "@/lib/arena-sector-inventory";
+import {
   getMatchPlanRevenue,
   getMatchTicketPlanProfile,
   getKhlPlanAvgPrice,
   getMhlPlanAvgPrice,
   getVhlPlanAvgPrice,
+  isSoldOutOccupancyMatch,
   MAIN_ARENA_CAPACITY,
   MHL_ARENA_CAPACITY,
   SECONDARY_ARENA_CAPACITY,
@@ -666,6 +672,7 @@ function buildSeasonMatches({
         date,
         opponent,
         attendance,
+        // Bowl size only. Per-sector seats live in arena-sector-inventory (shared venue map).
         capacity: schedule.capacity,
         eventCompleted,
         season,
@@ -787,6 +794,15 @@ function applyTournamentStages(matches: Match[]): void {
   }
 }
 
+function applySoldOutAttendance(matches: Match[]): void {
+  for (const match of matches) {
+    if (!match.eventCompleted) continue;
+    if (isSoldOutOccupancyMatch(match)) {
+      match.attendance = match.capacity;
+    }
+  }
+}
+
 function applyMatchClasses(matches: Match[]): void {
   for (const match of matches) {
     match.matchClass = getBaseMatchClass(match.opponent, match.league);
@@ -799,6 +815,7 @@ function generateMatches(): Match[] {
   clusterCompletedKhlMatchDates(allMatches);
   applyMatchClasses(allMatches);
   applyTournamentStages(allMatches);
+  applySoldOutAttendance(allMatches);
   alignCompletedMatchSalesWindows(allMatches);
   alignNearestUpcomingMatchSalesWindows(allMatches);
   applyCurrentSeasonKhlMatchDates(allMatches);
@@ -1124,10 +1141,89 @@ function buildDayTicketSales(
   return txs;
 }
 
+const PRICE_ZONE_UNIT_PRICE: Record<PriceZone, number> = {
+  up_to_1500: 900,
+  from_1500_to_2500: 2000,
+  from_2500_to_4000: 3200,
+  from_4000_to_6000: 5000,
+};
+
+function saleDatesOnOrBeforeToday(match: Match): Date[] {
+  const salesWindowDays = getMatchTicketSalesWindowDays(match);
+  const dates: Date[] = [];
+  for (let offset = salesWindowDays; offset >= 0; offset -= 1) {
+    const saleDay = subDays(match.date, offset);
+    if (saleDay > MOCK_TODAY) continue;
+    dates.push(saleDay);
+  }
+  if (dates.length === 0) {
+    dates.push(startOfDay(match.date <= MOCK_TODAY ? match.date : MOCK_TODAY));
+  }
+  return dates;
+}
+
+/**
+ * Class 1 and playoff matches sell out: arena issued equals sector capacities
+ * (and therefore match.capacity when leftover is 0). Every allowed combo with
+ * inventory gets tickets so occupancy is 100% with no empty 0% rows.
+ */
+function generateSoldOutMatchTicketSales(
+  match: Match,
+  startId: number,
+): { txs: Transaction[]; nextId: number } {
+  const sectors = getSectorCapacitiesForMatch(match);
+  if (!sectors) {
+    return { txs: [], nextId: startId };
+  }
+
+  const dates = saleDatesOnOrBeforeToday(match);
+  const dateWeights = dates.map((_, index) => ({
+    id: String(index),
+    weight: 0.8 + rand() * 0.4,
+  }));
+  const txs: Transaction[] = [];
+  let id = startId;
+
+  for (const sector of ALL_SECTORS) {
+    const sectorCap = sectors[sector] ?? 0;
+    const split = splitSectorCapacity(sector, sectorCap);
+    for (const zone of allowedPriceZonesForSector(sector)) {
+      const mass = split[zone] ?? 0;
+      if (!(mass > 0)) continue;
+      const byDay = allocateIntegerShares(mass, dateWeights);
+      for (let index = 0; index < dates.length; index += 1) {
+        const qty = byDay.get(String(index)) ?? 0;
+        if (qty <= 0) continue;
+        const unitPrice = PRICE_ZONE_UNIT_PRICE[zone];
+        const orderSource = pickOrderSource();
+        txs.push({
+          id: `tx-${id++}`,
+          date: dates[index]!,
+          stream: "tickets",
+          description: `Билет на арену, сектор ${sector}`,
+          matchId: match.id,
+          channel: orderSource === "box_office" ? "arena" : "online",
+          amount: unitPrice * qty,
+          quantity: qty,
+          sector,
+          ticketType: "arena",
+          priceZone: zone,
+          orderSource,
+        });
+      }
+    }
+  }
+
+  return { txs, nextId: id };
+}
+
 function generateMatchTicketSales(
   match: Match,
   startId: number,
 ): { txs: Transaction[]; nextId: number } {
+  if (isSoldOutOccupancyMatch(match)) {
+    return generateSoldOutMatchTicketSales(match, startId);
+  }
   const planProfile = getMatchTicketPlanProfile(match);
   const planTickets = Math.round(match.capacity * planProfile.fillRate);
   const planRevenue = getMatchPlanRevenue(match);
@@ -1226,7 +1322,7 @@ function ensureMockTodayTicketSales(
 
   const upcomingMatch = findUpcomingMatchInSalesWindow(allMatches, today);
 
-  if (!upcomingMatch) {
+  if (!upcomingMatch || isSoldOutOccupancyMatch(upcomingMatch)) {
     return { txs: [], nextId: startId };
   }
 
@@ -1258,6 +1354,7 @@ function generateTransactions(allMatches: Match[]): Transaction[] {
     id = ticketSales.nextId;
 
     if (!match.eventCompleted) continue;
+    if (isSoldOutOccupancyMatch(match)) continue;
 
     const freeTicketCount = randomInt(0, 2);
     for (let f = 0; f < freeTicketCount; f++) {
@@ -1354,13 +1451,6 @@ function generateTransactions(allMatches: Match[]): Transaction[] {
   return transactions.sort((a, b) => b.date.getTime() - a.date.getTime());
 }
 
-const PRICE_ZONE_SEED_UNIT_PRICE: Record<PriceZone, number> = {
-  up_to_1500: 900,
-  from_1500_to_2500: 2000,
-  from_2500_to_4000: 3200,
-  from_4000_to_6000: 5000,
-};
-
 const PRICE_ZONE_SEED_QUANTITY = 8;
 
 function pushCoverageTicket(
@@ -1371,7 +1461,7 @@ function pushCoverageTicket(
   sector: Sector,
   zone: PriceZone,
 ): number {
-  const unitPrice = PRICE_ZONE_SEED_UNIT_PRICE[zone];
+  const unitPrice = PRICE_ZONE_UNIT_PRICE[zone];
   const qty = PRICE_ZONE_SEED_QUANTITY;
   const orderSource = pickOrderSource();
   txs.push({
@@ -1455,7 +1545,7 @@ function ensureTicketPriceZoneCoverage(
 
   for (const matchId of matchSectors.keys()) {
     const match = matchById.get(matchId);
-    if (!match) continue;
+    if (!match || isSoldOutOccupancyMatch(match)) continue;
 
     for (const sector of ALL_SECTORS) {
       const key = `${matchId}::${sector}`;
