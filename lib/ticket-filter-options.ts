@@ -77,7 +77,7 @@ export const DEFAULT_TICKET_FILTERS: TicketFilters = {
   priceZone: "all",
   orderSource: "all",
   transactionDateRange: DEFAULT_TICKET_TRANSACTION_DATE_RANGE,
-  timeGrouping: "day",
+  timeGrouping: "week",
 };
 
 export function hasTransactionDateRangeFilter(

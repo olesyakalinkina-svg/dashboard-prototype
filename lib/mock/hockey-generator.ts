@@ -388,13 +388,37 @@ const ORDER_SOURCES: OrderSource[] = [
   "yandex_afisha",
 ];
 
-const MATCH_MERCH_POINT_WEIGHTS: { point: MerchSalesPoint; weight: number }[] = [
-  { point: "flagship", weight: 50 },
-  { point: "arena_north", weight: 16 },
-  { point: "arena_south", weight: 16 },
+const MATCH_MERCH_MALL_WEIGHTS: { point: MerchSalesPoint; weight: number }[] = [
   { point: "mall_raduga", weight: 2 },
   { point: "mall_continent", weight: 2 },
 ];
+
+/** Arena-channel mixes (sum 82). Mall stays last so match-table totals stay stable. */
+const MATCH_MERCH_ARENA_PROFILES: {
+  flagship: number;
+  arena_north: number;
+  arena_south: number;
+}[] = [
+  { flagship: 70, arena_north: 6, arena_south: 6 },
+  { flagship: 18, arena_north: 50, arena_south: 14 },
+  { flagship: 16, arena_north: 14, arena_south: 52 },
+  { flagship: 28, arena_north: 27, arena_south: 27 },
+];
+
+const MATCH_MERCH_CATEGORY_PROFILES: Record<MerchProductCategory, number>[] = [
+  { jerseys: 2.4, souvenirs: 0.7, drinkware: 0.8, apparel: 0.6, accessories: 0.7 },
+  { jerseys: 0.6, souvenirs: 2.2, drinkware: 0.7, apparel: 0.8, accessories: 0.9 },
+  { jerseys: 0.7, souvenirs: 0.6, drinkware: 0.8, apparel: 2.4, accessories: 0.7 },
+  { jerseys: 0.8, souvenirs: 0.7, drinkware: 0.6, apparel: 0.7, accessories: 2.3 },
+];
+
+function hashMatchId(matchId: string): number {
+  let hash = 0;
+  for (let i = 0; i < matchId.length; i += 1) {
+    hash = (hash * 31 + matchId.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
 
 const OFF_MATCH_MERCH_CHANNELS: {
   point: MerchSalesPoint;
@@ -423,8 +447,17 @@ function pickWeightedMerchSalesPoint(
   return options[options.length - 1].point;
 }
 
-function pickMerchSalesPoint(): MerchSalesPoint {
-  return pickWeightedMerchSalesPoint(MATCH_MERCH_POINT_WEIGHTS);
+function pickMerchSalesPointForMatch(matchId: string): MerchSalesPoint {
+  const profile =
+    MATCH_MERCH_ARENA_PROFILES[
+      hashMatchId(matchId) % MATCH_MERCH_ARENA_PROFILES.length
+    ];
+  return pickWeightedMerchSalesPoint([
+    { point: "flagship", weight: profile.flagship },
+    { point: "arena_north", weight: profile.arena_north },
+    { point: "arena_south", weight: profile.arena_south },
+    ...MATCH_MERCH_MALL_WEIGHTS,
+  ]);
 }
 
 function generateOffMatchMerchSales(
@@ -512,17 +545,36 @@ const MERCH_ITEMS: {
 ];
 
 function pickMerchItem(): (typeof MERCH_ITEMS)[number] {
-  const total = MERCH_ITEMS.reduce((sum, item) => sum + item.weight, 0);
+  return pickMerchItemFromWeights(MERCH_ITEMS);
+}
+
+function pickMerchItemForMatch(matchId: string): (typeof MERCH_ITEMS)[number] {
+  const profile =
+    MATCH_MERCH_CATEGORY_PROFILES[
+      hashMatchId(matchId) % MATCH_MERCH_CATEGORY_PROFILES.length
+    ];
+  return pickMerchItemFromWeights(
+    MERCH_ITEMS.map((item) => ({
+      ...item,
+      weight: item.weight * profile[item.category],
+    })),
+  );
+}
+
+function pickMerchItemFromWeights(
+  items: readonly (typeof MERCH_ITEMS)[number][],
+): (typeof MERCH_ITEMS)[number] {
+  const total = items.reduce((sum, item) => sum + item.weight, 0);
   let roll = rand() * total;
 
-  for (const item of MERCH_ITEMS) {
+  for (const item of items) {
     roll -= item.weight;
     if (roll <= 0) {
       return item;
     }
   }
 
-  return MERCH_ITEMS[MERCH_ITEMS.length - 1];
+  return items[items.length - 1];
 }
 
 function seededRandom(seed: number): () => number {
@@ -1241,9 +1293,9 @@ function generateTransactions(allMatches: Match[]): Transaction[] {
           ? randomInt(18, 32)
           : randomInt(12, 22);
     for (let m = 0; m < merchCount; m++) {
-      const item = pickMerchItem();
+      const item = pickMerchItemForMatch(match.id);
       const qty = pickMerchQuantity();
-      const merchSalesPoint = pickMerchSalesPoint();
+      const merchSalesPoint = pickMerchSalesPointForMatch(match.id);
       const payment = resolveMerchPayment(item, qty);
       const costAmount = Math.round(payment.amount * (0.35 + rand() * 0.2));
       transactions.push({

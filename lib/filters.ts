@@ -48,6 +48,7 @@ import {
   ALL_MERCH_PRODUCT_CATEGORIES,
   ALL_MERCH_SALES_POINTS,
   getMerchProductCategory,
+  isMerchMatchTablePoint,
   MERCH_PRODUCT_CATEGORY_LABELS,
   MERCH_SALES_POINT_LABELS,
   getEffectiveMerchTimeGrouping,
@@ -581,12 +582,6 @@ function passesMerchProductCategories(
   return Boolean(category && productCategories.includes(category));
 }
 
-
-const MERCH_MATCH_TABLE_EXCLUDED_POINTS = new Set<MerchSalesPoint>([
-  "online_store",
-  "mall_raduga",
-  "mall_continent",
-]);
 
 const MERCH_PLAN_EXECUTION_RATE = 0.93;
 
@@ -3250,10 +3245,7 @@ export function computeMerchMatchSalesTable(
 
   for (const tx of txs) {
     if (!tx.matchId) continue;
-    if (
-      tx.merchSalesPoint &&
-      MERCH_MATCH_TABLE_EXCLUDED_POINTS.has(tx.merchSalesPoint)
-    ) {
+    if (!isMerchMatchTablePoint(tx.merchSalesPoint)) {
       continue;
     }
 

@@ -331,11 +331,11 @@ function DashboardPanels() {
               />
               <TicketsMatchDynamicsSection />
             </div>
-            <TicketsZoneSectorWidget />
             <TicketsPlanFactWidget
               data={ticketsPlanFactTrend}
               timeGrouping={ticketChartTimeGrouping}
             />
+            <TicketsZoneSectorWidget />
           </>
         )}
 

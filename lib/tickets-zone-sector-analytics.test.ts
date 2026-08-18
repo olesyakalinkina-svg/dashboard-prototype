@@ -114,13 +114,18 @@ describe("tickets-zone-sector analytics", () => {
   });
 
   it("computes three occupancy formulas and em dash conditions", () => {
-    const agg = preAggregateZoneSector(TXS, new Map(MATCHES.map((m) => [m.id, m])), "current");
-    const availability = buildAvailabilityIndex(agg);
+    const availability = {
+      zoneInMatch: new Map([["m1|from_1500_to_2500", 10]]),
+      sectorInMatch: new Map([["m1|A", 6]]),
+      zoneInSector: new Map([["m1|A|from_1500_to_2500", 4]]),
+    };
     const aOcc = computeOccupancy("m1", "A", "from_1500_to_2500", 3, availability);
-    expect(aOcc.zoneInMatch).toBe(100);
-    expect(aOcc.sectorInMatch).toBe(100);
-    expect(aOcc.zoneInSector).toBe(100);
-    const miss = computeOccupancy("m1", "D4", "up_to_1500", 0, availability);
+    expect(aOcc.zoneInMatch).toBe(30);
+    expect(aOcc.sectorInMatch).toBe(50);
+    expect(aOcc.zoneInSector).toBe(75);
+    const miss = computeOccupancy("m1", "D4", "up_to_1500", 1, availability);
+    expect(miss.zoneInMatch).toBeNull();
+    expect(miss.sectorInMatch).toBeNull();
     expect(miss.zoneInSector).toBeNull();
   });
 

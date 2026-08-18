@@ -39,6 +39,14 @@ export const MERCH_SALES_POINT_OPTIONS = ALL_MERCH_SALES_POINTS.map((value) => (
   label: MERCH_SALES_POINT_LABELS[value],
 }));
 
+/** Mall and online sales are not attributed to a match in «Продажи». */
+export const MERCH_MATCH_TABLE_EXCLUDED_POINTS: ReadonlySet<MerchSalesPoint> =
+  new Set(["online_store", "mall_raduga", "mall_continent"]);
+
+export function isMerchMatchTablePoint(point?: MerchSalesPoint): boolean {
+  return !point || !MERCH_MATCH_TABLE_EXCLUDED_POINTS.has(point);
+}
+
 export const ALL_MERCH_SALES_GROUPS: MerchSalesGroup[] = ["arena", "trk", "online"];
 
 export const MERCH_SALES_GROUP_CHANNELS: Record<

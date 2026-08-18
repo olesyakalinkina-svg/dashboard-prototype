@@ -1,6 +1,5 @@
 "use client";
 
-import clsx from "clsx";
 import {
   flexRender,
   getCoreRowModel,
@@ -34,7 +33,6 @@ import { getMerchSalesPointLabel } from "@/lib/merch-filter-options";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import type {
   CombinedMatchSalesRow,
-  MerchMatchSalesRow,
   MerchSkuSalesRow,
   Subscription,
   Transaction,
@@ -44,6 +42,10 @@ export {
   MatchSalesTable,
   ResponsiveMatchSalesTable,
 } from "@/components/widgets/MatchSalesTable";
+export {
+  MerchMatchSalesTable,
+  MerchSalesTableView,
+} from "@/components/widgets/MerchMatchSalesTable";
 
 const STATUS_LABELS: Record<string, string> = {
   active: "Активен",
@@ -166,10 +168,6 @@ function DataTable<T>({
       </CardContent>
     </Card>
   );
-}
-
-function formatUpt(value: number): string {
-  return value.toFixed(2).replace(".", ",");
 }
 
 type MerchSalesTableProps<T> = {
@@ -297,147 +295,6 @@ function MerchSalesTable<T>({
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-export function MerchMatchSalesTable({
-  data,
-}: {
-  data: MerchMatchSalesRow[];
-}) {
-  const maxValues = useMemo(
-    () => ({
-      revenue: Math.max(...data.map((row) => row.revenue), 0),
-      avgCheck: Math.max(...data.map((row) => row.avgCheck), 0),
-      receipts: Math.max(...data.map((row) => row.receipts), 0),
-      units: Math.max(...data.map((row) => row.units), 0),
-    }),
-    [data],
-  );
-
-  const columns = useMemo<ColumnDef<MerchMatchSalesRow, unknown>[]>(
-    () => [
-      {
-        accessorKey: "eventLabel",
-        header: "Мероприятие",
-        cell: ({ getValue }) => (
-          <span className="whitespace-nowrap font-medium">{getValue<string>()}</span>
-        ),
-      },
-      {
-        accessorKey: "date",
-        header: "Дата",
-        cell: ({ getValue }) => formatDate(getValue<Date>()),
-      },
-      {
-        accessorKey: "revenue",
-        header: "Выручка",
-        cell: ({ getValue }) => (
-          <InlineBarCell
-            value={getValue<number>()}
-            max={maxValues.revenue}
-            formatted={formatCurrency(getValue<number>())}
-            barClassName="bg-red-400"
-          />
-        ),
-      },
-      {
-        accessorKey: "avgCheck",
-        header: "Средний чек",
-        cell: ({ getValue }) => (
-          <InlineBarCell
-            value={getValue<number>()}
-            max={maxValues.avgCheck}
-            formatted={formatCurrency(getValue<number>())}
-            barClassName="bg-red-300"
-          />
-        ),
-      },
-      {
-        accessorKey: "receipts",
-        header: "Чеки",
-        cell: ({ getValue }) => (
-          <InlineBarCell
-            value={getValue<number>()}
-            max={maxValues.receipts}
-            formatted={formatNumber(getValue<number>())}
-            barClassName="bg-gray-300"
-          />
-        ),
-      },
-      {
-        accessorKey: "units",
-        header: "Товары",
-        cell: ({ getValue }) => (
-          <InlineBarCell
-            value={getValue<number>()}
-            max={maxValues.units}
-            formatted={`${formatNumber(getValue<number>())} шт`}
-            barClassName="bg-gray-300"
-          />
-        ),
-      },
-      {
-        accessorKey: "upt",
-        header: "UPT",
-        cell: ({ getValue }) => formatUpt(getValue<number>()),
-      },
-      {
-        accessorKey: "purchaseConversionPct",
-        header: "Конверсия в покупку",
-        cell: ({ getValue }) => (
-          <InlineBarCell
-            value={getValue<number>()}
-            max={100}
-            formatted={formatPercent(getValue<number>())}
-            barClassName="bg-[var(--accent)]"
-          />
-        ),
-      },
-    ],
-    [maxValues],
-  );
-
-  const summaryRow = useCallback((rows: MerchMatchSalesRow[]) => {
-    if (rows.length === 0) return null;
-
-    const totalRevenue = rows.reduce((sum, row) => sum + row.revenue, 0);
-    const totalReceipts = rows.reduce((sum, row) => sum + row.receipts, 0);
-    const totalUnits = rows.reduce((sum, row) => sum + row.units, 0);
-    const totalAttendance = rows.reduce((sum, row) => sum + row.attendance, 0);
-    const matchReceipts = rows
-      .filter((row) => row.attendance > 0)
-      .reduce((sum, row) => sum + row.receipts, 0);
-    const avgCheck = totalReceipts > 0 ? totalRevenue / totalReceipts : 0;
-    const upt = totalReceipts > 0 ? totalUnits / totalReceipts : 0;
-    const purchaseConversionPct =
-      totalAttendance > 0 ? (matchReceipts / totalAttendance) * 100 : 0;
-
-    return (
-      <tr className="border-t-2 border-[var(--border)] bg-[var(--background)] font-medium">
-        <td className="px-3 py-2.5">Итого</td>
-        <td className="px-3 py-2.5" />
-        <td className="px-3 py-2.5">{formatCurrency(totalRevenue)}</td>
-        <td className="px-3 py-2.5">{formatCurrency(avgCheck)}</td>
-        <td className="px-3 py-2.5">{formatNumber(totalReceipts)}</td>
-        <td className="px-3 py-2.5">{formatNumber(totalUnits)} шт</td>
-        <td className="px-3 py-2.5">{formatUpt(upt)}</td>
-        <td className="px-3 py-2.5">{formatPercent(purchaseConversionPct)}</td>
-      </tr>
-    );
-  }, []);
-
-  return (
-    <MerchSalesTable
-      title="Продажи по матчам на основной арене"
-      data={data}
-      columns={columns}
-      searchPlaceholder="Поиск по мероприятию..."
-      countLabel="мероприятий"
-      defaultSort={[{ id: "revenue", desc: true }]}
-      summaryRow={summaryRow}
-      pageSize={10}
-    />
   );
 }
 
