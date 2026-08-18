@@ -10,6 +10,7 @@ import {
   flattenExpandedMatchSalesTree,
   getMatchSalesExpandScopeKey,
   getMatchSalesTreeTransactions,
+  MATCH_SALES_SECTION_LABELS,
   paginateTopLevel,
   pruneExpandedKeys,
   pruneExpandedKeysForMatches,
@@ -17,7 +18,15 @@ import {
   toggleExpandedKey,
   type MatchSalesTreeNode,
 } from "@/lib/match-sales-tree";
-import { DEFAULT_TICKET_FILTERS, ALL_PRICE_ZONES, PRICE_ZONE_LABELS, priceZoneFromUnitPrice } from "@/lib/ticket-filter-options";
+import {
+  ALL_ORDER_SOURCES,
+  ALL_PRICE_ZONES,
+  DEFAULT_TICKET_FILTERS,
+  ORDER_SOURCE_LABELS,
+  PRICE_ZONE_LABELS,
+  TICKET_TYPE_LABELS,
+  priceZoneFromUnitPrice,
+} from "@/lib/ticket-filter-options";
 import { getMatches, getTicketTransactionsByMatchId } from "@/lib/mock/data-store";
 import type { PriceZone, TicketFilters, Transaction } from "@/types/dashboard";
 
@@ -40,15 +49,26 @@ function sumChildren(
   return node.children.reduce((sum, child) => sum + child[field], 0);
 }
 
-function findArenaBranch(tree: MatchSalesTreeNode[]) {
+function findSection(match: MatchSalesTreeNode, label: string) {
+  return match.children.find((child) => child.label === label);
+}
+
+function findParallelCuts(tree: MatchSalesTreeNode[]) {
   for (const match of tree) {
-    const arena = match.children.find((child) => child.label.includes("Арена"));
-    if (!arena) continue;
-    const source = arena.children.find((child) => child.children.length > 0);
-    if (!source) continue;
-    const zone = source.children[0];
-    if (!zone) continue;
-    return { match, arena, source, zone };
+    const ticketType = findSection(match, MATCH_SALES_SECTION_LABELS.ticketType);
+    const orderSource = findSection(
+      match,
+      MATCH_SALES_SECTION_LABELS.orderSource,
+    );
+    const priceZone = findSection(match, MATCH_SALES_SECTION_LABELS.priceZone);
+    const arena = ticketType?.children.find(
+      (child) => child.label === TICKET_TYPE_LABELS.arena,
+    );
+    const parking = ticketType?.children.find(
+      (child) => child.label === TICKET_TYPE_LABELS.parking,
+    );
+    if (!ticketType || !orderSource || !priceZone || !arena) continue;
+    return { match, ticketType, orderSource, priceZone, arena, parking };
   }
   return null;
 }
@@ -104,31 +124,53 @@ describe("price zone buckets", () => {
 });
 
 describe("match sales tree", () => {
-  it("builds match → ticket type → order source → price zone from actual zones", () => {
+  it("builds match → three parallel sections, not a nested drill-down", () => {
     const { matchRows, tree } = buildTree();
     expect(tree.length).toBe(matchRows.length);
     expect(tree.length).toBeGreaterThan(0);
 
-    const sample = findArenaBranch(tree);
+    const sample = findParallelCuts(tree);
     expect(sample).not.toBeNull();
     expect(sample!.match.level).toBe("match");
+    expect(sample!.match.children.map((child) => child.label)).toEqual([
+      MATCH_SALES_SECTION_LABELS.ticketType,
+      MATCH_SALES_SECTION_LABELS.orderSource,
+      MATCH_SALES_SECTION_LABELS.priceZone,
+    ]);
+    expect(sample!.ticketType.level).toBe("section");
+    expect(sample!.orderSource.level).toBe("section");
+    expect(sample!.priceZone.level).toBe("section");
     expect(sample!.arena.level).toBe("ticketType");
-    expect(sample!.source.level).toBe("orderSource");
-    expect(sample!.zone.level).toBe("priceZone");
-    expect(sample!.zone.label).toMatch(
-      /^Ценовая зона · (до 1500|от 1500 до 2500|от 2500 до 4000|от 4000 до 6000)$/,
+    expect(sample!.arena.label).toBe("Арена");
+    expect(sample!.parking?.level).toBe("ticketType");
+    expect(sample!.parking?.label).toBe("Парковка");
+    expect(sample!.ticketType.children.every((child) => child.children.length === 0)).toBe(
+      true,
+    );
+    expect(sample!.orderSource.children.map((child) => child.label)).toEqual(
+      ALL_ORDER_SOURCES.map((source) => ORDER_SOURCE_LABELS[source]),
+    );
+    expect(sample!.orderSource.children.every((child) => child.level === "orderSource")).toBe(
+      true,
+    );
+    expect(sample!.orderSource.children.every((child) => child.children.length === 0)).toBe(
+      true,
+    );
+    expect(sample!.priceZone.children.map((child) => child.label)).toEqual(
+      ALL_PRICE_ZONES.map((zone) => PRICE_ZONE_LABELS[zone]),
+    );
+    expect(sample!.priceZone.children.every((child) => child.level === "priceZone")).toBe(
+      true,
+    );
+    expect(sample!.priceZone.children.every((child) => child.children.length === 0)).toBe(
+      true,
     );
     expect(sample!.match.date).toBeInstanceOf(Date);
-    expect(sample!.zone.date).toBeNull();
-    expect(sample!.zone.planRevenue).toBeNull();
-    expect(sample!.zone.capacity).toBeNull();
+    expect(sample!.priceZone.children[0]?.date).toBeNull();
+    expect(sample!.priceZone.children[0]?.planRevenue).toBeNull();
+    expect(sample!.priceZone.children[0]?.capacity).toBeNull();
     expect(sample!.match.planRevenue).toBeGreaterThan(0);
     expect(sample!.match.capacity).toBeGreaterThan(0);
-    expect(
-      tree.some((match) =>
-        match.children.some((child) => child.label.includes("Парковка")),
-      ),
-    ).toBe(true);
   });
 
   it("keeps match KPIs identical to computeMatchSalesTable", () => {
@@ -148,36 +190,117 @@ describe("match sales tree", () => {
     }
   });
 
-  it("does not double-sum: parent metrics equal the sum of immediate children", () => {
+  it("treats sections as alternative views: totals match the parent, children split each cut", () => {
     const { tree } = buildTree();
-    const sample = findArenaBranch(tree);
+    const sample = findParallelCuts(tree);
     expect(sample).not.toBeNull();
 
     for (const match of tree.slice(0, 8)) {
-      expect(sumChildren(match, "revenue")).toBe(match.revenue);
-      expect(sumChildren(match, "ticketsSold")).toBe(match.ticketsSold);
-      expect(sumChildren(match, "freeTickets")).toBe(match.freeTickets);
-      for (const typeNode of match.children) {
-        expect(sumChildren(typeNode, "revenue")).toBe(typeNode.revenue);
-        for (const sourceNode of typeNode.children) {
-          const zoneRevenue = sumChildren(sourceNode, "revenue");
-          if (sourceNode.children.length > 0 && typeNode.label.includes("Арена")) {
-            expect(zoneRevenue).toBe(sourceNode.revenue);
-          }
+      for (const section of match.children) {
+        expect(section.level).toBe("section");
+        expect(section.revenue).toBe(match.revenue);
+        expect(section.ticketsSold).toBe(match.ticketsSold);
+        expect(section.freeTickets).toBe(match.freeTickets);
+        expect(section.issuedTickets).toBe(match.issuedTickets);
+        expect(section.avgPrice).toBe(match.avgPrice);
+        expect(section.loyaltyDiscountPct).toBe(match.loyaltyDiscountPct);
+      }
+
+      const ticketType = findSection(match, MATCH_SALES_SECTION_LABELS.ticketType);
+      const orderSource = findSection(
+        match,
+        MATCH_SALES_SECTION_LABELS.orderSource,
+      );
+      const priceZone = findSection(match, MATCH_SALES_SECTION_LABELS.priceZone);
+      if (ticketType) {
+        expect(sumChildren(ticketType, "revenue")).toBe(ticketType.revenue);
+        expect(sumChildren(ticketType, "ticketsSold")).toBe(ticketType.ticketsSold);
+      }
+      if (orderSource) {
+        expect(sumChildren(orderSource, "revenue")).toBe(orderSource.revenue);
+        expect(sumChildren(orderSource, "ticketsSold")).toBe(
+          orderSource.ticketsSold,
+        );
+      }
+      if (priceZone) {
+        const zoneRevenue = sumChildren(priceZone, "revenue");
+        expect(zoneRevenue).toBeLessThanOrEqual(priceZone.revenue);
+        const parking = ticketType?.children.find(
+          (child) => child.label === TICKET_TYPE_LABELS.parking,
+        );
+        if (parking && parking.revenue > 0) {
+          expect(zoneRevenue).toBe(priceZone.revenue - parking.revenue);
+        } else {
+          expect(zoneRevenue).toBe(priceZone.revenue);
         }
       }
     }
 
     const expanded = new Set([
       sample!.match.id,
-      sample!.arena.id,
-      sample!.source.id,
+      sample!.ticketType.id,
+      sample!.orderSource.id,
+      sample!.priceZone.id,
     ]);
     const flat = flattenExpandedMatchSalesTree([sample!.match], expanded);
     expect(flat.find((row) => row.level === "match")?.revenue).toBe(
       sample!.match.revenue,
     );
+    expect(flat.filter((row) => row.level === "section")).toHaveLength(3);
+    expect(flat.some((row) => row.level === "ticketType")).toBe(true);
+    expect(flat.some((row) => row.level === "orderSource")).toBe(true);
     expect(flat.some((row) => row.level === "priceZone")).toBe(true);
+  });
+
+  it("expands sections independently without requiring another section", () => {
+    const { tree } = buildTree();
+    const sample = findParallelCuts(tree);
+    expect(sample).not.toBeNull();
+
+    const sourceOnly = flattenExpandedMatchSalesTree(
+      [sample!.match],
+      new Set([sample!.match.id, sample!.orderSource.id]),
+    );
+    expect(sourceOnly.map((row) => row.level)).toEqual([
+      "match",
+      "section",
+      "section",
+      ...sample!.orderSource.children.map(() => "orderSource" as const),
+      "section",
+    ]);
+    expect(sourceOnly.some((row) => row.level === "ticketType")).toBe(false);
+    expect(sourceOnly.some((row) => row.level === "priceZone")).toBe(false);
+
+    const twoSections = flattenExpandedMatchSalesTree(
+      [sample!.match],
+      new Set([
+        sample!.match.id,
+        sample!.orderSource.id,
+        sample!.priceZone.id,
+      ]),
+    );
+    expect(twoSections.some((row) => row.level === "orderSource")).toBe(true);
+    expect(twoSections.some((row) => row.level === "priceZone")).toBe(true);
+    expect(twoSections.some((row) => row.level === "ticketType")).toBe(false);
+    expect(twoSections.filter((row) => row.level === "priceZone")).toHaveLength(
+      sample!.priceZone.children.length,
+    );
+  });
+
+  it("hides the price-zone section when parking tickets have no zone", () => {
+    const parkingFilters: TicketFilters = { ...ticketFilters, ticketType: "parking" };
+    const parking = buildTree(parkingFilters);
+    expect(parking.tree.length).toBeGreaterThan(0);
+    for (const match of parking.tree) {
+      expect(findSection(match, MATCH_SALES_SECTION_LABELS.priceZone)).toBeUndefined();
+      const ticketType = findSection(
+        match,
+        MATCH_SALES_SECTION_LABELS.ticketType,
+      );
+      expect(ticketType?.children.map((child) => child.label)).toEqual([
+        TICKET_TYPE_LABELS.parking,
+      ]);
+    }
   });
 
   it("uses weighted loyalty discount from the branch, not an average of child percents", () => {
@@ -206,16 +329,13 @@ describe("match sales tree", () => {
     expect(zoneRows.length).toBeGreaterThan(0);
     expect(zoneRows.length).toBeLessThanOrEqual(allRows.length);
 
-    const zoneNodes = zoneTree.flatMap((match) =>
-      match.children.flatMap((typeNode) =>
-        typeNode.children.flatMap((sourceNode) => sourceNode.children),
-      ),
-    );
+    const zoneNodes = zoneTree.flatMap((match) => {
+      const section = findSection(match, MATCH_SALES_SECTION_LABELS.priceZone);
+      return section?.children ?? [];
+    });
     expect(zoneNodes.length).toBeGreaterThan(0);
     expect(
-      zoneNodes.every((row) =>
-        row.label.endsWith(`· ${PRICE_ZONE_LABELS[zone]}`),
-      ),
+      zoneNodes.every((row) => row.label === PRICE_ZONE_LABELS[zone]),
     ).toBe(true);
   });
 

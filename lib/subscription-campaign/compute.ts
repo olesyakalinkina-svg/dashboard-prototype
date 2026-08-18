@@ -24,7 +24,7 @@ import type {
 
 export type SubscriptionCampaignAttributeFilters = Pick<
   SubscriptionFilters,
-  "league" | "tournamentStage" | "arena" | "ticketType" | "sector"
+  "league" | "tournamentStage" | "arena" | "ticketType"
 >;
 
 export function isValidSoldSubscription(sub: Subscription): boolean {
@@ -44,9 +44,6 @@ export function subscriptionMatchesCampaignFilters(
   }
   if (filters.arena !== "all" && sub.arena !== filters.arena) return false;
   if (filters.ticketType !== "all" && sub.ticketType !== filters.ticketType) {
-    return false;
-  }
-  if (filters.sector !== "all" && sub.sector !== filters.sector) {
     return false;
   }
   return true;
@@ -343,7 +340,6 @@ export function computeCampaignBenchmark(
     tournamentStage: input.filters.tournamentStage,
     arena: input.filters.arena,
     ticketType: input.filters.ticketType,
-    sector: input.filters.sector,
   };
 
   const mainChartDays = mainAvailableDays;

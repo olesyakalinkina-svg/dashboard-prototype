@@ -208,7 +208,6 @@ function ticketFilterCacheKey(
     ticketFilters.eventCompleted,
     ticketFilters.matchId.join(","),
     ticketFilters.ticketType,
-    ticketFilters.sector,
     ticketFilters.priceZone,
     ticketFilters.orderSource,
     ticketFilters.transactionDateRange.from ?? "",
@@ -831,9 +830,6 @@ function passesTicketFieldFilters(
   if (ticketFilters.priceZone !== "all" && tx.priceZone !== ticketFilters.priceZone) {
     return false;
   }
-  if (ticketFilters.sector !== "all" && tx.sector !== ticketFilters.sector) {
-    return false;
-  }
   if (ticketFilters.orderSource !== "all" && tx.orderSource !== ticketFilters.orderSource) {
     return false;
   }
@@ -1143,12 +1139,6 @@ export function filterSubscriptions(
     ) {
       return false;
     }
-    if (
-      subscriptionFilters.sector !== "all" &&
-      sub.sector !== subscriptionFilters.sector
-    ) {
-      return false;
-    }
     return true;
   });
 }
@@ -1190,7 +1180,6 @@ function matchLevelTicketFilters(ticketFilters: TicketFilters): TicketFilters {
   return {
     ...ticketFilters,
     ticketType: "all",
-    sector: "all",
     priceZone: "all",
     orderSource: "all",
   };
@@ -1206,7 +1195,6 @@ function ticketTodayCacheKey(ticketFilters: TicketFilters): string {
     ticketFilters.eventCompleted,
     ticketFilters.matchId.join(","),
     ticketFilters.ticketType,
-    ticketFilters.sector,
     ticketFilters.priceZone,
     ticketFilters.orderSource,
     ticketFilters.transactionDateRange.from ?? "",
@@ -1322,12 +1310,6 @@ function previousPeriodSubscriptions(
     if (
       subscriptionFilters.ticketType !== "all" &&
       sub.ticketType !== subscriptionFilters.ticketType
-    ) {
-      return false;
-    }
-    if (
-      subscriptionFilters.sector !== "all" &&
-      sub.sector !== subscriptionFilters.sector
     ) {
       return false;
     }
@@ -1759,7 +1741,6 @@ function ticketPlanScale(ticketFilters: TicketFilters): number {
   if (ticketFilters.ticketType !== "all") {
     scale *= TICKET_TYPE_PLAN_SHARE[ticketFilters.ticketType];
   }
-  if (ticketFilters.sector !== "all") scale *= 1 / ALL_SECTORS.length;
   if (ticketFilters.priceZone !== "all") scale *= 1 / ALL_PRICE_ZONES.length;
   if (ticketFilters.orderSource !== "all") scale *= 1 / 3;
   return scale;

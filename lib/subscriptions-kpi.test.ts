@@ -72,7 +72,7 @@ describe("subscriptions KPIs", () => {
   it("keeps all price categories when a filter leaves some empty", () => {
     const shares = computeSubscriptionPriceCategoryShares(
       DEFAULT_DASHBOARD_FILTERS,
-      { ...DEFAULT_SUBSCRIPTION_FILTERS, sector: "VIP" },
+      { ...DEFAULT_SUBSCRIPTION_FILTERS, ticketType: "parking" },
     );
 
     expect(shares).toHaveLength(3);

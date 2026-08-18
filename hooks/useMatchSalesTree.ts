@@ -78,7 +78,7 @@ export function useMatchSalesTreeState(
 }
 
 /**
- * Attach the 4-level hierarchy for the current page of matches only.
+ * Attach match + three parallel sections for the current page of matches only.
  * Expand/collapse must not call this — it depends on page ids and filters, not expandedNodeIds.
  */
 export function useMatchSalesPageTree(

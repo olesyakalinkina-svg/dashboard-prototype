@@ -50,7 +50,6 @@ export function countActiveTicketFilters(filters: TicketFilters): number {
     "arena",
     "eventCompleted",
     "ticketType",
-    "sector",
     "priceZone",
     "orderSource",
     "timeGrouping",
@@ -147,7 +146,6 @@ export function countActiveSubscriptionFilters(
     "tournamentStage",
     "arena",
     "ticketType",
-    "sector",
     "timeGrouping",
   ]);
 

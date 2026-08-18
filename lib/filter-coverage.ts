@@ -13,7 +13,6 @@ import {
   LEAGUE_OPTIONS,
   MATCH_CLASS_OPTIONS,
   ORDER_SOURCE_OPTIONS,
-  SECTOR_OPTIONS,
   PRICE_ZONE_OPTIONS,
   SEASON_OPTIONS,
   TICKET_TYPE_OPTIONS,
@@ -272,15 +271,6 @@ export function buildTicketsFilterCases(): FilterCoverageCase[] {
     );
   }
 
-  for (const opt of SECTOR_OPTIONS) {
-    cases.push(
-      ticketCase("sector", opt.label, {
-        ...DEFAULT_TICKET_FILTERS,
-        sector: opt.value,
-      }),
-    );
-  }
-
   for (const opt of PRICE_ZONE_OPTIONS) {
     cases.push(
       ticketCase("priceZone", opt.label, {
@@ -434,18 +424,6 @@ export function buildSubscriptionsFilterCases(): FilterCoverageCase[] {
         ticketType: opt.value,
       }),
     );
-  }
-
-  for (const opt of SECTOR_OPTIONS) {
-    const testCase = subscriptionCase("sector", opt.label, {
-      ...DEFAULT_SUBSCRIPTION_FILTERS,
-      sector: opt.value,
-    });
-    if (opt.value === "C2" && DEFAULT_SUBSCRIPTION_FILTERS.league === "KHL") {
-      testCase.excluded =
-        "KHL subscriptions have no sales in sector C2 in mock data";
-    }
-    cases.push(testCase);
   }
 
   return cases;
@@ -647,13 +625,13 @@ export function buildCriticalComboCases(): CriticalComboCase[] {
         }).length > 0,
     },
     {
-      name: "Subscriptions: playoff + VIP sector",
+      name: "Subscriptions: playoff + arena",
       tab: "subscriptions",
       check: () =>
         filterSubscriptions(DEFAULT_DASHBOARD_FILTERS, {
           ...DEFAULT_SUBSCRIPTION_FILTERS,
           tournamentStage: "playoff",
-          sector: "VIP",
+          ticketType: "arena",
         }).length > 0,
     },
     {

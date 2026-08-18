@@ -74,11 +74,10 @@ export const DEFAULT_TICKET_FILTERS: TicketFilters = {
   eventCompleted: "all",
   matchId: [],
   ticketType: "all",
-  sector: "all",
   priceZone: "all",
   orderSource: "all",
   transactionDateRange: DEFAULT_TICKET_TRANSACTION_DATE_RANGE,
-  timeGrouping: "week",
+  timeGrouping: "day",
 };
 
 export function hasTransactionDateRangeFilter(
@@ -238,11 +237,6 @@ export const TICKET_TYPE_OPTIONS: { value: TicketType | "all"; label: string }[]
   { value: "all", label: "Все" },
   { value: "parking", label: "Парковка" },
   { value: "arena", label: "Арена" },
-];
-
-export const SECTOR_OPTIONS: { value: Sector | "all"; label: string }[] = [
-  { value: "all", label: "Все сектора" },
-  ...ALL_SECTORS.map((sector) => ({ value: sector, label: sector })),
 ];
 
 export const PRICE_ZONE_OPTIONS: { value: PriceZone | "all"; label: string }[] = [

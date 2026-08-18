@@ -67,7 +67,6 @@ export const DEFAULT_SUBSCRIPTION_FILTERS: SubscriptionFilters = {
   tournamentStage: "all",
   arena: "all",
   ticketType: "all",
-  sector: "all",
   timeGrouping: "week",
 };
 
@@ -87,7 +86,6 @@ export function getSubscriptionCategoryChartTitle(
 export {
   ARENA_OPTIONS,
   LEAGUE_OPTIONS,
-  SECTOR_OPTIONS,
   SEASON_OPTIONS,
   TICKET_TYPE_OPTIONS,
   TREND_TIME_GROUPING_OPTIONS,

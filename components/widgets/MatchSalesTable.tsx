@@ -8,7 +8,7 @@ import {
   type ColumnDef,
   type SortingState,
 } from "@tanstack/react-table";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Search } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { TableExcelButton } from "@/components/ui/ExcelDownloadButton";
 import { InlineBarCell } from "@/components/ui/InlineBarCell";
@@ -24,6 +24,7 @@ import {
   paginateTopLevel,
   sortMatchSalesNodes,
   type MatchSalesFlatRow,
+  type MatchSalesTreeNode,
   type MatchSalesSortId,
 } from "@/lib/match-sales-tree";
 import {
@@ -96,6 +97,21 @@ function MatchSalesExpandButton({
   );
 }
 
+export function matchSalesTreeNodeMatchesQuery(
+  node: MatchSalesTreeNode,
+  query: string,
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+
+  // Match row UI shows `${eventLabel} + formatted(date)` in separate columns,
+  // so global search must match against that combined label string.
+  const dateText = node.date ? formatDate(node.date) : "";
+  const matchLabel = `${node.label} ${dateText}`.toLowerCase().trim();
+
+  return matchLabel.includes(q);
+}
+
 const MATCH_SALES_COLUMNS: ColumnDef<MatchSalesFlatRow, unknown>[] = [
   {
     accessorKey: "eventLabel",
@@ -119,7 +135,9 @@ const MATCH_SALES_COLUMNS: ColumnDef<MatchSalesFlatRow, unknown>[] = [
           <span
             className={clsx(
               "whitespace-nowrap",
-              item.level === "match" ? "font-medium" : "text-[var(--muted)]",
+              item.level === "match" || item.level === "section"
+                ? "font-medium"
+                : "text-[var(--muted)]",
             )}
           >
             {item.label}
@@ -278,6 +296,7 @@ export const MatchSalesTable = memo(function MatchSalesTable({
     { id: "date", desc: true },
   ]);
   const [pageIndex, setPageIndex] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const sort = sorting[0];
   const sortedTree = useMemo(
@@ -291,9 +310,16 @@ export const MatchSalesTable = memo(function MatchSalesTable({
     [tree, sort],
   );
 
+  const filteredTree = useMemo(() => {
+    if (!searchQuery.trim()) return sortedTree;
+    return sortedTree.filter((node) =>
+      matchSalesTreeNodeMatchesQuery(node, searchQuery),
+    );
+  }, [sortedTree, searchQuery]);
+
   const pagination = useMemo(
-    () => paginateTopLevel(sortedTree, pageIndex, PAGE_SIZE),
-    [sortedTree, pageIndex],
+    () => paginateTopLevel(filteredTree, pageIndex, PAGE_SIZE),
+    [filteredTree, pageIndex],
   );
 
   useEffect(() => {
@@ -301,6 +327,10 @@ export const MatchSalesTable = memo(function MatchSalesTable({
       setPageIndex(pagination.pageIndex);
     }
   }, [pageIndex, pagination.pageIndex]);
+
+  useEffect(() => {
+    setPageIndex(0);
+  }, [searchQuery]);
 
   const pageTree = useMatchSalesPageTree(pagination.pageItems, treeState);
 
@@ -354,7 +384,17 @@ export const MatchSalesTable = memo(function MatchSalesTable({
   const tableContent = (
     <>
       {embedded && (
-        <div className="mb-3 flex justify-end">
+        <div className="mb-3 flex items-center justify-end gap-2">
+          <div className="relative min-w-0 flex-1 sm:w-auto sm:flex-none">
+            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Поиск по мероприятию..."
+                aria-label="Поиск по мероприятию..."
+              className="h-9 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] sm:h-8 sm:w-48"
+            />
+          </div>
           <TableExcelButton table={excelTable} fileName="Продажи" />
         </div>
       )}
@@ -413,7 +453,7 @@ export const MatchSalesTable = memo(function MatchSalesTable({
         </tbody>
       </table>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted)]">
-        <span>{sortedTree.length} мероприятий</span>
+        <span>{filteredTree.length} мероприятий</span>
         <div className="flex gap-2">
           <button
             type="button"
@@ -444,8 +484,22 @@ export const MatchSalesTable = memo(function MatchSalesTable({
   ) : (
     <Card className="flex h-full min-w-0 flex-col">
       <CardHeader>
-        <CardTitle>Продажи</CardTitle>
-        <TableExcelButton table={excelTable} fileName="Продажи" />
+        <div className="flex w-full items-center justify-between gap-3">
+          <CardTitle>Продажи</CardTitle>
+          <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
+            <div className="relative min-w-0 flex-1 sm:w-auto sm:flex-none">
+              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Поиск по мероприятию..."
+                aria-label="Поиск по мероприятию..."
+                className="h-9 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] sm:h-8 sm:w-48"
+              />
+            </div>
+            <TableExcelButton table={excelTable} fileName="Продажи" />
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="overflow-x-auto">{tableContent}</CardContent>
     </Card>

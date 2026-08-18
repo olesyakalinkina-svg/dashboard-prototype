@@ -16,7 +16,11 @@ import {
   computeSeasonMatchStatus,
   formatSeasonMatchAxisLabel,
   fromSeasonMatchSelectorValue,
+  getSeasonMatchChartWidth,
   isSeasonMatchCurrentlyOnSale,
+  SEASON_MATCH_CHART_DAY_WIDTH,
+  SEASON_MATCH_CHART_MIN_WIDTH,
+  SEASON_MATCH_CHART_MOBILE_MAX_WIDTH,
   SEASON_MATCH_CURRENT_SALES_LABEL,
   SEASON_MATCH_CURRENT_SALES_VALUE,
   SEASON_MATCH_LAST_COMPLETED_FALLBACK_COUNT,
@@ -28,6 +32,7 @@ import {
 import type {
   TicketMatchCumulativePoint,
   TicketMatchCumulativeSeries,
+  TicketsSeasonMatchChartRow,
   TicketsSeasonMatchSeriesView,
 } from "@/types/dashboard";
 
@@ -397,18 +402,44 @@ describe("tickets season match chart — helpers", () => {
     expect(computeSeasonMatchStatus(101)).toBe("ahead");
   });
 
-  it("aggregates daily rows by week using the period-end snapshot", () => {
+  it("keeps daily rows as-is for day grouping", () => {
+    const matchDateKey = new Date(2026, 4, 20).getTime();
     const series = [
       makeSeries({
         matchId: "sale",
-        matchDateKey: Date.UTC(2026, 4, 20),
+        matchDateKey,
         eventCompleted: false,
         currentDaysBeforeMatch: 3,
         label: "СКА · 20.05.26",
         points: [
-          makePoint(6, Date.UTC(2026, 4, 20), 100_000),
-          makePoint(5, Date.UTC(2026, 4, 20), 200_000),
-          makePoint(0, Date.UTC(2026, 4, 20), 500_000),
+          makePoint(6, matchDateKey, 100_000),
+          makePoint(5, matchDateKey, 200_000),
+          makePoint(0, matchDateKey, 500_000),
+        ],
+      }),
+    ];
+    const views = buildSeasonMatchSeriesViews(series);
+    const daily = buildSeasonMatchChartRows(views, series);
+    expect(
+      aggregateSeasonMatchChartRowsByGrouping(daily, views, "day"),
+    ).toBe(daily);
+  });
+
+  it("aggregates daily rows by week using the period-end cumulative snapshot", () => {
+    const matchDateKey = new Date(2026, 4, 20).getTime();
+    const series = [
+      makeSeries({
+        matchId: "sale",
+        matchDateKey,
+        eventCompleted: false,
+        currentDaysBeforeMatch: 0,
+        label: "СКА · 20.05.26",
+        points: [
+          makePoint(7, matchDateKey, 100_000),
+          makePoint(6, matchDateKey, 150_000),
+          makePoint(5, matchDateKey, 200_000),
+          makePoint(2, matchDateKey, 400_000),
+          makePoint(0, matchDateKey, 500_000),
         ],
       }),
     ];
@@ -419,10 +450,80 @@ describe("tickets season match chart — helpers", () => {
       views,
       "week",
     );
-    expect(weekly.length).toBeGreaterThan(0);
-    expect(weekly.length).toBeLessThanOrEqual(daily.length);
-    const lastWeekly = weekly[weekly.length - 1];
-    expect(lastWeekly[seasonMatchPlanKey("sale")]).toBe(1_000_000);
+    const factKey = seasonMatchFactKey("sale");
+    const planKey = seasonMatchPlanKey("sale");
+
+    expect(daily.length).toBe(5);
+    expect(weekly.length).toBe(2);
+    expect(weekly.length).toBeLessThan(daily.length);
+    expect(weekly[0][factKey]).toBe(200_000);
+    expect(weekly[1][factKey]).toBe(500_000);
+    expect(weekly[0][planKey]).toBeNull();
+    expect(weekly[1][planKey]).toBe(1_000_000);
+    expect(weekly.map((row) => row.dateKey)).toEqual([
+      daily[2].dateKey,
+      daily[4].dateKey,
+    ]);
+  });
+
+  it("aggregates daily rows by month using the period-end cumulative snapshot", () => {
+    const matchDateKey = new Date(2026, 4, 20).getTime();
+    const series = [
+      makeSeries({
+        matchId: "sale",
+        matchDateKey,
+        eventCompleted: true,
+        currentDaysBeforeMatch: null,
+        label: "СКА · 20.05.26",
+        points: [
+          makePoint(22, matchDateKey, 80_000),
+          makePoint(15, matchDateKey, 180_000),
+          makePoint(0, matchDateKey, 500_000),
+        ],
+      }),
+    ];
+    const views = buildSeasonMatchSeriesViews(series);
+    const daily = buildSeasonMatchChartRows(views, series);
+    const monthly = aggregateSeasonMatchChartRowsByGrouping(
+      daily,
+      views,
+      "month",
+    );
+    const factKey = seasonMatchFactKey("sale");
+    const planKey = seasonMatchPlanKey("sale");
+
+    expect(daily.length).toBe(3);
+    expect(monthly.length).toBe(2);
+    expect(monthly[0][factKey]).toBe(80_000);
+    expect(monthly[1][factKey]).toBe(500_000);
+    expect(monthly[1][planKey]).toBe(1_000_000);
+    expect(monthly.map((row) => row.dateKey)).toEqual([
+      daily[0].dateKey,
+      daily[2].dateKey,
+    ]);
+  });
+
+  it("wires the widget and dashboard to the same grouping prop as sibling ticket charts", () => {
+    const widget = readFileSync(
+      join(process.cwd(), "components/widgets/TicketsSeasonMatchDynamicsWidget.tsx"),
+      "utf8",
+    );
+    const dashboard = readFileSync(
+      join(process.cwd(), "app/dashboard-app.tsx"),
+      "utf8",
+    );
+    const filterContext = readFileSync(
+      join(process.cwd(), "context/FilterContext.tsx"),
+      "utf8",
+    );
+
+    expect(widget).toContain("aggregateSeasonMatchChartRowsByGrouping");
+    expect(widget).toContain("timeGrouping");
+    expect(dashboard).toContain("TicketsMatchDynamicsSection");
+    expect(dashboard).toMatch(
+      /TicketsSeasonMatchDynamicsWidget[\s\S]*timeGrouping=\{ticketChartTimeGrouping\}/,
+    );
+    expect(filterContext).toContain("timeGrouping: grouping");
   });
 });
 
@@ -599,5 +700,69 @@ describe("tickets season match chart — current sales selector", () => {
       ),
     });
     expect(viewIds(autoViews)).toEqual(["sale"]);
+  });
+});
+
+describe("getSeasonMatchChartWidth", () => {
+  function makeRows(count: number): TicketsSeasonMatchChartRow[] {
+    return Array.from({ length: count }, (_, index) => ({
+      dateKey: index,
+      periodLabel: String(index),
+    }));
+  }
+
+  it("uses the min width floor for a sparse series", () => {
+    expect(getSeasonMatchChartWidth(makeRows(5))).toBe(
+      SEASON_MATCH_CHART_MIN_WIDTH,
+    );
+    expect(getSeasonMatchChartWidth(makeRows(1))).toBe(
+      SEASON_MATCH_CHART_MIN_WIDTH,
+    );
+  });
+
+  it("grows past the min width for a dense day series", () => {
+    const rows = makeRows(30);
+    expect(getSeasonMatchChartWidth(rows)).toBe(
+      30 * SEASON_MATCH_CHART_DAY_WIDTH,
+    );
+  });
+
+  it("stretches to the container when the data min-width is smaller", () => {
+    expect(
+      getSeasonMatchChartWidth(makeRows(5), { containerWidth: 1200 }),
+    ).toBe(1200);
+  });
+
+  it("keeps horizontal overflow when the data min-width exceeds the container", () => {
+    const rows = makeRows(40);
+    const dataWidth = 40 * SEASON_MATCH_CHART_DAY_WIDTH;
+    expect(dataWidth).toBeGreaterThan(1200);
+    expect(getSeasonMatchChartWidth(rows, { containerWidth: 1200 })).toBe(
+      dataWidth,
+    );
+  });
+
+  it("fills a narrower card instead of keeping the 760px floor", () => {
+    expect(
+      getSeasonMatchChartWidth(makeRows(5), { containerWidth: 574 }),
+    ).toBe(574);
+  });
+
+  it("still caps mobile width for a dense series", () => {
+    expect(
+      getSeasonMatchChartWidth(makeRows(40), {
+        maxWidth: SEASON_MATCH_CHART_MOBILE_MAX_WIDTH,
+        containerWidth: 390,
+      }),
+    ).toBe(SEASON_MATCH_CHART_MOBILE_MAX_WIDTH);
+  });
+
+  it("stretches a sparse series to the mobile container", () => {
+    expect(
+      getSeasonMatchChartWidth(makeRows(5), {
+        maxWidth: SEASON_MATCH_CHART_MOBILE_MAX_WIDTH,
+        containerWidth: 390,
+      }),
+    ).toBe(390);
   });
 });

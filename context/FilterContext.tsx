@@ -782,7 +782,6 @@ function TabCompute({
       ticketFilters.eventCompleted,
       ticketFilters.matchId,
       ticketFilters.ticketType,
-      ticketFilters.sector,
       ticketFilters.priceZone,
       ticketFilters.orderSource,
       ticketFilters.transactionDateRange.from,
@@ -829,7 +828,6 @@ function TabCompute({
       subscriptionFilters.tournamentStage,
       subscriptionFilters.arena,
       subscriptionFilters.ticketType,
-      subscriptionFilters.sector,
     ],
   );
 
@@ -867,6 +865,12 @@ function TabCompute({
     const requestFilters = filters;
     const requestTicketFilters = ticketFiltersForStableData;
     const grouping = liveTicketTimeGrouping;
+    // Stable filters omit timeGrouping (KPI/table/series cache). Overlay it
+    // so appliedTicketFilters matches the grouping shown on ticket charts.
+    const appliedTicketFilters = {
+      ...requestTicketFilters,
+      timeGrouping: grouping,
+    };
     const delay = lastTicketsPayloadRef.current ? 500 : 0;
 
     const timer = window.setTimeout(() => {
@@ -892,7 +896,7 @@ function TabCompute({
           if (!core || !trends || !series) return;
           const payload = ticketsPayload(
             core,
-            requestTicketFilters,
+            appliedTicketFilters,
             requestFilters,
             {
               ...trends,
@@ -946,7 +950,7 @@ function TabCompute({
 
           const corePayload = ticketsPayload(
             core,
-            requestTicketFilters,
+            appliedTicketFilters,
             requestFilters,
             {
               ticketsMatchCumulativeSeries:
@@ -1037,7 +1041,7 @@ function TabCompute({
 
           const withTrends = ticketsPayload(
             core,
-            requestTicketFilters,
+            appliedTicketFilters,
             requestFilters,
             {
               ...trendSlice,

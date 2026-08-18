@@ -28,8 +28,11 @@ import type {
   Transaction,
 } from "@/types/dashboard";
 
+export type MatchSalesSectionKind = "ticketType" | "orderSource" | "priceZone";
+
 export type MatchSalesTreeLevel =
   | "match"
+  | "section"
   | "ticketType"
   | "orderSource"
   | "priceZone";
@@ -59,11 +62,18 @@ export type MatchSalesFlatRow = Omit<MatchSalesTreeNode, "children"> & {
 
 const TICKET_TYPE_ORDER: TicketType[] = ["arena", "parking"];
 
-const LEVEL_LABELS: Record<Exclude<MatchSalesTreeLevel, "match">, string> = {
-  ticketType: "Тип билета",
-  orderSource: "Источник",
-  priceZone: "Ценовая зона",
-};
+const SECTION_ORDER: MatchSalesSectionKind[] = [
+  "ticketType",
+  "orderSource",
+  "priceZone",
+];
+
+export const MATCH_SALES_SECTION_LABELS: Record<MatchSalesSectionKind, string> =
+  {
+    ticketType: "Тип билета",
+    orderSource: "Источник заказа",
+    priceZone: "Ценовая зона",
+  };
 
 type BranchAgg = TicketSalesAgg & { issuedTickets: number };
 
@@ -101,36 +111,27 @@ function metricsFromAgg(
   };
 }
 
-function childLabel(
-  level: Exclude<MatchSalesTreeLevel, "match">,
-  value: string,
-): string {
-  return `${LEVEL_LABELS[level]} · ${value}`;
-}
-
 function typeKey(matchId: string, type: TicketType): string {
   return `m:${matchId}|t:${type}`;
 }
 
-function sourceKey(
-  matchId: string,
-  type: TicketType,
-  source: OrderSource,
-): string {
-  return `m:${matchId}|t:${type}|s:${source}`;
+function sourceKey(matchId: string, source: OrderSource): string {
+  return `m:${matchId}|s:${source}`;
 }
 
-function zoneKey(
-  matchId: string,
-  type: TicketType,
-  source: OrderSource,
-  zone: PriceZone,
-): string {
-  return `m:${matchId}|t:${type}|s:${source}|z:${zone}`;
+function zoneKey(matchId: string, zone: PriceZone): string {
+  return `m:${matchId}|z:${zone}`;
 }
 
 export function matchSalesNodeId(matchId: string): string {
   return `m:${matchId}`;
+}
+
+export function matchSalesSectionId(
+  matchId: string,
+  section: MatchSalesSectionKind,
+): string {
+  return `m:${matchId}|sec:${section}`;
 }
 
 export function getMatchSalesExpandScopeKey(
@@ -294,24 +295,31 @@ export function matchIdFromExpandedNodeId(id: string): string | null {
   return pipe === -1 ? rest : rest.slice(0, pipe);
 }
 
-type ZoneBucket = BranchAgg;
-type SourceBucket = {
-  agg: BranchAgg;
-  zones: Map<PriceZone, ZoneBucket>;
-};
-type TypeBucket = {
-  agg: BranchAgg;
-  sources: Map<OrderSource, SourceBucket>;
-};
-
 export type MatchAggregate = {
   agg: BranchAgg;
-  types: Map<TicketType, TypeBucket>;
+  types: Map<TicketType, BranchAgg>;
+  sources: Map<OrderSource, BranchAgg>;
+  zones: Map<PriceZone, BranchAgg>;
 };
 
+function applyDimensionTransaction<K>(
+  buckets: Map<K, BranchAgg>,
+  key: K | undefined | null,
+  tx: Transaction,
+): void {
+  if (key == null) return;
+  let agg = buckets.get(key);
+  if (!agg) {
+    agg = createBranchAgg();
+    buckets.set(key, agg);
+  }
+  applyBranchTransaction(agg, tx);
+}
+
 /**
- * One pass over transactions: match → ticketTypes → orderSources → priceZones.
- * Callers must not .filter() the full array per node.
+ * One pass over transactions: three parallel cuts of a match
+ * (ticket type, order source, price zone). Callers must not .filter()
+ * the full array per node.
  */
 export function buildMatchAggregateIndex(
   transactions: Transaction[],
@@ -323,105 +331,117 @@ export function buildMatchAggregateIndex(
 
     let match = index.get(tx.matchId);
     if (!match) {
-      match = { agg: createBranchAgg(), types: new Map() };
+      match = {
+        agg: createBranchAgg(),
+        types: new Map(),
+        sources: new Map(),
+        zones: new Map(),
+      };
       index.set(tx.matchId, match);
     }
     applyBranchTransaction(match.agg, tx);
-
-    if (!tx.ticketType) continue;
-    let typeBucket = match.types.get(tx.ticketType);
-    if (!typeBucket) {
-      typeBucket = { agg: createBranchAgg(), sources: new Map() };
-      match.types.set(tx.ticketType, typeBucket);
-    }
-    applyBranchTransaction(typeBucket.agg, tx);
-
-    if (!tx.orderSource) continue;
-    let sourceBucket = typeBucket.sources.get(tx.orderSource);
-    if (!sourceBucket) {
-      sourceBucket = { agg: createBranchAgg(), zones: new Map() };
-      typeBucket.sources.set(tx.orderSource, sourceBucket);
-    }
-    applyBranchTransaction(sourceBucket.agg, tx);
-
-    if (!tx.priceZone) continue;
-    let zoneAgg = sourceBucket.zones.get(tx.priceZone);
-    if (!zoneAgg) {
-      zoneAgg = createBranchAgg();
-      sourceBucket.zones.set(tx.priceZone, zoneAgg);
-    }
-    applyBranchTransaction(zoneAgg, tx);
+    applyDimensionTransaction(match.types, tx.ticketType, tx);
+    applyDimensionTransaction(match.sources, tx.orderSource, tx);
+    applyDimensionTransaction(match.zones, tx.priceZone, tx);
   }
 
   return index;
 }
 
-function typeNodesFromAggregate(
+function leafNodesFromBuckets<K extends string>(
   matchId: string,
-  aggregate: MatchAggregate | undefined,
+  level: Exclude<MatchSalesTreeLevel, "match" | "section">,
+  order: readonly K[],
+  buckets: Map<K, BranchAgg>,
+  labels: Record<K, string>,
+  idFor: (matchId: string, key: K) => string,
 ): MatchSalesTreeNode[] {
-  if (!aggregate) return [];
-  const typeNodes: MatchSalesTreeNode[] = [];
-
-  for (const type of TICKET_TYPE_ORDER) {
-    const typeBucket = aggregate.types.get(type);
-    if (!typeBucket) continue;
-
-    const sourceNodes: MatchSalesTreeNode[] = [];
-    for (const source of ALL_ORDER_SOURCES) {
-      const sourceBucket = typeBucket.sources.get(source);
-      if (!sourceBucket) continue;
-
-      const zoneNodes: MatchSalesTreeNode[] = [];
-      for (const zone of ALL_PRICE_ZONES) {
-        const zoneAgg = sourceBucket.zones.get(zone);
-        if (!zoneAgg) continue;
-        zoneNodes.push(
-          metricsFromAgg(zoneAgg, {
-            id: zoneKey(matchId, type, source, zone),
-            level: "priceZone",
-            matchId,
-            date: null,
-            label: childLabel("priceZone", PRICE_ZONE_LABELS[zone]),
-            planRevenue: null,
-            capacity: null,
-            hasChildren: false,
-            children: [],
-          }),
-        );
-      }
-
-      sourceNodes.push(
-        metricsFromAgg(sourceBucket.agg, {
-          id: sourceKey(matchId, type, source),
-          level: "orderSource",
-          matchId,
-          date: null,
-          label: childLabel("orderSource", ORDER_SOURCE_LABELS[source]),
-          planRevenue: null,
-          capacity: null,
-          hasChildren: zoneNodes.length > 0,
-          children: zoneNodes,
-        }),
-      );
-    }
-
-    typeNodes.push(
-      metricsFromAgg(typeBucket.agg, {
-        id: typeKey(matchId, type),
-        level: "ticketType",
+  const nodes: MatchSalesTreeNode[] = [];
+  for (const key of order) {
+    const agg = buckets.get(key);
+    if (!agg) continue;
+    nodes.push(
+      metricsFromAgg(agg, {
+        id: idFor(matchId, key),
+        level,
         matchId,
         date: null,
-        label: childLabel("ticketType", TICKET_TYPE_LABELS[type]),
+        label: labels[key],
         planRevenue: null,
         capacity: null,
-        hasChildren: sourceNodes.length > 0,
-        children: sourceNodes,
+        hasChildren: false,
+        children: [],
       }),
     );
   }
+  return nodes;
+}
 
-  return typeNodes;
+function sectionNodeFromMatchRow(
+  row: MatchSalesRow,
+  section: MatchSalesSectionKind,
+  children: MatchSalesTreeNode[],
+): MatchSalesTreeNode {
+  return {
+    id: matchSalesSectionId(row.matchId, section),
+    level: "section",
+    matchId: row.matchId,
+    date: null,
+    label: MATCH_SALES_SECTION_LABELS[section],
+    revenue: row.revenue,
+    planRevenue: row.planRevenue,
+    avgPrice: row.avgPrice,
+    ticketsSold: row.ticketsSold,
+    freeTickets: row.freeTickets,
+    issuedTickets: row.issuedTickets,
+    capacity: row.capacity,
+    loyaltyDiscountPct: row.loyaltyDiscountPct,
+    hasChildren: children.length > 0,
+    children,
+  };
+}
+
+function sectionNodesFromAggregate(
+  row: MatchSalesRow,
+  aggregate: MatchAggregate | undefined,
+): MatchSalesTreeNode[] {
+  if (!aggregate) return [];
+
+  const childrenBySection: Record<MatchSalesSectionKind, MatchSalesTreeNode[]> =
+    {
+      ticketType: leafNodesFromBuckets(
+        row.matchId,
+        "ticketType",
+        TICKET_TYPE_ORDER,
+        aggregate.types,
+        TICKET_TYPE_LABELS,
+        typeKey,
+      ),
+      orderSource: leafNodesFromBuckets(
+        row.matchId,
+        "orderSource",
+        ALL_ORDER_SOURCES,
+        aggregate.sources,
+        ORDER_SOURCE_LABELS,
+        sourceKey,
+      ),
+      priceZone: leafNodesFromBuckets(
+        row.matchId,
+        "priceZone",
+        ALL_PRICE_ZONES,
+        aggregate.zones,
+        PRICE_ZONE_LABELS,
+        zoneKey,
+      ),
+    };
+
+  const sections: MatchSalesTreeNode[] = [];
+  for (const kind of SECTION_ORDER) {
+    const children = childrenBySection[kind];
+    if (children.length === 0) continue;
+    sections.push(sectionNodeFromMatchRow(row, kind, children));
+  }
+  return sections;
 }
 
 export type ComputeMatchSalesTreeOptions = {
@@ -494,9 +514,9 @@ export function computeMatchSalesTree(
     }
 
     const aggregate = index.get(row.matchId);
-    const typeNodes = typeNodesFromAggregate(row.matchId, aggregate);
+    const sectionNodes = sectionNodesFromAggregate(row, aggregate);
     const hasChildren = childrenReady
-      ? typeNodes.length > 0
+      ? sectionNodes.length > 0
       : row.ticketsSold > 0 || row.issuedTickets > 0;
 
     nodes.push({
@@ -514,7 +534,7 @@ export function computeMatchSalesTree(
       capacity: row.capacity,
       loyaltyDiscountPct: row.loyaltyDiscountPct,
       hasChildren,
-      children: typeNodes,
+      children: sectionNodes,
     });
   }
 

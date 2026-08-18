@@ -175,7 +175,6 @@ export type TicketFilters = {
   eventCompleted: "all" | "yes" | "no";
   matchId: string[];
   ticketType: TicketType | "all";
-  sector: Sector | "all";
   priceZone: PriceZone | "all";
   orderSource: OrderSource | "all";
   /** Purchase date window for ticket transactions (within season window) */
@@ -202,7 +201,6 @@ export type SubscriptionFilters = {
   tournamentStage: TournamentStage | "all";
   arena: ArenaId | "all";
   ticketType: TicketType | "all";
-  sector: Sector | "all";
   timeGrouping: TimeGrouping;
 };
 

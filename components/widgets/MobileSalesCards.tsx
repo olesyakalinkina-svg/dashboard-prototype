@@ -1,6 +1,7 @@
 "use client";
 
 import clsx from "clsx";
+import { Search } from "lucide-react";
 import { memo, useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { RowsExcelButton } from "@/components/ui/ExcelDownloadButton";
@@ -32,6 +33,19 @@ const MATCH_SALES_EXCEL_HEADERS = [
   "Оформлено",
   "Скидка ПЛ",
 ];
+
+function matchSalesTreeNodeMatchesQuery(
+  node: MatchSalesTreeNode,
+  query: string,
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+
+  const label = node.label.toLowerCase();
+  const dateText = node.date ? formatDate(node.date).toLowerCase() : "";
+
+  return label.includes(q) || dateText.includes(q);
+}
 
 function getTreeExcelRows(rows: MatchSalesFlatRow[]): ExcelValue[][] {
   return rows.map((row) => [
@@ -120,7 +134,16 @@ const NestedBranch = memo(function NestedBranch({
 
   return (
     <div className="rounded-md border border-[var(--border)] bg-white p-2.5">
-      <p className="text-xs font-medium text-[var(--foreground)]">{node.label}</p>
+      <p
+        className={clsx(
+          "text-xs font-medium",
+          node.level === "section"
+            ? "text-[var(--foreground)]"
+            : "text-[var(--muted)]",
+        )}
+      >
+        {node.label}
+      </p>
       <MetricsGrid row={node} />
       {hasChildren && (
         <button
@@ -163,6 +186,7 @@ export const MobileSalesCards = memo(function MobileSalesCards({
 }) {
   const { tree, expandedSet, toggleExpanded } = treeState;
   const [page, setPage] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
   const pageSize = 8;
 
   const sorted = useMemo(
@@ -173,9 +197,16 @@ export const MobileSalesCards = memo(function MobileSalesCards({
     [tree],
   );
 
+  const filtered = useMemo(() => {
+    if (!searchQuery.trim()) return sorted;
+    return sorted.filter((node) =>
+      matchSalesTreeNodeMatchesQuery(node, searchQuery),
+    );
+  }, [sorted, searchQuery]);
+
   const pagination = useMemo(
-    () => paginateTopLevel(sorted, page, pageSize),
-    [sorted, page],
+    () => paginateTopLevel(filtered, page, pageSize),
+    [filtered, page],
   );
 
   const pageTree = useMatchSalesPageTree(pagination.pageItems, treeState);
@@ -186,6 +217,10 @@ export const MobileSalesCards = memo(function MobileSalesCards({
     }
   }, [page, pagination.pageIndex]);
 
+  useEffect(() => {
+    setPage(0);
+  }, [searchQuery]);
+
   const excelRows = useMemo(
     () =>
       getTreeExcelRows(flattenExpandedMatchSalesTree(pageTree, expandedSet)),
@@ -195,12 +230,26 @@ export const MobileSalesCards = memo(function MobileSalesCards({
   return (
     <Card className="min-w-0">
       <CardHeader>
-        <CardTitle>Продажи</CardTitle>
-        <RowsExcelButton
-          fileName="Продажи"
-          headers={MATCH_SALES_EXCEL_HEADERS}
-          rows={excelRows}
-        />
+        <div className="flex w-full items-center justify-between gap-3">
+          <CardTitle>Продажи</CardTitle>
+          <div className="flex items-center gap-2">
+            <div className="relative min-w-0 w-48">
+              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Поиск по мероприятию..."
+                aria-label="Поиск по мероприятию..."
+                className="h-9 w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)]"
+              />
+            </div>
+            <RowsExcelButton
+              fileName="Продажи"
+              headers={MATCH_SALES_EXCEL_HEADERS}
+              rows={excelRows}
+            />
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
         {pageTree.length === 0 ? (

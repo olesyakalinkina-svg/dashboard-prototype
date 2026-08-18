@@ -65,6 +65,7 @@ export function TicketsSeasonMatchChart({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrolledMatchIdRef = useRef<string | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
 
   const visibleViews = useMemo(
     () => views.filter((view) => !hiddenSeries.has(view.matchId)),
@@ -103,6 +104,14 @@ export function TicketsSeasonMatchChart({
   }, [isZoomed, resetZoom, onZoomStateChange]);
 
   useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const updateMobile = () => setIsMobileViewport(media.matches);
+    updateMobile();
+    media.addEventListener("change", updateMobile);
+    return () => media.removeEventListener("change", updateMobile);
+  }, []);
+
+  useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
 
@@ -116,16 +125,18 @@ export function TicketsSeasonMatchChart({
     return () => observer.disconnect();
   }, []);
 
-  const isMobileViewport = viewportWidth > 0 && viewportWidth < 768;
-  const chartWidth = useMemo(() => {
-    if (isMobileViewport) {
-      return getSeasonMatchChartWidth(displayData, {
-        maxWidth: SEASON_MATCH_CHART_MOBILE_MAX_WIDTH,
-        containerWidth: viewportWidth,
-      });
-    }
-    return getSeasonMatchChartWidth(displayData);
-  }, [displayData, isMobileViewport, viewportWidth]);
+  const chartWidth = useMemo(
+    () =>
+      getSeasonMatchChartWidth(displayData, {
+        maxWidth: isMobileViewport
+          ? SEASON_MATCH_CHART_MOBILE_MAX_WIDTH
+          : undefined,
+        containerWidth: viewportWidth > 0 ? viewportWidth : undefined,
+      }),
+    [displayData, isMobileViewport, viewportWidth],
+  );
+  const fillsContainer =
+    viewportWidth === 0 || chartWidth <= viewportWidth;
 
   const matchDateKeys = useMemo(
     () => visibleViews.map((view) => view.matchDateKey),
@@ -137,6 +148,7 @@ export function TicketsSeasonMatchChart({
     matchDateKeys,
   });
   const showAllXTicks = xTicks.length <= 16;
+  const showFactDots = displayData.length < 2;
 
   const formatAxisLabel = (value: number) =>
     formatSeasonMatchAxisLabel(Number(value), displayData, matchDateKeys);
@@ -202,9 +214,12 @@ export function TicketsSeasonMatchChart({
       <div
         className={clsx("relative max-w-full", CHART_ZOOM_SURFACE_CLASS)}
         style={{
-          width: isMobileViewport ? chartWidth : chartWidth,
-          minWidth: isMobileViewport ? undefined : chartWidth,
-          maxWidth: isMobileViewport ? SEASON_MATCH_CHART_MOBILE_MAX_WIDTH : undefined,
+          width: fillsContainer ? "100%" : chartWidth,
+          minWidth:
+            isMobileViewport || viewportWidth === 0 ? undefined : chartWidth,
+          maxWidth: isMobileViewport
+            ? SEASON_MATCH_CHART_MOBILE_MAX_WIDTH
+            : undefined,
           height: chartHeight,
         }}
       >
@@ -226,6 +241,7 @@ export function TicketsSeasonMatchChart({
               tickMargin={6}
               interval={showAllXTicks ? 0 : "preserveEnd"}
               minTickGap={16}
+              padding={{ left: 0, right: 0 }}
               height={32}
             />
             <YAxis
@@ -265,7 +281,7 @@ export function TicketsSeasonMatchChart({
                     stroke={view.color}
                     strokeWidth={strokeWidth}
                     strokeOpacity={opacity}
-                    dot={false}
+                    dot={showFactDots}
                     connectNulls={false}
                     isAnimationActive={false}
                     legendType="none"

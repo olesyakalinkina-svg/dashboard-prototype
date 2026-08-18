@@ -438,27 +438,31 @@ export function formatSeasonMatchAxisLabel(
   return row?.periodLabel ?? formatSeasonMatchDateLabel(dateKey);
 }
 
+/**
+ * Plot width so dense series keep ~DAY_WIDTH px per point (horizontal scroll),
+ * while sparse series stretch to the card:
+ *   container known: max(containerWidth, min(maxWidth?, rows * DAY_WIDTH))
+ *   otherwise:       max(MIN_WIDTH, rows * DAY_WIDTH)
+ */
 export function getSeasonMatchChartWidth(
   rows: TicketsSeasonMatchChartRow[],
   options?: { maxWidth?: number; containerWidth?: number },
 ): number {
-  const dataWidth =
-    rows.length <= 1
-      ? SEASON_MATCH_CHART_MIN_WIDTH
-      : Math.max(
-          rows.length * SEASON_MATCH_CHART_DAY_WIDTH,
-          SEASON_MATCH_CHART_MIN_WIDTH,
-        );
+  const denseWidth =
+    Math.max(rows.length, 1) * SEASON_MATCH_CHART_DAY_WIDTH;
 
-  if (options?.maxWidth != null) {
-    const capped = Math.min(dataWidth, options.maxWidth);
-    if (options.containerWidth != null && options.containerWidth > 0) {
-      return Math.max(options.containerWidth, capped);
-    }
-    return capped;
+  if (options?.containerWidth != null && options.containerWidth > 0) {
+    const capped =
+      options.maxWidth != null
+        ? Math.min(denseWidth, options.maxWidth)
+        : denseWidth;
+    return Math.max(options.containerWidth, capped);
   }
 
-  return dataWidth;
+  const dataWidth = Math.max(denseWidth, SEASON_MATCH_CHART_MIN_WIDTH);
+  return options?.maxWidth != null
+    ? Math.min(dataWidth, options.maxWidth)
+    : dataWidth;
 }
 
 export function getSeasonMatchDateXPosition(

@@ -79,11 +79,9 @@ describe("filter coverage — subscriptions tab", () => {
 
   it("documents intentional exclusions", () => {
     const excluded = excludedCases(cases);
-    expect(excluded).toHaveLength(2);
-    expect(excluded.map((testCase) => testCase.filter).sort()).toEqual([
-      "arena",
-      "sector",
-    ]);
+    expect(excluded).toHaveLength(1);
+    expect(excluded[0]?.filter).toBe("arena");
+    expect(excluded[0]?.option).toBe("Второстепенная");
   });
 });
 
