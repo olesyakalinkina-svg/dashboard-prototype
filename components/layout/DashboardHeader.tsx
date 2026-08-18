@@ -28,7 +28,7 @@ export function DashboardHeader() {
         <Button
           variant="secondary"
           onClick={refresh}
-          className="min-h-9 px-2.5 text-xs sm:min-h-10 sm:px-3 sm:text-sm"
+          className="min-h-11 min-w-11 px-2.5 text-xs sm:min-h-10 sm:px-3 sm:text-sm"
           aria-label="Обновить данные"
         >
           <RefreshCw className="h-4 w-4 sm:mr-1.5" />

@@ -287,7 +287,7 @@ export const TabKpiCards = memo(function TabKpiCards({
           hideTrend={false}
         />
         <KpiCard
-          className="md:col-start-3 md:row-start-1"
+          className="md:max-lg:col-start-3 md:max-lg:row-start-1"
           title="Выручка сегодня"
           value={formatCurrency(ticketsKpis.revenueToday)}
           compactCurrency
@@ -296,7 +296,7 @@ export const TabKpiCards = memo(function TabKpiCards({
           hideTrend
         />
         <KpiCard
-          className="md:col-start-3 md:row-start-2"
+          className="md:max-lg:col-start-3 md:max-lg:row-start-2"
           title="Билеты сегодня"
           value={formatNumber(ticketsKpis.ticketsToday)}
           subtitle="За текущий день"

@@ -14,7 +14,7 @@ import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { ChevronDown, ChevronUp, Search } from "lucide-react";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
-import { TableExcelButton } from "@/components/ui/ExcelDownloadButton";
+import { RowsExcelButton, TableExcelButton } from "@/components/ui/ExcelDownloadButton";
 import { getMatchLabel } from "@/lib/mock/hockey";
 import {
   formatCurrency,
@@ -87,7 +87,7 @@ function DataTable<T>({
     <Card className="min-w-0">
       <CardHeader>
         <CardTitle>{title}</CardTitle>
-        <div className="flex w-full items-center gap-2 sm:w-auto">
+        <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
           <TableExcelButton table={table} fileName={title} />
           <div className="relative min-w-0 flex-1 sm:w-auto sm:flex-none">
             <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
@@ -95,13 +95,13 @@ function DataTable<T>({
               value={globalFilter}
               onChange={(e) => setGlobalFilter(e.target.value)}
               placeholder={searchPlaceholder}
-              className="h-9 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] sm:h-8 sm:w-48"
+              className="h-11 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] lg:h-8 lg:w-48"
             />
           </div>
         </div>
       </CardHeader>
       <CardContent className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[40rem] text-sm">
           <thead>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id} className="border-b border-[var(--border)]">
@@ -149,7 +149,7 @@ function DataTable<T>({
             <button
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
-              className="rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40"
+              className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40 lg:min-h-0"
             >
               Назад
             </button>
@@ -159,7 +159,7 @@ function DataTable<T>({
             <button
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
-              className="rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40"
+              className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40 lg:min-h-0"
             >
               Вперёд
             </button>
@@ -214,7 +214,7 @@ function MerchSalesTable<T>({
     <Card className="flex h-full min-w-0 flex-col">
       <CardHeader>
         <CardTitle>{title}</CardTitle>
-        <div className="flex w-full items-center gap-2 sm:w-auto">
+        <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
           <TableExcelButton table={table} fileName={title} />
           <div className="relative min-w-0 flex-1 sm:w-auto sm:flex-none">
             <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
@@ -222,13 +222,13 @@ function MerchSalesTable<T>({
               value={globalFilter}
               onChange={(e) => setGlobalFilter(e.target.value)}
               placeholder={searchPlaceholder}
-              className="h-9 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] sm:h-8 sm:w-48"
+              className="h-11 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] lg:h-8 lg:w-48"
             />
           </div>
         </div>
       </CardHeader>
-      <CardContent className="flex flex-1 flex-col overflow-x-auto">
-        <table className="w-full text-sm">
+      <CardContent className="flex min-w-0 flex-1 flex-col overflow-x-auto">
+        <table className="w-full min-w-[52rem] text-sm">
           <thead>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id} className="border-b border-[var(--border)]">
@@ -277,7 +277,7 @@ function MerchSalesTable<T>({
             <button
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
-              className="rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40"
+              className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40 lg:min-h-0"
             >
               Назад
             </button>
@@ -287,7 +287,7 @@ function MerchSalesTable<T>({
             <button
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
-              className="rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40"
+              className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40 lg:min-h-0"
             >
               Вперёд
             </button>
@@ -319,7 +319,7 @@ export function CombinedMatchSalesTable({
         accessorKey: "eventLabel",
         header: "Мероприятие",
         cell: ({ getValue }) => (
-          <span className="whitespace-nowrap font-medium">{getValue<string>()}</span>
+          <span className="break-words font-medium md:whitespace-nowrap">{getValue<string>()}</span>
         ),
       },
       {
@@ -425,16 +425,188 @@ export function CombinedMatchSalesTable({
   }, []);
 
   return (
-    <MerchSalesTable
-      title="Продажи по матчам"
-      data={data}
-      columns={columns}
-      searchPlaceholder="Поиск по мероприятию..."
-      countLabel="мероприятий"
-      defaultSort={[{ id: "date", desc: true }]}
-      summaryRow={summaryRow}
-      pageSize={15}
-    />
+    <>
+      <div className="min-w-0 lg:hidden">
+        <CombinedMatchSalesMobileCards data={data} />
+      </div>
+      <div className="hidden min-w-0 lg:block">
+        <MerchSalesTable
+          title="Продажи по матчам"
+          data={data}
+          columns={columns}
+          searchPlaceholder="Поиск по мероприятию..."
+          countLabel="мероприятий"
+          defaultSort={[{ id: "date", desc: true }]}
+          summaryRow={summaryRow}
+          pageSize={15}
+        />
+      </div>
+    </>
+  );
+}
+
+const COMBINED_MATCH_SALES_EXCEL_HEADERS = [
+  "Мероприятие",
+  "Дата",
+  "Билеты",
+  "Мерч",
+  "Итого",
+  "Билеты, шт",
+  "Заполняемость",
+  "Чеки мерча",
+];
+
+function CombinedMatchSalesMobileCards({
+  data,
+}: {
+  data: CombinedMatchSalesRow[];
+}) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(0);
+  const pageSize = 8;
+
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return data;
+    return data.filter((row) => row.eventLabel.toLowerCase().includes(q));
+  }, [data, searchQuery]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const pageIndex = Math.min(page, pageCount - 1);
+  const pageItems = filtered.slice(
+    pageIndex * pageSize,
+    pageIndex * pageSize + pageSize,
+  );
+
+  const excelRows = useMemo(
+    () =>
+      filtered.map((row) => [
+        row.eventLabel,
+        formatDate(row.date),
+        row.ticketRevenue,
+        row.merchRevenue,
+        row.totalRevenue,
+        row.ticketsSold,
+        Math.round(row.fillRate * 10) / 10,
+        row.merchReceipts,
+      ]),
+    [filtered],
+  );
+
+  return (
+    <Card className="min-w-0">
+      <CardHeader>
+        <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-2">
+          <CardTitle>Продажи по матчам</CardTitle>
+          <div className="flex w-full min-w-0 items-center justify-end gap-2 sm:w-auto">
+            <div className="relative min-w-0 flex-1 sm:w-48 sm:flex-none">
+              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+              <input
+                value={searchQuery}
+                onChange={(event) => {
+                  setSearchQuery(event.target.value);
+                  setPage(0);
+                }}
+                placeholder="Поиск по мероприятию..."
+                aria-label="Поиск по мероприятию..."
+                className="h-11 w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)]"
+              />
+            </div>
+            <RowsExcelButton
+              fileName="Продажи по матчам"
+              headers={COMBINED_MATCH_SALES_EXCEL_HEADERS}
+              rows={excelRows}
+            />
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {pageItems.length === 0 ? (
+          <p className="py-6 text-center text-sm text-[var(--muted)]">Нет данных</p>
+        ) : (
+          pageItems.map((row) => (
+            <article
+              key={row.matchId}
+              className="rounded-lg border border-[var(--border)] bg-[var(--background)] p-3"
+            >
+              <p className="break-words text-sm font-medium text-[var(--foreground)]">
+                {row.eventLabel}
+              </p>
+              <p className="mt-0.5 text-xs text-[var(--muted)]">
+                {formatDate(row.date)}
+              </p>
+              <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+                <div>
+                  <dt className="text-[var(--muted)]">Билеты</dt>
+                  <dd className="font-medium text-[var(--foreground)]">
+                    {formatCurrency(row.ticketRevenue)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[var(--muted)]">Мерч</dt>
+                  <dd className="text-[var(--foreground)]">
+                    {formatCurrency(row.merchRevenue)}
+                  </dd>
+                </div>
+                <div className="col-span-2">
+                  <dt className="text-[var(--muted)]">Итого</dt>
+                  <dd className="font-medium text-[var(--foreground)]">
+                    {formatCurrency(row.totalRevenue)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[var(--muted)]">Билеты, шт</dt>
+                  <dd className="text-[var(--foreground)]">
+                    {formatNumber(row.ticketsSold)} шт
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[var(--muted)]">Заполняемость</dt>
+                  <dd className="text-[var(--foreground)]">
+                    {formatPercent(row.fillRate)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[var(--muted)]">Чеки мерча</dt>
+                  <dd className="text-[var(--foreground)]">
+                    {formatNumber(row.merchReceipts)}
+                  </dd>
+                </div>
+              </dl>
+            </article>
+          ))
+        )}
+        {pageCount > 1 && (
+          <div className="flex items-center justify-between pt-1 text-xs">
+            <button
+              type="button"
+              disabled={pageIndex === 0}
+              onClick={() => setPage((value) => Math.max(0, value - 1))}
+              className={`min-h-11 rounded-md border border-[var(--border)] px-3 ${
+                pageIndex === 0 ? "opacity-40" : ""
+              }`}
+            >
+              Назад
+            </button>
+            <span className="text-[var(--muted)]">
+              {pageIndex + 1} / {pageCount}
+            </span>
+            <button
+              type="button"
+              disabled={pageIndex >= pageCount - 1}
+              onClick={() =>
+                setPage((value) => Math.min(pageCount - 1, value + 1))
+              }
+              className={`min-h-11 rounded-md border border-[var(--border)] px-3 ${
+                pageIndex >= pageCount - 1 ? "opacity-40" : ""
+              }`}
+            >
+              Вперёд
+            </button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

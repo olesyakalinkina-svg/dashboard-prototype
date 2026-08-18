@@ -52,7 +52,9 @@ function FilterGroup({
       <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
         {title}
       </p>
-      <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end">{children}</div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:items-end xl:flex xl:flex-wrap">
+        {children}
+      </div>
     </div>
   );
 }
@@ -140,7 +142,7 @@ export function TicketsFilterBar() {
             );
             setTicketFilters({ tournamentStage, matchClass });
           }}
-          className="sm:min-w-[160px]"
+          className="xl:min-w-[160px]"
         >
           {TOURNAMENT_STAGE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -155,7 +157,7 @@ export function TicketsFilterBar() {
           onChange={(e) =>
             update("matchClass", e.target.value as MatchClass | "all")
           }
-          className="sm:min-w-[160px]"
+          className="xl:min-w-[160px]"
         >
           {matchClassOptions.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -168,7 +170,7 @@ export function TicketsFilterBar() {
           label="Арена"
           value={ticketFilters.arena}
           onChange={(e) => update("arena", e.target.value as ArenaId | "all")}
-          className="sm:min-w-[180px]"
+          className="xl:min-w-[180px]"
         >
           {ARENA_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -201,7 +203,7 @@ export function TicketsFilterBar() {
           emptyMeansAll
           applyOnClose
           noneValue={NO_MATCHES_FILTER_VALUE}
-          className="sm:min-w-[220px]"
+          className="xl:min-w-[220px]"
         />
       </FilterGroup>
 
@@ -246,7 +248,7 @@ export function TicketsFilterBar() {
           label="Источник заказа"
           value={ticketFilters.orderSource}
           onChange={(e) => update("orderSource", e.target.value as OrderSource | "all")}
-          className="sm:min-w-[180px]"
+          className="xl:min-w-[180px]"
         >
           {ORDER_SOURCE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -268,10 +270,10 @@ export function TicketsFilterBar() {
           maxDate={purchaseDateBounds.max}
           today={MOCK_TODAY}
           hideRangeFields
-          className="sm:min-w-[220px]"
+          className="xl:min-w-[220px]"
         />
 
-        <div className="sm:ml-auto sm:shrink-0">
+        <div className="xl:ml-auto xl:shrink-0">
           <Select
             label="Группировка"
             value={effectiveTimeGrouping}

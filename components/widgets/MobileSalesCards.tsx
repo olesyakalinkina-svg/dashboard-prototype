@@ -167,7 +167,7 @@ const NestedBranch = memo(function NestedBranch({
             event.stopPropagation();
             toggleExpanded(node.id);
           }}
-          className="mt-2 min-h-10 w-full rounded-md border border-[var(--border)] text-xs font-medium"
+          className="mt-2 min-h-11 w-full rounded-md border border-[var(--border)] text-xs font-medium"
           aria-expanded={expanded}
           aria-label={
             expanded ? `Свернуть: ${node.label}` : `Развернуть: ${node.label}`
@@ -243,17 +243,17 @@ export const MobileSalesCards = memo(function MobileSalesCards({
   return (
     <Card className="min-w-0">
       <CardHeader>
-        <div className="flex w-full items-center justify-between gap-3">
+        <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-2">
           <CardTitle>Продажи</CardTitle>
-          <div className="flex items-center gap-2">
-            <div className="relative min-w-0 w-48">
+          <div className="flex w-full min-w-0 items-center justify-end gap-2 sm:w-auto">
+            <div className="relative min-w-0 flex-1 sm:w-48 sm:flex-none">
               <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
               <input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Поиск по мероприятию..."
                 aria-label="Поиск по мероприятию..."
-                className="h-9 w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)]"
+                className="h-11 w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)]"
               />
             </div>
             <RowsExcelButton
@@ -278,7 +278,7 @@ export const MobileSalesCards = memo(function MobileSalesCards({
                 className="rounded-lg border border-[var(--border)] bg-[var(--background)] p-3"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-[var(--foreground)]">
+                  <p className="break-words text-sm font-medium text-[var(--foreground)]">
                     {row.label}
                   </p>
                   {row.date && (
@@ -332,7 +332,7 @@ export const MobileSalesCards = memo(function MobileSalesCards({
               disabled={pagination.pageIndex === 0}
               onClick={() => setPage((value) => Math.max(0, value - 1))}
               className={clsx(
-                "min-h-10 rounded-md border border-[var(--border)] px-3",
+                "min-h-11 rounded-md border border-[var(--border)] px-3",
                 pagination.pageIndex === 0 && "opacity-40",
               )}
             >
@@ -350,7 +350,7 @@ export const MobileSalesCards = memo(function MobileSalesCards({
                 )
               }
               className={clsx(
-                "min-h-10 rounded-md border border-[var(--border)] px-3",
+                "min-h-11 rounded-md border border-[var(--border)] px-3",
                 pagination.pageIndex >= pagination.pageCount - 1 &&
                   "opacity-40",
               )}

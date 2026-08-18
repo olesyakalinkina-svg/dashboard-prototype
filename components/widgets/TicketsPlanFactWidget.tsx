@@ -83,7 +83,7 @@ export const TicketsPlanFactWidget = memo(function TicketsPlanFactWidget({
   } = useChartAreaZoom(chartData, ["plan", "fact"], [timeGrouping, data]);
 
   return (
-    <Card className="flex h-full min-w-0 flex-col">
+    <Card className="flex min-w-0 flex-col xl:h-full">
       <CardHeader>
         <div className="min-w-0">
           <CardTitle>Динамика продаж билетов</CardTitle>

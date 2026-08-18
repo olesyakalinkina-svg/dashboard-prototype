@@ -223,7 +223,7 @@ const TicketsMatchDynamicsSection = memo(function TicketsMatchDynamicsSection() 
   );
 
   return (
-    <div className="min-w-0 flex-1">
+    <div className="min-w-0 xl:min-h-0 xl:flex-1">
       {ticketsChartsPending ? (
         <ChartSkeleton height={380} />
       ) : (
@@ -298,9 +298,9 @@ function DashboardPanels() {
                 filters={appliedFilters}
                 ticketFilters={appliedTicketFilters}
               />
-              <div className="flex min-h-0 min-w-0 flex-col gap-4">
+              <div className="flex min-w-0 flex-col gap-4 xl:min-h-0">
                 <TicketsMatchDynamicsSection />
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 xl:min-h-0 xl:flex-1">
                   <TicketsPlanFactWidget
                     data={ticketsPlanFactTrend}
                     timeGrouping={ticketChartTimeGrouping}

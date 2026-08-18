@@ -15,12 +15,12 @@ export function ChartScrollContainer({
   minWidth = 700,
 }: ChartScrollContainerProps) {
   const minWidthClass =
-    minWidth === 800 ? "md:min-w-[800px]" : "md:min-w-[700px]";
+    minWidth === 800 ? "xl:min-w-[800px]" : "xl:min-w-[700px]";
 
   return (
     <div
       className={clsx(
-        "min-w-0 max-w-full overflow-x-auto overflow-y-hidden md:overflow-x-visible",
+        "min-w-0 max-w-full overflow-x-auto overflow-y-hidden xl:overflow-x-visible",
         className,
       )}
     >

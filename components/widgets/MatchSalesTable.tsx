@@ -99,7 +99,7 @@ function MatchSalesExpandButton({
         event.stopPropagation();
         onToggle();
       }}
-      className="relative z-20 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-[var(--border)] bg-white text-xs font-medium leading-none text-[var(--foreground)]"
+      className="relative z-20 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded border border-[var(--border)] bg-white text-xs font-medium leading-none text-[var(--foreground)] lg:h-5 lg:w-5"
       aria-expanded={expanded}
       aria-label={expanded ? `Свернуть: ${label}` : `Развернуть: ${label}`}
     >
@@ -145,7 +145,7 @@ const MATCH_SALES_COLUMNS: ColumnDef<MatchSalesFlatRow, unknown>[] = [
           />
           <span
             className={clsx(
-              "whitespace-nowrap",
+              "min-w-0 break-words md:whitespace-nowrap",
               item.level === "match" || item.level === "section"
                 ? "font-medium"
                 : "text-[var(--muted)]",
@@ -281,10 +281,10 @@ export const ResponsiveMatchSalesTable = memo(function ResponsiveMatchSalesTable
   const treeState = useMatchSalesTreeState(data, filters, ticketFilters);
   return (
     <>
-      <div className="min-w-0 md:hidden">
+      <div className="min-w-0 lg:hidden">
         <MobileSalesCards treeState={treeState} />
       </div>
-      <div className="hidden min-w-0 md:block">
+      <div className="hidden min-w-0 lg:block">
         <MatchSalesTable treeState={treeState} />
       </div>
     </>
@@ -399,13 +399,13 @@ export const MatchSalesTable = memo(function MatchSalesTable({
               onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Поиск по мероприятию..."
                 aria-label="Поиск по мероприятию..."
-              className="h-9 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] sm:h-8 sm:w-48"
+              className="h-11 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] lg:h-8 sm:w-48"
             />
           </div>
           <TableExcelButton table={excelTable} fileName="Продажи" />
         </div>
       )}
-      <table className="w-full text-sm">
+      <table className="w-full min-w-[56rem] text-sm">
         <thead>
           {table.getHeaderGroups().map((hg) => (
             <tr key={hg.id} className="border-b border-[var(--border)]">
@@ -463,7 +463,7 @@ export const MatchSalesTable = memo(function MatchSalesTable({
             type="button"
             onClick={goPrev}
             disabled={pagination.pageIndex === 0}
-            className="rounded border border-[var(--border)] px-2 py-1 disabled:opacity-40"
+            className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40 lg:min-h-0"
           >
             Назад
           </button>
@@ -474,7 +474,7 @@ export const MatchSalesTable = memo(function MatchSalesTable({
             type="button"
             onClick={goNext}
             disabled={pagination.pageIndex >= pagination.pageCount - 1}
-            className="rounded border border-[var(--border)] px-2 py-1 disabled:opacity-40"
+            className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40 lg:min-h-0"
           >
             Вперёд
           </button>
@@ -484,28 +484,28 @@ export const MatchSalesTable = memo(function MatchSalesTable({
   );
 
   return embedded ? (
-    <div className="overflow-x-auto">{tableContent}</div>
+    <div className="min-w-0 overflow-x-auto">{tableContent}</div>
   ) : (
     <Card className="flex h-full min-w-0 flex-col">
       <CardHeader>
-        <div className="flex w-full items-center justify-between gap-3">
+        <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-2">
           <CardTitle>Продажи</CardTitle>
-          <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
-            <div className="relative min-w-0 flex-1 sm:w-auto sm:flex-none">
+          <div className="flex w-full min-w-0 items-center justify-end gap-2 sm:w-auto">
+            <div className="relative min-w-0 flex-1 sm:w-48 sm:flex-none">
               <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
               <input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Поиск по мероприятию..."
                 aria-label="Поиск по мероприятию..."
-                className="h-9 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] sm:h-8 sm:w-48"
+              className="h-11 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] lg:h-8"
               />
             </div>
             <TableExcelButton table={excelTable} fileName="Продажи" />
           </div>
         </div>
       </CardHeader>
-      <CardContent className="overflow-x-auto">{tableContent}</CardContent>
+      <CardContent className="min-w-0 overflow-x-auto">{tableContent}</CardContent>
     </Card>
   );
 });

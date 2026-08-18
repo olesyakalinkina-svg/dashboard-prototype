@@ -149,7 +149,7 @@ function ExpandButton({
         event.stopPropagation();
         onToggle();
       }}
-      className="relative z-20 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-[var(--border)] bg-white text-xs font-medium leading-none text-[var(--foreground)]"
+      className="relative z-20 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded border border-[var(--border)] bg-white text-xs font-medium leading-none text-[var(--foreground)] lg:h-5 lg:w-5"
       aria-expanded={expanded}
       aria-label={expanded ? `Свернуть: ${label}` : `Развернуть: ${label}`}
     >
@@ -208,7 +208,7 @@ const COLUMNS: ColumnDef<ZoneSectorFlatRow, unknown>[] = [
           />
           <span
             className={clsx(
-              "whitespace-nowrap",
+              "min-w-0 break-words md:whitespace-nowrap",
               item.level === "leaf" ? "text-[var(--muted)]" : "font-medium",
             )}
           >
@@ -432,15 +432,15 @@ export function TicketsZoneSectorWidget() {
           <h3 className="min-w-0 text-[18px] font-semibold leading-tight text-[var(--foreground)]">
             Продажи по ценовым зонам и секторам
           </h3>
-          <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
-            <div className="relative min-w-0 flex-1 sm:w-auto sm:flex-none">
+          <div className="flex w-full min-w-0 items-center justify-end gap-2 sm:w-auto">
+            <div className="relative min-w-0 flex-1 sm:w-48 sm:flex-none">
               <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
               <input
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="Поиск по мероприятию..."
                 aria-label="Поиск по мероприятию..."
-                className="h-9 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] sm:h-8 sm:w-48"
+                className="h-11 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] lg:h-8"
               />
             </div>
             <TableExcelButton table={excelTable} fileName="Продажи по зонам и секторам" />
@@ -451,7 +451,7 @@ export function TicketsZoneSectorWidget() {
         <div className="md:hidden">
           <button
             type="button"
-            className="h-10 rounded-md border border-[var(--border)] px-3 text-sm"
+            className="min-h-11 rounded-md border border-[var(--border)] px-3 text-sm"
             onClick={() => setShowMobileFilters((value) => !value)}
           >
             Фильтры
@@ -479,7 +479,7 @@ export function TicketsZoneSectorWidget() {
             {hasLocalFilters && (
               <button
                 type="button"
-                className="h-10 rounded-md border border-[var(--border)] px-3 text-sm"
+                className="min-h-11 rounded-md border border-[var(--border)] px-3 text-sm"
                 onClick={() => setSelectedSectorIds([])}
               >
                 Сбросить фильтры
@@ -493,7 +493,7 @@ export function TicketsZoneSectorWidget() {
             <button
               type="button"
               className={clsx(
-                "h-9 rounded px-2 text-xs",
+                "min-h-11 rounded px-3 text-xs lg:h-9 lg:min-h-0 lg:px-2",
                 mode === "zones_to_sectors" && "bg-[var(--background)]",
               )}
               onClick={() => setMode("zones_to_sectors")}
@@ -503,7 +503,7 @@ export function TicketsZoneSectorWidget() {
             <button
               type="button"
               className={clsx(
-                "h-9 rounded px-2 text-xs",
+                "min-h-11 rounded px-3 text-xs lg:h-9 lg:min-h-0 lg:px-2",
                 mode === "sectors_to_zones" && "bg-[var(--background)]",
               )}
               onClick={() => setMode("sectors_to_zones")}
@@ -530,7 +530,7 @@ export function TicketsZoneSectorWidget() {
         {filterComboValid && (
           <>
             <div className="min-w-0 overflow-x-auto">
-              <table className="w-full min-w-[36rem] table-fixed text-sm">
+              <table className="w-full min-w-[28rem] table-fixed text-sm md:min-w-[36rem]">
                 <colgroup>
                   <col />
                   <col className={COLUMN_WIDTH_CLASS.date} />

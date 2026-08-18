@@ -217,13 +217,17 @@ export function DateRangePicker({
   return (
     <div
       ref={rootRef}
-      className={clsx("relative flex w-full min-w-0 flex-col gap-1 sm:w-auto", className)}
+      className={clsx(
+        "relative flex w-full min-w-0 flex-col gap-1 xl:w-auto",
+        open && "z-50",
+        className,
+      )}
     >
       {label && <span className="text-xs text-[var(--muted)]">{label}</span>}
       <button
         type="button"
         onClick={handleOpen}
-        className="flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-[var(--border)] bg-white px-3 text-left text-sm text-[var(--foreground)] outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] sm:min-w-[220px]"
+        className="flex h-11 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-[var(--border)] bg-white px-3 text-left text-sm text-[var(--foreground)] outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] lg:h-9 xl:min-w-[220px]"
       >
         <span className="truncate">{displayText}</span>
         <ChevronDown
@@ -235,7 +239,7 @@ export function DateRangePicker({
       </button>
 
       {open && (
-        <div className="absolute left-0 right-0 top-full z-20 mt-1 w-full max-w-[min(100vw-2rem,320px)] rounded-md border border-[var(--border)] bg-white p-3 shadow-lg sm:left-0 sm:right-auto sm:w-[280px]">
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 w-full max-w-[min(100vw-2rem,320px)] rounded-md border border-[var(--border)] bg-white p-3 shadow-lg sm:left-0 sm:right-auto sm:w-[280px]">
           {!hideRangeFields && (
             <div className="mb-3 grid grid-cols-2 gap-2 text-xs">
               <div className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5">

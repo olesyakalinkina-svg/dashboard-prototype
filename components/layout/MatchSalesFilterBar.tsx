@@ -65,7 +65,7 @@ export function MatchSalesFilterBar() {
       onReset={resetMatchSalesFilters}
       activeFilterCount={activeFilterCount}
     >
-      <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:items-end xl:flex xl:flex-wrap">
         <Select
           label="Сезон"
           value={matchSalesFilters.season}
@@ -110,7 +110,7 @@ export function MatchSalesFilterBar() {
             );
             setMatchSalesFilters({ tournamentStage, matchClass });
           }}
-          className="sm:min-w-[160px]"
+          className="xl:min-w-[160px]"
         >
           {TOURNAMENT_STAGE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -125,7 +125,7 @@ export function MatchSalesFilterBar() {
           onChange={(e) =>
             update("matchClass", e.target.value as MatchClass | "all")
           }
-          className="sm:min-w-[160px]"
+          className="xl:min-w-[160px]"
         >
           {matchClassOptions.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -138,7 +138,7 @@ export function MatchSalesFilterBar() {
           label="Арена"
           value={matchSalesFilters.arena}
           onChange={(e) => update("arena", e.target.value as ArenaId | "all")}
-          className="sm:min-w-[180px]"
+          className="xl:min-w-[180px]"
         >
           {ARENA_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -174,7 +174,7 @@ export function MatchSalesFilterBar() {
           emptyMeansAll
           applyOnClose
           noneValue={NO_MATCHES_FILTER_VALUE}
-          className="sm:min-w-[220px]"
+          className="xl:min-w-[220px]"
         />
 
         <DateRangePicker
@@ -190,7 +190,7 @@ export function MatchSalesFilterBar() {
           maxDate={purchaseDateBounds.max}
           today={MOCK_TODAY}
           hideRangeFields
-          className="sm:min-w-[220px]"
+          className="xl:min-w-[220px]"
         />
       </div>
     </ResponsiveFilterBar>

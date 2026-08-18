@@ -153,7 +153,7 @@ export const TicketsSeasonMatchDynamicsWidget = memo(
             allSelectedLabel="Все матчи"
             emptyLabel={SEASON_MATCH_CURRENT_SALES_LABEL}
             applyOnClose
-            className="sm:min-w-[220px]"
+            className="sm:min-w-[220px] xl:min-w-[220px]"
           />
         </div>
       </CardHeader>

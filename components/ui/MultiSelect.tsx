@@ -32,7 +32,7 @@ type MultiSelectProps = {
 };
 
 const OPTION_ROW_CLASS =
-  "relative flex h-9 shrink-0 cursor-pointer items-center gap-2 bg-white px-3 text-sm hover:bg-[var(--background)]";
+  "relative flex h-11 shrink-0 cursor-pointer items-center gap-2 bg-white px-3 text-sm hover:bg-[var(--background)] lg:h-9";
 
 function arraysEqual(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
@@ -270,7 +270,7 @@ export function MultiSelect({
     <div
       ref={rootRef}
       className={clsx(
-        "relative flex w-full min-w-0 flex-col gap-1 sm:w-auto",
+        "relative flex w-full min-w-0 flex-col gap-1 xl:w-auto",
         open && "z-50",
         className,
       )}
@@ -279,7 +279,7 @@ export function MultiSelect({
       <button
         type="button"
         onClick={() => (open ? closeDropdown() : openDropdown())}
-        className="flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-[var(--border)] bg-white px-3 text-left text-sm text-[var(--foreground)] outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] sm:min-w-[200px]"
+        className="flex h-11 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-[var(--border)] bg-white px-3 text-left text-sm text-[var(--foreground)] outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] lg:h-9 xl:min-w-[200px]"
       >
         <span className="truncate">{displayText}</span>
         <ChevronDown
