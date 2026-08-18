@@ -20,6 +20,7 @@ import { ru } from "date-fns/locale";
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MerchOrderDateRange } from "@/types/dashboard";
+import { useAnchoredMenu } from "@/hooks/useAnchoredMenu";
 
 type DateRangePickerProps = {
   label?: string;
@@ -72,6 +73,9 @@ export function DateRangePicker({
   });
   const [pendingFrom, setPendingFrom] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useAnchoredMenu(open, triggerRef, menuRef);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -225,9 +229,10 @@ export function DateRangePicker({
     >
       {label && <span className="text-xs text-[var(--muted)]">{label}</span>}
       <button
+        ref={triggerRef}
         type="button"
         onClick={handleOpen}
-        className="flex h-11 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-[var(--border)] bg-white px-3 text-left text-sm text-[var(--foreground)] outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] lg:h-9 xl:min-w-[220px]"
+        className="flex h-11 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-[var(--border)] bg-white px-3 text-left text-sm leading-snug text-[var(--foreground)] outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] xl:h-9 xl:min-w-[220px]"
       >
         <span className="truncate">{displayText}</span>
         <ChevronDown
@@ -239,7 +244,10 @@ export function DateRangePicker({
       </button>
 
       {open && (
-        <div className="absolute left-0 right-0 top-full z-50 mt-1 w-full max-w-[min(100vw-2rem,320px)] rounded-md border border-[var(--border)] bg-white p-3 shadow-lg sm:left-0 sm:right-auto sm:w-[280px]">
+        <div
+          ref={menuRef}
+          className="z-50 w-full max-w-[min(100vw-2rem,320px)] rounded-md border border-[var(--border)] bg-white p-3 shadow-lg"
+        >
           {!hideRangeFields && (
             <div className="mb-3 grid grid-cols-2 gap-2 text-xs">
               <div className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5">

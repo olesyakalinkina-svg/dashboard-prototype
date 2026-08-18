@@ -6,15 +6,15 @@ import { memo, useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { RowsExcelButton } from "@/components/ui/ExcelDownloadButton";
 import {
-  useMatchSalesPageTree,
-  type MatchSalesTreeState,
-} from "@/hooks/useMatchSalesTree";
+  useMerchSalesPageTree,
+  type MerchSalesTreeState,
+} from "@/hooks/useMerchSalesTree";
 import {
-  flattenExpandedMatchSalesTree,
+  flattenExpandedMerchSalesTree,
   paginateTopLevel,
-  type MatchSalesFlatRow,
-  type MatchSalesTreeNode,
-} from "@/lib/match-sales-tree";
+  type MerchSalesFlatRow,
+  type MerchSalesTreeNode,
+} from "@/lib/merch-sales-tree";
 import {
   formatCurrency,
   formatDate,
@@ -23,190 +23,76 @@ import {
 } from "@/lib/format";
 import type { ExcelValue } from "@/lib/excel-export";
 
-const MATCH_SALES_EXCEL_HEADERS = [
+const MERCH_SALES_EXCEL_HEADERS = [
   "Мероприятие",
   "Дата",
   "Выручка",
-  "Средняя цена",
-  "Продано",
-  "Бесплатно",
-  "Оформлено",
-  "Скидка ПЛ",
+  "Средний чек",
+  "Чеки",
+  "Товары",
+  "UPT",
+  "Конверсия в покупку",
 ];
 
-function getNestedBranchBorderClass(node: MatchSalesTreeNode): string {
-  if (node.level === "section") {
-    if (node.id.includes("|sec:ticketType")) return "border-l-blue-500";
-    if (node.id.includes("|sec:orderSource")) return "border-l-green-500";
-    if (node.id.includes("|sec:priceZone")) return "border-l-violet-500";
-  }
-  if (node.level === "ticketType") return "border-l-blue-300";
-  if (node.level === "orderSource") return "border-l-green-300";
-  if (node.level === "priceZone") return "border-l-violet-300";
-  return "border-l-[var(--border)]";
+function formatUpt(value: number): string {
+  return value.toFixed(2).replace(".", ",");
 }
 
-function matchSalesTreeNodeMatchesQuery(
-  node: MatchSalesTreeNode,
-  query: string,
-): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-
-  const label = node.label.toLowerCase();
-  const dateText = node.date ? formatDate(node.date).toLowerCase() : "";
-
-  return label.includes(q) || dateText.includes(q);
-}
-
-function getTreeExcelRows(rows: MatchSalesFlatRow[]): ExcelValue[][] {
-  return rows.map((row) => [
-    row.label,
-    row.date ? formatDate(row.date) : "",
-    row.revenue,
-    row.avgPrice,
-    row.ticketsSold,
-    row.freeTickets,
-    row.issuedTickets,
-    Math.round(row.loyaltyDiscountPct * 10) / 10,
-  ]);
-}
-
-function MetricsGrid({
-  row,
-  compact,
-}: {
-  row: MatchSalesTreeNode | MatchSalesFlatRow;
-  compact?: boolean;
-}) {
-  const fillPct =
-    row.capacity != null && row.capacity > 0
-      ? (row.issuedTickets / row.capacity) * 100
-      : null;
-  const revenueFulfillmentPct =
-    row.planRevenue != null && row.planRevenue > 0
-      ? (row.revenue / row.planRevenue) * 100
-      : null;
-
-  if (compact) {
-    return (
-      <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs leading-snug">
-        <div className="col-span-2">
-          <dt className="text-[var(--muted)]">Выручка</dt>
-          <dd className="font-medium text-[var(--foreground)]">
-            {formatCurrency(row.revenue)}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-[var(--muted)]">Продано</dt>
-          <dd className="text-[var(--foreground)]">
-            {formatNumber(row.ticketsSold)} шт
-          </dd>
-        </div>
-        <div>
-          <dt className="text-[var(--muted)]">Оформлено</dt>
-          <dd className="text-[var(--foreground)]">
-            {formatNumber(row.issuedTickets)} шт
-          </dd>
-        </div>
-        <div>
-          <dt className="text-[var(--muted)]">Средняя цена</dt>
-          <dd className="text-[var(--foreground)]">
-            {formatCurrency(row.avgPrice)}
-          </dd>
-        </div>
-      </dl>
-    );
-  }
-
+function CompactKpis({ row }: { row: MerchSalesTreeNode | MerchSalesFlatRow }) {
   return (
     <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs leading-snug">
       <div className="col-span-2">
         <dt className="text-[var(--muted)]">Выручка</dt>
         <dd className="font-medium text-[var(--foreground)]">
           {formatCurrency(row.revenue)}
-          <span className="ml-1.5 font-normal text-[var(--muted)]">
-            (
-            {revenueFulfillmentPct !== null
-              ? formatPercent(revenueFulfillmentPct)
-              : "—"}
-            )
-          </span>
         </dd>
       </div>
       <div>
-        <dt className="text-[var(--muted)]">Средняя цена</dt>
-        <dd className="text-[var(--foreground)]">
-          {formatCurrency(row.avgPrice)}
-        </dd>
+        <dt className="text-[var(--muted)]">Чеки</dt>
+        <dd className="text-[var(--foreground)]">{formatNumber(row.receipts)}</dd>
       </div>
       <div>
-        <dt className="text-[var(--muted)]">Продано</dt>
+        <dt className="text-[var(--muted)]">Товары</dt>
         <dd className="text-[var(--foreground)]">
-          {formatNumber(row.ticketsSold)} шт
-        </dd>
-      </div>
-      <div>
-        <dt className="text-[var(--muted)]">Бесплатно</dt>
-        <dd className="text-[var(--foreground)]">
-          {formatNumber(row.freeTickets)} шт
-        </dd>
-      </div>
-      <div>
-        <dt className="text-[var(--muted)]">Оформлено</dt>
-        <dd className="text-[var(--foreground)]">
-          {formatNumber(row.issuedTickets)} шт
-          {fillPct !== null ? ` (${formatPercent(fillPct)})` : " (—)"}
-        </dd>
-      </div>
-      <div>
-        <dt className="text-[var(--muted)]">Скидка ПЛ</dt>
-        <dd className="text-[var(--foreground)]">
-          {row.loyaltyDiscountPct.toFixed(1)}%
+          {formatNumber(row.units)} шт
         </dd>
       </div>
     </dl>
   );
 }
 
-function DetailMetrics({ row }: { row: MatchSalesTreeNode | MatchSalesFlatRow }) {
-  const fillPct =
-    row.capacity != null && row.capacity > 0
-      ? (row.issuedTickets / row.capacity) * 100
-      : null;
-  const revenueFulfillmentPct =
+function DetailKpis({ row }: { row: MerchSalesTreeNode | MerchSalesFlatRow }) {
+  const fulfillmentPct =
     row.planRevenue != null && row.planRevenue > 0
       ? (row.revenue / row.planRevenue) * 100
       : null;
+  const showConversion =
+    row.level === "match" || row.level === "section";
 
   return (
     <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs leading-snug">
       <div>
+        <dt className="text-[var(--muted)]">Средний чек</dt>
+        <dd className="text-[var(--foreground)]">{formatCurrency(row.avgCheck)}</dd>
+      </div>
+      <div>
+        <dt className="text-[var(--muted)]">UPT</dt>
+        <dd className="text-[var(--foreground)]">{formatUpt(row.upt)}</dd>
+      </div>
+      <div>
         <dt className="text-[var(--muted)]">К плану</dt>
         <dd className="text-[var(--foreground)]">
-          {revenueFulfillmentPct !== null
-            ? formatPercent(revenueFulfillmentPct)
-            : "—"}
+          {fulfillmentPct !== null ? formatPercent(fulfillmentPct) : "—"}
         </dd>
       </div>
-      <div>
-        <dt className="text-[var(--muted)]">Бесплатно</dt>
-        <dd className="text-[var(--foreground)]">
-          {formatNumber(row.freeTickets)} шт
-        </dd>
-      </div>
-      <div>
-        <dt className="text-[var(--muted)]">Заполняемость</dt>
-        <dd className="text-[var(--foreground)]">
-          {fillPct !== null ? formatPercent(fillPct) : "—"}
-        </dd>
-      </div>
-      <div>
-        <dt className="text-[var(--muted)]">Скидка ПЛ</dt>
-        <dd className="text-[var(--foreground)]">
-          {row.loyaltyDiscountPct.toFixed(1)}%
-        </dd>
-      </div>
+      {showConversion ? (
+        <div>
+          <dt className="text-[var(--muted)]">Конверсия в покупку</dt>
+          <dd className="text-[var(--foreground)]">
+            {formatPercent(row.purchaseConversionPct)}
+          </dd>
+        </div>
+      ) : null}
     </dl>
   );
 }
@@ -216,19 +102,19 @@ const NestedBranch = memo(function NestedBranch({
   expandedSet,
   toggleExpanded,
 }: {
-  node: MatchSalesTreeNode;
+  node: MerchSalesTreeNode;
   expandedSet: Set<string>;
   toggleExpanded: (id: string) => void;
 }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const expanded = expandedSet.has(node.id);
   const hasChildren = node.hasChildren || node.children.length > 0;
 
-  const borderClass = getNestedBranchBorderClass(node);
   return (
-    <div className={clsx("rounded-md border border-[var(--border)] border-l-4 p-2.5", borderClass)}>
+    <div className="rounded-md border border-[var(--border)] border-l-4 p-2.5">
       <p
         className={clsx(
-          "text-xs font-medium",
+          "text-xs font-medium leading-snug",
           node.level === "section"
             ? "text-[var(--foreground)]"
             : "text-[var(--muted)]",
@@ -236,7 +122,16 @@ const NestedBranch = memo(function NestedBranch({
       >
         {node.label}
       </p>
-      <MetricsGrid row={node} />
+      <CompactKpis row={node} />
+      <button
+        type="button"
+        onClick={() => setDetailsOpen((value) => !value)}
+        className="mt-2 min-h-11 w-full rounded-md border border-[var(--border)] text-xs font-medium"
+        aria-expanded={detailsOpen}
+      >
+        {detailsOpen ? "Скрыть" : "Подробнее"}
+      </button>
+      {detailsOpen ? <DetailKpis row={node} /> : null}
       {hasChildren && (
         <button
           type="button"
@@ -271,12 +166,12 @@ const NestedBranch = memo(function NestedBranch({
   );
 });
 
-const TopLevelMatchCard = memo(function TopLevelMatchCard({
+const TopLevelCard = memo(function TopLevelCard({
   row,
   expandedSet,
   toggleExpanded,
 }: {
-  row: MatchSalesTreeNode;
+  row: MerchSalesTreeNode;
   expandedSet: Set<string>;
   toggleExpanded: (id: string) => void;
 }) {
@@ -285,18 +180,19 @@ const TopLevelMatchCard = memo(function TopLevelMatchCard({
   const hasChildren = row.hasChildren || row.children.length > 0;
 
   return (
-    <article className="rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
-      <div className="min-w-0">
-        <p className="break-words text-sm font-medium leading-snug text-[var(--foreground)]">
-          {row.label}
+    <article
+      className="rounded-lg border border-[var(--border)] bg-[var(--background)] p-3"
+      data-testid="merch-mobile-card"
+    >
+      <p className="break-words text-sm font-medium leading-snug text-[var(--foreground)]">
+        {row.label}
+      </p>
+      {row.date ? (
+        <p className="mt-0.5 text-xs leading-snug text-[var(--muted)]">
+          {formatDate(row.date)}
         </p>
-        {row.date && (
-          <p className="mt-0.5 text-xs leading-snug text-[var(--muted)]">
-            {formatDate(row.date)}
-          </p>
-        )}
-      </div>
-      <MetricsGrid row={row} compact />
+      ) : null}
+      <CompactKpis row={row} />
       <button
         type="button"
         onClick={() => setDetailsOpen((value) => !value)}
@@ -305,7 +201,7 @@ const TopLevelMatchCard = memo(function TopLevelMatchCard({
       >
         {detailsOpen ? "Скрыть" : "Подробнее"}
       </button>
-      {detailsOpen ? <DetailMetrics row={row} /> : null}
+      {detailsOpen ? <DetailKpis row={row} /> : null}
       {hasChildren && (
         <button
           type="button"
@@ -340,10 +236,23 @@ const TopLevelMatchCard = memo(function TopLevelMatchCard({
   );
 });
 
-export const MobileSalesCards = memo(function MobileSalesCards({
+function getTreeExcelRows(rows: MerchSalesFlatRow[]): ExcelValue[][] {
+  return rows.map((row) => [
+    row.label,
+    row.date ? formatDate(row.date) : "",
+    row.revenue,
+    row.avgCheck,
+    row.receipts,
+    row.units,
+    Math.round(row.upt * 100) / 100,
+    Math.round(row.purchaseConversionPct * 10) / 10,
+  ]);
+}
+
+export const MerchMobileSalesCards = memo(function MerchMobileSalesCards({
   treeState,
 }: {
-  treeState: MatchSalesTreeState;
+  treeState: MerchSalesTreeState;
 }) {
   const { tree, expandedSet, toggleExpanded } = treeState;
   const [page, setPage] = useState(0);
@@ -352,17 +261,17 @@ export const MobileSalesCards = memo(function MobileSalesCards({
 
   const sorted = useMemo(
     () =>
-      [...tree].sort(
-        (a, b) => (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0),
-      ),
+      [...tree].sort((a, b) => (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0)),
     [tree],
   );
 
   const filtered = useMemo(() => {
-    if (!searchQuery.trim()) return sorted;
-    return sorted.filter((node) =>
-      matchSalesTreeNodeMatchesQuery(node, searchQuery),
-    );
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return sorted;
+    return sorted.filter((node) => {
+      const dateText = node.date ? formatDate(node.date).toLowerCase() : "";
+      return node.label.toLowerCase().includes(q) || dateText.includes(q);
+    });
   }, [sorted, searchQuery]);
 
   const pagination = useMemo(
@@ -370,7 +279,7 @@ export const MobileSalesCards = memo(function MobileSalesCards({
     [filtered, page],
   );
 
-  const pageTree = useMatchSalesPageTree(pagination.pageItems, treeState);
+  const pageTree = useMerchSalesPageTree(pagination.pageItems, treeState);
 
   useEffect(() => {
     if (page !== pagination.pageIndex) {
@@ -384,16 +293,16 @@ export const MobileSalesCards = memo(function MobileSalesCards({
 
   const excelRows = useMemo(
     () =>
-      getTreeExcelRows(flattenExpandedMatchSalesTree(pageTree, expandedSet)),
+      getTreeExcelRows(flattenExpandedMerchSalesTree(pageTree, expandedSet)),
     [pageTree, expandedSet],
   );
 
   return (
-    <Card className="min-w-0" data-testid="mobile-sales-cards">
+    <Card className="min-w-0" data-testid="merch-mobile-sales-cards">
       <CardHeader>
         <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-2">
           <CardTitle>Продажи</CardTitle>
-          <div className="flex w-full min-w-0 items-center justify-end gap-2 sm:w-auto">
+          <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 sm:w-auto">
             <div className="relative min-w-0 flex-1 sm:w-48 sm:flex-none">
               <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
               <input
@@ -406,7 +315,7 @@ export const MobileSalesCards = memo(function MobileSalesCards({
             </div>
             <RowsExcelButton
               fileName="Продажи"
-              headers={MATCH_SALES_EXCEL_HEADERS}
+              headers={MERCH_SALES_EXCEL_HEADERS}
               rows={excelRows}
             />
           </div>
@@ -414,12 +323,10 @@ export const MobileSalesCards = memo(function MobileSalesCards({
       </CardHeader>
       <CardContent className="space-y-3">
         {pageTree.length === 0 ? (
-          <p className="py-6 text-center text-sm text-[var(--muted)]">
-            Нет данных
-          </p>
+          <p className="py-6 text-center text-sm text-[var(--muted)]">Нет данных</p>
         ) : (
           pageTree.map((row) => (
-            <TopLevelMatchCard
+            <TopLevelCard
               key={row.id}
               row={row}
               expandedSet={expandedSet}
@@ -427,7 +334,6 @@ export const MobileSalesCards = memo(function MobileSalesCards({
             />
           ))
         )}
-
         {pagination.pageCount > 1 && (
           <div className="flex items-center justify-between pt-1 text-xs">
             <button
@@ -454,8 +360,7 @@ export const MobileSalesCards = memo(function MobileSalesCards({
               }
               className={clsx(
                 "min-h-11 rounded-md border border-[var(--border)] px-3",
-                pagination.pageIndex >= pagination.pageCount - 1 &&
-                  "opacity-40",
+                pagination.pageIndex >= pagination.pageCount - 1 && "opacity-40",
               )}
             >
               Вперёд

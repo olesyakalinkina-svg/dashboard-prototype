@@ -8,10 +8,10 @@ import {
   Line,
   LineChart,
   ResponsiveContainer,
-  Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import { AdaptiveTooltip } from "@/components/charts/AdaptiveTooltip";
 import {
   getMerchTrendPeriodLabel,
   getMerchTrendXAxisProps,
@@ -94,7 +94,7 @@ export const TicketsPlanFactWidget = memo(function TicketsPlanFactWidget({
       <CardContent className="flex min-w-0 flex-1 flex-col">
         <ChartScrollContainer
           className={clsx(
-            "h-[280px] sm:h-[360px]",
+            "h-[240px] sm:h-[280px] xl:h-[360px]",
             CHART_ZOOM_SURFACE_CLASS,
           )}
         >
@@ -111,7 +111,7 @@ export const TicketsPlanFactWidget = memo(function TicketsPlanFactWidget({
                 tick={{ fontSize: 11, fill: "#8B8B8E" }}
                 tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`}
               />
-              <Tooltip content={<PlanFactTooltip />} />
+              <AdaptiveTooltip content={<PlanFactTooltip />} />
               <Legend wrapperStyle={{ fontSize: 11 }} iconSize={10} />
               <ChartZoomReferenceArea selectionArea={selectionArea} />
               <Line

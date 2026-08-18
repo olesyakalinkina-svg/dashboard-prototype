@@ -118,9 +118,9 @@ const SubscriptionCampaignPaceWidget = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2">
-        <ChartSkeleton height={360} />
-        <ChartSkeleton height={360} />
+      <div className="grid min-w-0 grid-cols-1 gap-4 min-[1024px]:grid-cols-2">
+        <ChartSkeleton height={280} />
+        <ChartSkeleton height={280} />
       </div>
     ),
   },
@@ -183,7 +183,7 @@ const TopProductsChart = dynamic(
 
 const DashboardShell = memo(function DashboardShell() {
   return (
-    <div className="min-h-screen min-w-0 overflow-x-clip bg-[var(--background)]">
+    <div className="min-h-screen min-w-0 bg-[var(--background)]">
       <DashboardHeader />
       <DashboardTabs />
       <FilterBar />
@@ -279,7 +279,7 @@ function DashboardPanels() {
 
         {activeTab === "subscriptions" && (
           <>
-            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-[1.6fr_1fr]">
+            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 min-[1024px]:grid-cols-[1.6fr_1fr] xl:grid-cols-[1.6fr_1fr]">
               <SubscriptionsSalesWidget data={subscriptionsPlanFactTrend} />
               <SubscriptionPriceCategoryShareChart
                 data={subscriptionPriceCategoryShares}
@@ -298,7 +298,7 @@ function DashboardPanels() {
                 filters={appliedFilters}
                 ticketFilters={appliedTicketFilters}
               />
-              <div className="flex min-w-0 flex-col gap-4 xl:min-h-0">
+              <div className="flex min-w-0 flex-col gap-4 min-[1024px]:max-xl:grid min-[1024px]:max-xl:grid-cols-2 xl:min-h-0">
                 <TicketsMatchDynamicsSection />
                 <div className="min-w-0 xl:min-h-0 xl:flex-1">
                   <TicketsPlanFactWidget
@@ -308,17 +308,14 @@ function DashboardPanels() {
                 </div>
               </div>
             </div>
-            <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2">
-              <TicketsZoneSectorWidget />
-              <div aria-hidden="true" className="hidden xl:block" />
-            </div>
+            <TicketsZoneSectorWidget />
           </>
         )}
 
         {activeTab === "merch" && (
           <>
             <MerchKpiCards merchKpis={merchKpis} />
-            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
+            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 min-[1024px]:grid-cols-2">
               <MerchSalesWidget data={merchPlanFactTrend} />
               <TopProductsChart data={topProducts} />
             </div>
@@ -326,7 +323,7 @@ function DashboardPanels() {
               <MerchMatchSalesTable data={merchMatchSales} />
               <MerchSkuSalesTable data={merchSkuSales} />
             </div>
-            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
+            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 min-[1024px]:grid-cols-2">
               <MerchSalesChannelsChart data={merchSalesChannelRevenue} />
               <MerchProductCategoriesChart data={merchProductCategoryRevenue} />
             </div>

@@ -3,6 +3,7 @@
 import clsx from "clsx";
 import { ChevronDown, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAnchoredMenu } from "@/hooks/useAnchoredMenu";
 
 type MultiSelectOption = {
   value: string;
@@ -32,7 +33,7 @@ type MultiSelectProps = {
 };
 
 const OPTION_ROW_CLASS =
-  "relative flex h-11 shrink-0 cursor-pointer items-center gap-2 bg-white px-3 text-sm hover:bg-[var(--background)] lg:h-9";
+  "relative flex h-11 shrink-0 cursor-pointer items-center gap-2 bg-white px-3 text-sm hover:bg-[var(--background)] xl:h-9";
 
 function arraysEqual(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
@@ -127,6 +128,9 @@ export function MultiSelect({
   const [search, setSearch] = useState("");
   const [draftValue, setDraftValue] = useState(value);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useAnchoredMenu(open, triggerRef, menuRef);
   const valueRef = useRef(value);
   const draftValueRef = useRef(draftValue);
   const openRef = useRef(open);
@@ -277,9 +281,10 @@ export function MultiSelect({
     >
       {label && <span className="text-xs text-[var(--muted)]">{label}</span>}
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => (open ? closeDropdown() : openDropdown())}
-        className="flex h-11 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-[var(--border)] bg-white px-3 text-left text-sm text-[var(--foreground)] outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] lg:h-9 xl:min-w-[200px]"
+        className="flex h-11 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-[var(--border)] bg-white px-3 text-left text-sm leading-snug text-[var(--foreground)] outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] xl:h-9 xl:min-w-[200px]"
       >
         <span className="truncate">{displayText}</span>
         <ChevronDown
@@ -291,8 +296,9 @@ export function MultiSelect({
       </button>
       {open && (
         <div
+          ref={menuRef}
           data-testid="multi-select-menu"
-          className="absolute left-0 top-full z-50 mt-1 max-h-64 w-full max-w-[min(100vw-2rem,320px)] isolate overflow-auto rounded-md border border-[var(--border)] bg-white py-1 shadow-lg"
+          className="z-50 max-h-64 w-full max-w-[min(100vw-2rem,320px)] isolate overflow-auto rounded-md border border-[var(--border)] bg-white py-1 shadow-lg"
         >
           {searchable && (
             <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-white px-2 py-1.5">

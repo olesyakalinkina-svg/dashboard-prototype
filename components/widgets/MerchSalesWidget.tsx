@@ -8,10 +8,10 @@ import {
   Line,
   LineChart,
   ResponsiveContainer,
-  Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import { AdaptiveTooltip } from "@/components/charts/AdaptiveTooltip";
 import {
   getMerchTrendPeriodLabel,
   getMerchTrendXAxisProps,
@@ -97,13 +97,13 @@ export function MerchSalesWidget({
       </CardHeader>
       <CardContent className="flex min-w-0 flex-1 flex-col">
         {!hasData ? (
-          <div className="flex min-h-[280px] flex-1 items-center justify-center text-sm text-[var(--muted)]">
+          <div className="flex min-h-[240px] flex-1 items-center justify-center text-sm text-[var(--muted)]">
             Нет данных по выбранным фильтрам
           </div>
         ) : (
           <ChartScrollContainer
             className={clsx(
-              "min-h-[280px] flex-1 sm:min-h-[320px]",
+              "min-h-[240px] flex-1 sm:min-h-[280px] xl:min-h-[320px]",
               CHART_ZOOM_SURFACE_CLASS,
             )}
           >
@@ -120,7 +120,7 @@ export function MerchSalesWidget({
                   tick={{ fontSize: 11, fill: "#8B8B8E" }}
                   tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`}
                 />
-                <Tooltip content={<PlanFactTooltip />} />
+                <AdaptiveTooltip content={<PlanFactTooltip />} />
                 <Legend wrapperStyle={{ fontSize: 11 }} iconSize={10} />
                 <ChartZoomReferenceArea selectionArea={selectionArea} />
                 <Line

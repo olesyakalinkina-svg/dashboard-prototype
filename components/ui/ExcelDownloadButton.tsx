@@ -5,7 +5,7 @@ import { FileSpreadsheet } from "lucide-react";
 import { downloadExcelFromTable, downloadExcelWorkbook, type ExcelValue } from "@/lib/excel-export";
 
 const BUTTON_CLASS =
-  "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-white text-[var(--foreground)] hover:bg-[var(--background)] disabled:cursor-not-allowed disabled:opacity-40 lg:h-8 lg:w-8";
+  "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-white text-[var(--foreground)] hover:bg-[var(--background)] disabled:cursor-not-allowed disabled:opacity-40 xl:h-8 xl:w-8";
 
 export function ExcelDownloadButton({
   disabled,

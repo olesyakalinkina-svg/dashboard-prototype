@@ -65,7 +65,7 @@ export function MatchSalesFilterBar() {
       onReset={resetMatchSalesFilters}
       activeFilterCount={activeFilterCount}
     >
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:items-end xl:flex xl:flex-wrap">
+      <div className="grid grid-cols-1 gap-3 xl:flex xl:flex-wrap xl:items-end">
         <Select
           label="Сезон"
           value={matchSalesFilters.season}

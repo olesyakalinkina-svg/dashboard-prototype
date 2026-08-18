@@ -28,7 +28,7 @@ export function formatCurrencyCompact(value: number): string {
   }
   if (abs >= 10_000) {
     const thousands = value / 1_000;
-    return `${Math.round(thousands).toLocaleString("ru-RU")} тыс ₽`;
+    return `${Math.round(thousands).toLocaleString("ru-RU")} тыс. ₽`;
   }
   return formatCurrency(value);
 }

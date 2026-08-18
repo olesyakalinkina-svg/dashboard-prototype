@@ -13,7 +13,11 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { TableExcelButton } from "@/components/ui/ExcelDownloadButton";
 import { InlineBarCell } from "@/components/ui/InlineBarCell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { StickyScrollTable } from "@/components/ui/StickyScrollTable";
+import { TreeExpandButton } from "@/components/ui/TreeExpandButton";
+import { MerchMobileSalesCards } from "@/components/widgets/MerchMobileSalesCards";
 import { useFilterData } from "@/context/FilterContext";
+import { useIsMobileLayout } from "@/hooks/useLayoutMode";
 import {
   useMerchSalesPageTree,
   useMerchSalesTreeState,
@@ -87,27 +91,13 @@ function MerchSalesExpandButton({
   label: string;
   onToggle: () => void;
 }) {
-  if (!hasChildren) {
-    return <span className="inline-block w-5 shrink-0" aria-hidden />;
-  }
-
   return (
-    <button
-      type="button"
-      onPointerDown={(event) => {
-        event.stopPropagation();
-      }}
-      onClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onToggle();
-      }}
-      className="relative z-20 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-[var(--border)] bg-white text-xs font-medium leading-none text-[var(--foreground)]"
-      aria-expanded={expanded}
-      aria-label={expanded ? `Свернуть: ${label}` : `Развернуть: ${label}`}
-    >
-      {expanded ? "−" : "+"}
-    </button>
+    <TreeExpandButton
+      expanded={expanded}
+      hasChildren={hasChildren}
+      label={label}
+      onToggle={onToggle}
+    />
   );
 }
 
@@ -133,7 +123,7 @@ const MERCH_SALES_COLUMNS: ColumnDef<MerchSalesFlatRow, unknown>[] = [
       const expanded = meta.expandedSet.has(item.id);
       return (
         <div
-          className="flex min-w-0 items-center gap-2"
+          className="flex min-w-0 items-center gap-2.5"
           style={{ paddingLeft: item.depth * 16 }}
         >
           <MerchSalesExpandButton
@@ -401,10 +391,10 @@ export const MerchSalesTableView = memo(function MerchSalesTableView({
   const summary = summaryFromMatchNodes(filteredTree);
 
   return (
-    <Card className="flex h-full min-w-0 flex-col">
+    <Card className="flex h-full min-w-0 flex-col" data-testid="merch-sales-table">
       <CardHeader>
         <CardTitle>Продажи</CardTitle>
-        <div className="flex w-full items-center gap-2 sm:w-auto">
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
           <TableExcelButton table={excelTable} fileName="Продажи" />
           <div className="relative min-w-0 flex-1 sm:w-auto sm:flex-none">
             <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
@@ -413,13 +403,14 @@ export const MerchSalesTableView = memo(function MerchSalesTableView({
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Поиск по мероприятию..."
               aria-label="Поиск по мероприятию..."
-              className="h-9 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] sm:h-8 sm:w-48"
+              className="h-11 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] xl:h-8 sm:w-48"
             />
           </div>
         </div>
       </CardHeader>
-      <CardContent className="flex flex-1 flex-col overflow-x-auto">
-        <table className="w-full text-sm">
+      <CardContent className="flex min-w-0 flex-1 flex-col">
+        <StickyScrollTable>
+        <table className="w-full min-w-[56rem] text-sm leading-snug">
           <thead>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id} className="border-b border-[var(--border)]">
@@ -471,7 +462,8 @@ export const MerchSalesTableView = memo(function MerchSalesTableView({
             {summary}
           </tbody>
         </table>
-        <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-3 text-xs text-[var(--muted)]">
+        </StickyScrollTable>
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-3 text-xs leading-snug text-[var(--muted)]">
           <span>
             {filteredTree.length} мероприятий
           </span>
@@ -480,7 +472,7 @@ export const MerchSalesTableView = memo(function MerchSalesTableView({
               type="button"
               onClick={goPrev}
               disabled={pagination.pageIndex === 0}
-              className="rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40"
+              className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40"
             >
               Назад
             </button>
@@ -491,7 +483,7 @@ export const MerchSalesTableView = memo(function MerchSalesTableView({
               type="button"
               onClick={goNext}
               disabled={pagination.pageIndex >= pagination.pageCount - 1}
-              className="rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40"
+              className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40"
             >
               Вперёд
             </button>
@@ -513,5 +505,9 @@ export const MerchMatchSalesTable = memo(function MerchMatchSalesTable({
     appliedFilters,
     appliedMerchFilters,
   );
+  const isMobile = useIsMobileLayout();
+  if (isMobile) {
+    return <MerchMobileSalesCards treeState={treeState} />;
+  }
   return <MerchSalesTableView treeState={treeState} />;
 });

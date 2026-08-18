@@ -7,10 +7,10 @@ import {
   Line,
   LineChart,
   ResponsiveContainer,
-  Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import { AdaptiveTooltip } from "@/components/charts/AdaptiveTooltip";
 import {
   ChartZoomReferenceArea,
   CHART_ZOOM_SURFACE_CLASS,
@@ -237,7 +237,7 @@ export function TicketsSeasonMatchChart({
               domain={["dataMin", "dataMax"]}
               ticks={xTicks}
               tickFormatter={formatAxisLabel}
-              tick={{ fontSize: 10, fill: "#8B8B8E" }}
+              tick={{ fontSize: 11, fill: "#8B8B8E" }}
               tickMargin={6}
               interval={showAllXTicks ? 0 : "preserveEnd"}
               minTickGap={16}
@@ -251,7 +251,7 @@ export function TicketsSeasonMatchChart({
               width={52}
               tickFormatter={formatSeasonMatchYAxisTick}
             />
-            <Tooltip
+            <AdaptiveTooltip
               content={<TicketsSeasonMatchTooltip views={visibleViews} />}
               labelFormatter={formatAxisLabel}
             />

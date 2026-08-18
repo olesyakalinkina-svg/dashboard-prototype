@@ -1,9 +1,9 @@
 "use client";
 
 import clsx from "clsx";
-import { MoreHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { useLayoutMode } from "@/hooks/useLayoutMode";
 
 type ChartWidgetProps = {
   title: string;
@@ -11,7 +11,8 @@ type ChartWidgetProps = {
   className?: string;
   height?: number;
   compact?: boolean;
-  fillHeight?: boolean;
+  fillHeight?: false | boolean;
+  headerExtra?: ReactNode;
 };
 
 export function ChartWidget({
@@ -21,7 +22,16 @@ export function ChartWidget({
   height = 280,
   compact = false,
   fillHeight = false,
+  headerExtra,
 }: ChartWidgetProps) {
+  const mode = useLayoutMode();
+  const resolvedHeight =
+    compact || fillHeight
+      ? height
+      : mode === "mobile"
+        ? Math.min(Math.max(height, 220), 280)
+        : height;
+
   return (
     <Card
       className={clsx(
@@ -31,10 +41,10 @@ export function ChartWidget({
       )}
     >
       <CardHeader className={compact ? "px-3 py-2" : undefined}>
-        <CardTitle>{title}</CardTitle>
-        <button className="rounded p-1 text-[var(--muted)] hover:bg-[var(--background)]">
-          <MoreHorizontal className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
-        </button>
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-2">
+          <CardTitle>{title}</CardTitle>
+          {headerExtra}
+        </div>
       </CardHeader>
       <CardContent
         className={clsx(
@@ -45,7 +55,7 @@ export function ChartWidget({
       >
         <div
           className={fillHeight ? "min-h-0 flex-1" : undefined}
-          style={fillHeight ? { minHeight: height } : { height }}
+          style={fillHeight ? undefined : { height: resolvedHeight }}
         >
           {children}
         </div>

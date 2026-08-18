@@ -35,7 +35,9 @@ export function CardHeader({
 
 export function CardTitle({ children }: { children: ReactNode }) {
   return (
-    <h3 className="min-w-0 text-sm font-semibold break-words text-[var(--foreground)]">{children}</h3>
+    <h3 className="min-w-0 break-words text-base font-semibold leading-snug text-[var(--foreground)] xl:text-sm">
+      {children}
+    </h3>
   );
 }
 

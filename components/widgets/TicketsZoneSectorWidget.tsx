@@ -11,6 +11,8 @@ import {
 import { ChevronDown, ChevronUp, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
+import { StickyScrollTable } from "@/components/ui/StickyScrollTable";
+import { TreeExpandButton } from "@/components/ui/TreeExpandButton";
 import { TableExcelButton } from "@/components/ui/ExcelDownloadButton";
 import { InlineBarCell } from "@/components/ui/InlineBarCell";
 import { MultiSelect } from "@/components/ui/MultiSelect";
@@ -137,24 +139,13 @@ function ExpandButton({
   label: string;
   onToggle: () => void;
 }) {
-  if (!hasChildren) {
-    return <span className="inline-block w-5 shrink-0" aria-hidden />;
-  }
   return (
-    <button
-      type="button"
-      onPointerDown={(event) => event.stopPropagation()}
-      onClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onToggle();
-      }}
-      className="relative z-20 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded border border-[var(--border)] bg-white text-xs font-medium leading-none text-[var(--foreground)] lg:h-5 lg:w-5"
-      aria-expanded={expanded}
-      aria-label={expanded ? `Свернуть: ${label}` : `Развернуть: ${label}`}
-    >
-      {expanded ? "−" : "+"}
-    </button>
+    <TreeExpandButton
+      expanded={expanded}
+      hasChildren={hasChildren}
+      label={label}
+      onToggle={onToggle}
+    />
   );
 }
 
@@ -440,7 +431,7 @@ export function TicketsZoneSectorWidget() {
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="Поиск по мероприятию..."
                 aria-label="Поиск по мероприятию..."
-                className="h-11 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] lg:h-8"
+                className="h-11 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] xl:h-8"
               />
             </div>
             <TableExcelButton table={excelTable} fileName="Продажи по зонам и секторам" />
@@ -493,7 +484,7 @@ export function TicketsZoneSectorWidget() {
             <button
               type="button"
               className={clsx(
-                "min-h-11 rounded px-3 text-xs lg:h-9 lg:min-h-0 lg:px-2",
+                "min-h-11 rounded px-3 text-xs xl:h-9 xl:min-h-0 xl:px-2",
                 mode === "zones_to_sectors" && "bg-[var(--background)]",
               )}
               onClick={() => setMode("zones_to_sectors")}
@@ -503,7 +494,7 @@ export function TicketsZoneSectorWidget() {
             <button
               type="button"
               className={clsx(
-                "min-h-11 rounded px-3 text-xs lg:h-9 lg:min-h-0 lg:px-2",
+                "min-h-11 rounded px-3 text-xs xl:h-9 xl:min-h-0 xl:px-2",
                 mode === "sectors_to_zones" && "bg-[var(--background)]",
               )}
               onClick={() => setMode("sectors_to_zones")}
@@ -529,8 +520,9 @@ export function TicketsZoneSectorWidget() {
 
         {filterComboValid && (
           <>
-            <div className="min-w-0 overflow-x-auto">
-              <table className="w-full min-w-[28rem] table-fixed text-sm md:min-w-[36rem]">
+            <div className="min-w-0">
+              <StickyScrollTable>
+              <table className="w-full min-w-[28rem] table-fixed text-sm leading-snug md:min-w-[36rem]">
                 <colgroup>
                   <col />
                   <col className={COLUMN_WIDTH_CLASS.date} />
@@ -596,6 +588,7 @@ export function TicketsZoneSectorWidget() {
                   ))}
                 </tbody>
               </table>
+              </StickyScrollTable>
             </div>
             <div className="mt-3 text-xs text-[var(--muted)]">
               <span>{filteredTree.length} мероприятий</span>

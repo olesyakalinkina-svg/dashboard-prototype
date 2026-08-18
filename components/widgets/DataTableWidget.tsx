@@ -9,6 +9,7 @@ import {
   useReactTable,
   type ColumnDef,
   type SortingState,
+  type Table,
 } from "@tanstack/react-table";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -31,6 +32,9 @@ import {
 import { InlineBarCell } from "@/components/ui/InlineBarCell";
 import { getMerchSalesPointLabel } from "@/lib/merch-filter-options";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { MobileRecordCard } from "@/components/ui/MobileRecordCard";
+import { StickyScrollTable } from "@/components/ui/StickyScrollTable";
+import { useIsMobileLayout } from "@/hooks/useLayoutMode";
 import type {
   CombinedMatchSalesRow,
   MerchSkuSalesRow,
@@ -54,11 +58,75 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: "Отменён",
 };
 
+function MobileTableCards<T>({
+  table,
+  titleKey,
+  dateKey,
+}: {
+  table: Table<T>;
+  titleKey: string;
+  dateKey?: string;
+}) {
+  const rows = table.getRowModel().rows;
+  if (rows.length === 0) {
+    return (
+      <p className="py-6 text-center text-sm text-[var(--muted)]">Нет данных</p>
+    );
+  }
+
+  return (
+    <div className="space-y-3" data-testid="mobile-table-cards">
+      {rows.map((row) => {
+        const cells = row.getVisibleCells();
+        const titleCell = cells.find((cell) => cell.column.id === titleKey) ?? cells[0];
+        const rest = cells.filter(
+          (cell) =>
+            cell.column.id !== titleCell.column.id &&
+            cell.column.id !== dateKey,
+        );
+        const kpis = rest.slice(0, 4).map((cell) => ({
+          label: String(cell.column.columnDef.header ?? cell.column.id),
+          value: flexRender(cell.column.columnDef.cell, cell.getContext()),
+        }));
+        const details = rest.slice(4).map((cell) => ({
+          label: String(cell.column.columnDef.header ?? cell.column.id),
+          value: flexRender(cell.column.columnDef.cell, cell.getContext()),
+        }));
+        const dateCell = dateKey
+          ? cells.find((cell) => cell.column.id === dateKey)
+          : undefined;
+
+        return (
+          <MobileRecordCard
+            key={row.id}
+            title={flexRender(
+              titleCell.column.columnDef.cell,
+              titleCell.getContext(),
+            )}
+            subtitle={
+              dateCell
+                ? flexRender(
+                    dateCell.column.columnDef.cell,
+                    dateCell.getContext(),
+                  )
+                : undefined
+            }
+            kpis={kpis}
+            details={details}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 type DataTableProps<T> = {
   title: string;
   data: T[];
   columns: ColumnDef<T, unknown>[];
   searchPlaceholder?: string;
+  titleKey?: string;
+  dateKey?: string;
 };
 
 function DataTable<T>({
@@ -66,9 +134,12 @@ function DataTable<T>({
   data,
   columns,
   searchPlaceholder = "Поиск...",
+  titleKey,
+  dateKey,
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
+  const isMobile = useIsMobileLayout();
 
   const table = useReactTable({
     data,
@@ -83,11 +154,16 @@ function DataTable<T>({
     initialState: { pagination: { pageSize: 10 } },
   });
 
+  const firstColumnId =
+    (columns[0] && "accessorKey" in columns[0]
+      ? String(columns[0].accessorKey)
+      : columns[0]?.id) ?? "id";
+
   return (
     <Card className="min-w-0">
       <CardHeader>
         <CardTitle>{title}</CardTitle>
-        <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
           <TableExcelButton table={table} fileName={title} />
           <div className="relative min-w-0 flex-1 sm:w-auto sm:flex-none">
             <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
@@ -95,20 +171,28 @@ function DataTable<T>({
               value={globalFilter}
               onChange={(e) => setGlobalFilter(e.target.value)}
               placeholder={searchPlaceholder}
-              className="h-11 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] lg:h-8 lg:w-48"
+              className="h-11 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] xl:h-8 xl:w-48"
             />
           </div>
         </div>
       </CardHeader>
-      <CardContent className="overflow-x-auto">
-        <table className="w-full min-w-[40rem] text-sm">
+      <CardContent>
+        {isMobile ? (
+          <MobileTableCards
+            table={table}
+            titleKey={titleKey ?? firstColumnId}
+            dateKey={dateKey}
+          />
+        ) : (
+          <StickyScrollTable>
+            <table className="w-full min-w-[40rem] text-sm leading-snug">
           <thead>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id} className="border-b border-[var(--border)]">
                 {hg.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="cursor-pointer px-3 py-2 text-left text-xs font-medium text-[var(--muted)]"
+                    className="cursor-pointer px-3 py-2 text-left text-xs font-medium leading-snug text-[var(--muted)]"
                     onClick={header.column.getToggleSortingHandler()}
                   >
                     <span className="inline-flex items-center gap-1">
@@ -140,8 +224,10 @@ function DataTable<T>({
               </tr>
             ))}
           </tbody>
-        </table>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted)]">
+            </table>
+          </StickyScrollTable>
+        )}
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs leading-snug text-[var(--muted)]">
           <span>
             {table.getFilteredRowModel().rows.length} записей
           </span>
@@ -149,7 +235,7 @@ function DataTable<T>({
             <button
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
-              className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40 lg:min-h-0"
+              className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40"
             >
               Назад
             </button>
@@ -159,7 +245,7 @@ function DataTable<T>({
             <button
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
-              className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40 lg:min-h-0"
+              className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40"
             >
               Вперёд
             </button>
@@ -179,6 +265,8 @@ type MerchSalesTableProps<T> = {
   defaultSort: SortingState;
   summaryRow?: (data: T[]) => ReactNode;
   pageSize?: number;
+  titleKey?: string;
+  dateKey?: string;
 };
 
 function MerchSalesTable<T>({
@@ -190,9 +278,12 @@ function MerchSalesTable<T>({
   defaultSort,
   summaryRow,
   pageSize = 10,
+  titleKey,
+  dateKey,
 }: MerchSalesTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>(defaultSort);
   const [globalFilter, setGlobalFilter] = useState("");
+  const isMobile = useIsMobileLayout();
 
   const table = useReactTable({
     data,
@@ -209,12 +300,16 @@ function MerchSalesTable<T>({
 
   const filteredRows = table.getFilteredRowModel().rows;
   const summary = summaryRow?.(filteredRows.map((row) => row.original));
+  const firstColumnId =
+    (columns[0] && "accessorKey" in columns[0]
+      ? String(columns[0].accessorKey)
+      : columns[0]?.id) ?? "id";
 
   return (
     <Card className="flex h-full min-w-0 flex-col">
       <CardHeader>
         <CardTitle>{title}</CardTitle>
-        <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
           <TableExcelButton table={table} fileName={title} />
           <div className="relative min-w-0 flex-1 sm:w-auto sm:flex-none">
             <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
@@ -222,20 +317,28 @@ function MerchSalesTable<T>({
               value={globalFilter}
               onChange={(e) => setGlobalFilter(e.target.value)}
               placeholder={searchPlaceholder}
-              className="h-11 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] lg:h-8 lg:w-48"
+              className="h-11 w-full max-w-full rounded-md border border-[var(--border)] bg-white pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)] xl:h-8 xl:w-48"
             />
           </div>
         </div>
       </CardHeader>
-      <CardContent className="flex min-w-0 flex-1 flex-col overflow-x-auto">
-        <table className="w-full min-w-[52rem] text-sm">
+      <CardContent className="flex min-w-0 flex-1 flex-col">
+        {isMobile ? (
+          <MobileTableCards
+            table={table}
+            titleKey={titleKey ?? firstColumnId}
+            dateKey={dateKey}
+          />
+        ) : (
+          <StickyScrollTable>
+            <table className="w-full min-w-[52rem] text-sm leading-snug">
           <thead>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id} className="border-b border-[var(--border)]">
                 {hg.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="cursor-pointer px-3 py-2 text-left text-xs font-medium text-[var(--muted)]"
+                    className="cursor-pointer px-3 py-2 text-left text-xs font-medium leading-snug text-[var(--muted)]"
                     onClick={header.column.getToggleSortingHandler()}
                   >
                     <span className="inline-flex items-center gap-1">
@@ -268,8 +371,10 @@ function MerchSalesTable<T>({
             ))}
             {summary}
           </tbody>
-        </table>
-        <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-3 text-xs text-[var(--muted)]">
+            </table>
+          </StickyScrollTable>
+        )}
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-3 text-xs leading-snug text-[var(--muted)]">
           <span>
             {filteredRows.length} {countLabel}
           </span>
@@ -277,7 +382,7 @@ function MerchSalesTable<T>({
             <button
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
-              className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40 lg:min-h-0"
+              className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40"
             >
               Назад
             </button>
@@ -287,7 +392,7 @@ function MerchSalesTable<T>({
             <button
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
-              className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40 lg:min-h-0"
+              className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40"
             >
               Вперёд
             </button>
@@ -424,13 +529,12 @@ export function CombinedMatchSalesTable({
     );
   }, []);
 
-  return (
-    <>
-      <div className="min-w-0 lg:hidden">
-        <CombinedMatchSalesMobileCards data={data} />
-      </div>
-      <div className="hidden min-w-0 lg:block">
-        <MerchSalesTable
+  const isMobile = useIsMobileLayout();
+
+  return isMobile ? (
+    <CombinedMatchSalesMobileCards data={data} />
+  ) : (
+    <MerchSalesTable
           title="Продажи по матчам"
           data={data}
           columns={columns}
@@ -439,9 +543,9 @@ export function CombinedMatchSalesTable({
           defaultSort={[{ id: "date", desc: true }]}
           summaryRow={summaryRow}
           pageSize={15}
+          titleKey="eventLabel"
+          dateKey="date"
         />
-      </div>
-    </>
   );
 }
 
@@ -494,7 +598,7 @@ function CombinedMatchSalesMobileCards({
   );
 
   return (
-    <Card className="min-w-0">
+    <Card className="min-w-0" data-testid="combined-mobile-sales-cards">
       <CardHeader>
         <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-2">
           <CardTitle>Продажи по матчам</CardTitle>
@@ -525,55 +629,34 @@ function CombinedMatchSalesMobileCards({
           <p className="py-6 text-center text-sm text-[var(--muted)]">Нет данных</p>
         ) : (
           pageItems.map((row) => (
-            <article
+            <MobileRecordCard
               key={row.matchId}
-              className="rounded-lg border border-[var(--border)] bg-[var(--background)] p-3"
-            >
-              <p className="break-words text-sm font-medium text-[var(--foreground)]">
-                {row.eventLabel}
-              </p>
-              <p className="mt-0.5 text-xs text-[var(--muted)]">
-                {formatDate(row.date)}
-              </p>
-              <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
-                <div>
-                  <dt className="text-[var(--muted)]">Билеты</dt>
-                  <dd className="font-medium text-[var(--foreground)]">
-                    {formatCurrency(row.ticketRevenue)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[var(--muted)]">Мерч</dt>
-                  <dd className="text-[var(--foreground)]">
-                    {formatCurrency(row.merchRevenue)}
-                  </dd>
-                </div>
-                <div className="col-span-2">
-                  <dt className="text-[var(--muted)]">Итого</dt>
-                  <dd className="font-medium text-[var(--foreground)]">
-                    {formatCurrency(row.totalRevenue)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[var(--muted)]">Билеты, шт</dt>
-                  <dd className="text-[var(--foreground)]">
-                    {formatNumber(row.ticketsSold)} шт
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[var(--muted)]">Заполняемость</dt>
-                  <dd className="text-[var(--foreground)]">
-                    {formatPercent(row.fillRate)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[var(--muted)]">Чеки мерча</dt>
-                  <dd className="text-[var(--foreground)]">
-                    {formatNumber(row.merchReceipts)}
-                  </dd>
-                </div>
-              </dl>
-            </article>
+              title={row.eventLabel}
+              subtitle={formatDate(row.date)}
+              kpis={[
+                { label: "Билеты", value: formatCurrency(row.ticketRevenue) },
+                { label: "Мерч", value: formatCurrency(row.merchRevenue) },
+                {
+                  label: "Итого",
+                  value: formatCurrency(row.totalRevenue),
+                  wide: true,
+                },
+                {
+                  label: "Билеты, шт",
+                  value: `${formatNumber(row.ticketsSold)} шт`,
+                },
+              ]}
+              details={[
+                {
+                  label: "Заполняемость",
+                  value: formatPercent(row.fillRate),
+                },
+                {
+                  label: "Чеки мерча",
+                  value: formatNumber(row.merchReceipts),
+                },
+              ]}
+            />
           ))
         )}
         {pageCount > 1 && (
@@ -708,6 +791,7 @@ export function MerchSkuSalesTable({ data }: { data: MerchSkuSalesRow[] }) {
       countLabel="товаров"
       defaultSort={[{ id: "units", desc: true }]}
       pageSize={10}
+      titleKey="productName"
     />
   );
 }
@@ -804,6 +888,8 @@ export function TransactionsTable({
       data={data}
       columns={columns}
       searchPlaceholder="Поиск по описанию..."
+      titleKey="description"
+      dateKey="date"
     />
   );
 }
@@ -858,6 +944,8 @@ export function SubscriptionsTable({ data }: { data: Subscription[] }) {
       data={data}
       columns={columns}
       searchPlaceholder="Поиск по тарифу..."
+      titleKey="planName"
+      dateKey="purchasedAt"
     />
   );
 }

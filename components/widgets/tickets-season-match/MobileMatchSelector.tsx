@@ -63,7 +63,7 @@ export function MobileMatchSelector({
                   onHoverSeries(isActive ? null : view.matchId);
                 }}
                 className={clsx(
-                  "inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-1 text-[10px] transition-colors",
+                    "inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-1 text-xs transition-colors",
                   isHidden
                     ? "border-[var(--border)] bg-white text-[var(--muted)] opacity-50 line-through"
                     : isActive
@@ -86,7 +86,7 @@ export function MobileMatchSelector({
             <button
               type="button"
               onClick={() => setExpanded((value) => !value)}
-              className="text-[10px] font-medium text-[var(--accent)]"
+              className="text-xs font-medium text-[var(--accent)]"
             >
               {expanded ? "Свернуть" : `Ещё ${views.length - previewViews.length}`}
             </button>
@@ -141,7 +141,7 @@ export function MobileMatchSelector({
                       type="button"
                       onClick={() => onToggleSeries(view.matchId)}
                       className={clsx(
-                        "inline-flex max-w-full items-center gap-1 rounded-full border px-2.5 py-1.5 text-[10px]",
+                        "inline-flex max-w-full items-center gap-1 rounded-full border px-2.5 py-1.5 text-xs",
                         isHidden
                           ? "border-[var(--border)] text-[var(--muted)] opacity-50 line-through"
                           : "border-[var(--accent)]/30 bg-[var(--accent)]/5 text-[var(--foreground)]",
@@ -157,12 +157,12 @@ export function MobileMatchSelector({
                 })}
               </div>
 
-              <div className="flex items-center gap-1.5 text-[10px] text-[var(--muted)]">
+              <div className="flex items-center gap-1.5 text-xs text-[var(--muted)]">
                 <span className="inline-block h-2.5 w-2.5 rounded-full border-[3px] border-[#64748B] bg-white" />
                 <span>{SEASON_MATCH_PLAN_LEGEND_LABEL}</span>
               </div>
               {comparisonMode && (
-                <p className="text-[10px] text-[var(--muted)]">
+                <p className="text-xs text-[var(--muted)]">
                   {SEASON_MATCH_COMPARISON_LEGEND_LABEL}
                 </p>
               )}

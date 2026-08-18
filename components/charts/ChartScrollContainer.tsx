@@ -20,7 +20,7 @@ export function ChartScrollContainer({
   return (
     <div
       className={clsx(
-        "min-w-0 max-w-full overflow-x-auto overflow-y-hidden xl:overflow-x-visible",
+        "min-w-0 max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain [touch-action:pan-x_pan-y] xl:overflow-x-visible",
         className,
       )}
     >

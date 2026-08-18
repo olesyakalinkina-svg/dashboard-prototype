@@ -12,13 +12,13 @@ import {
   Pie,
   PieChart,
   ResponsiveContainer,
-  Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 import { useEffect, useMemo, useRef, useState, memo } from "react";
 import clsx from "clsx";
 import { ChartScrollContainer } from "@/components/charts/ChartScrollContainer";
+import { AdaptiveTooltip } from "@/components/charts/AdaptiveTooltip";
 import {
   ChartZoomHint,
   ChartZoomReferenceArea,
@@ -42,6 +42,7 @@ import {
 } from "@/lib/subscription-filter-options";
 import {
   formatCurrency,
+  formatCurrencyCompact,
   formatNumber,
   formatPercent,
   formatShortMonthYear,
@@ -56,6 +57,11 @@ import {
   parseMatchRevenueLabel,
   shouldShowMatchRevenueScrollHint,
 } from "@/lib/match-revenue-chart";
+import type { TooltipProps } from "recharts";
+import type {
+  NameType,
+  ValueType,
+} from "recharts/types/component/DefaultTooltipContent";
 import type {
   ChannelMixPoint,
   MerchSalesChannelPoint,
@@ -78,6 +84,18 @@ function formatCompactCurrency(value: number): string {
   if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K`;
   return formatCurrency(value);
 }
+
+type RechartsTooltipFormatter = NonNullable<
+  TooltipProps<ValueType, NameType>["formatter"]
+>;
+
+const tooltipFormatCurrency: RechartsTooltipFormatter = (value) =>
+  formatCurrency(Number(value));
+
+const tooltipFormatMatchRevenue: RechartsTooltipFormatter = (value, name) => [
+  formatCurrency(Number(value)),
+  name === "tickets" ? "Билеты" : "Мерч",
+];
 
 const COLORS = {
   primary: "#5282FF",
@@ -135,12 +153,12 @@ export function getMerchTrendXAxisProps(timeGrouping: TimeGrouping = "month") {
   const isDay = timeGrouping === "day";
   return {
     dataKey: "period" as const,
-    tick: { fontSize: isWeek ? 12 : 10, fill: "#8B8B8E" },
+    tick: { fontSize: 12, fill: "#8B8B8E" },
     interval: "preserveStartEnd" as const,
     angle: isDay ? -35 : 0,
     textAnchor: isDay ? ("end" as const) : ("middle" as const),
     height: isDay ? 52 : isWeek ? 36 : 30,
-    minTickGap: isDay ? 4 : undefined,
+    minTickGap: isDay ? 12 : 24,
   };
 }
 
@@ -265,7 +283,7 @@ export function MerchSalesStackedChart({
                 <XAxis {...getMerchTrendXAxisProps(timeGrouping)} />
                 <YAxis
                   domain={yDomain}
-                  tick={{ fontSize: 10, fill: "#8B8B8E" }}
+                  tick={{ fontSize: 11, fill: "#8B8B8E" }}
                   width={48}
                   tickFormatter={(value) =>
                     value >= 1_000_000
@@ -275,7 +293,7 @@ export function MerchSalesStackedChart({
                         : String(value)
                   }
                 />
-                <Tooltip content={<MerchSalesStackedTooltip />} />
+                <AdaptiveTooltip content={<MerchSalesStackedTooltip />} />
                 <Legend {...MERCH_STACKED_CHART_LEGEND_PROPS} />
                 <ChartZoomReferenceArea selectionArea={selectionArea} />
                 {activeGroups.map((group) => (
@@ -344,7 +362,7 @@ export function WeeklyTrendChart({
               tick={{ fontSize: 11, fill: "#8B8B8E" }}
               tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`}
             />
-            <Tooltip
+            <AdaptiveTooltip
               content={<ChartTooltip formatter={formatCurrency} />}
             />
             <ChartZoomReferenceArea selectionArea={selectionArea} />
@@ -383,9 +401,7 @@ export function MatchBarChart({
             tick={{ fontSize: 11, fill: "#8B8B8E" }}
             tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`}
           />
-          <Tooltip
-            formatter={(value: number) => formatCurrency(value)}
-          />
+          <AdaptiveTooltip formatter={tooltipFormatCurrency} />
           <Bar dataKey="value" name="Выручка" fill={color} radius={[4, 4, 0, 0]} isAnimationActive={false} />
         </BarChart>
       </ResponsiveContainer>
@@ -413,7 +429,7 @@ export function SectorPieChart({ data }: { data: SectorPoint[] }) {
               <Cell key={i} fill={SECTOR_COLORS[i % SECTOR_COLORS.length]} />
             ))}
           </Pie>
-          <Tooltip />
+          <AdaptiveTooltip />
           <Legend wrapperStyle={{ fontSize: 12 }} />
         </PieChart>
       </ResponsiveContainer>
@@ -436,38 +452,91 @@ function ShareBreakdownInlineRows({
   rows: ShareInlineRow[];
   labelClassName?: string;
 }) {
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+
   return (
-    <div className="flex h-full flex-col justify-center gap-2 overflow-y-auto py-1">
-      {rows.map((item) => (
-        <div key={item.key} className="flex items-center gap-2">
-          <span
-            className={clsx(
-              "shrink-0 truncate text-xs font-medium text-[var(--foreground)]",
-              labelClassName,
-            )}
-            title={item.label}
+    <div className="flex h-full flex-col justify-center gap-2 py-1">
+      {rows.map((item) => {
+        const active = activeKey === item.key;
+        return (
+          <button
+            key={item.key}
+            type="button"
+            className="relative flex min-h-11 w-full flex-col items-stretch gap-1 text-left sm:min-h-0 sm:flex-row sm:items-center sm:gap-2"
+            onClick={() =>
+              setActiveKey((current) => (current === item.key ? null : item.key))
+            }
+            aria-label={`${item.label}: ${formatCurrency(item.value)}, ${item.share.toFixed(1)}%`}
           >
-            {item.label}
-          </span>
-          <div className="min-w-0 flex-1">
-            <InlineBarCell
-              value={item.value}
-              max={100}
-              share={item.share}
-              formatted={formatCurrency(item.value)}
-              trailingFormatted={`${item.share.toFixed(1)}%`}
-              barStyle={{ backgroundColor: item.color }}
-            />
-          </div>
-        </div>
-      ))}
+            <span
+              className={clsx(
+                "line-clamp-2 min-w-0 text-xs font-medium leading-snug text-[var(--foreground)] sm:line-clamp-1 sm:shrink-0 sm:truncate",
+                labelClassName,
+              )}
+            >
+              {item.label}
+            </span>
+            <div className="min-w-0 flex-1">
+              <InlineBarCell
+                value={item.value}
+                max={100}
+                share={item.share}
+                formatted={formatCurrencyCompact(item.value)}
+                trailingFormatted={`${item.share.toFixed(1)}%`}
+                barStyle={{ backgroundColor: item.color }}
+              />
+            </div>
+            {active ? (
+              <span className="absolute right-0 top-full z-20 mt-1 rounded-md border border-[var(--border)] bg-white px-2 py-1 text-xs leading-snug shadow-sm sm:top-1/2 sm:mt-0 sm:-translate-y-1/2">
+                {formatCurrency(item.value)}
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
     </div>
   );
 }
 
 function getShareBreakdownChartHeight(itemCount: number, compact = true): number {
-  const rowHeight = compact ? 32 : 36;
-  return Math.max(compact ? 140 : 160, itemCount * rowHeight + 56);
+  const rowHeight = compact ? 44 : 48;
+  return Math.max(compact ? 160 : 180, itemCount * rowHeight + 24);
+}
+
+function ShareSortControls({
+  sortKey,
+  onChange,
+}: {
+  sortKey: "value" | "name";
+  onChange: (key: "value" | "name") => void;
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-1 text-xs leading-snug text-[var(--muted)]">
+      <span className="sr-only">Сортировка</span>
+      <button
+        type="button"
+        className={clsx(
+          "min-h-11 rounded-md px-2 xl:min-h-8",
+          sortKey === "value" && "font-medium text-[var(--foreground)]",
+        )}
+        onClick={() => onChange("value")}
+        aria-pressed={sortKey === "value"}
+      >
+        Сумма
+      </button>
+      <button
+        type="button"
+        className={clsx(
+          "min-h-11 rounded-md px-2 xl:min-h-8",
+          sortKey === "name" && "font-medium text-[var(--foreground)]",
+        )}
+        onClick={() => onChange("name")}
+        aria-pressed={sortKey === "name"}
+      >
+        Имя
+      </button>
+    </div>
+  );
 }
 
 export function MerchSalesChannelsChart({
@@ -479,10 +548,16 @@ export function MerchSalesChannelsChart({
   className?: string;
   compact?: boolean;
 }) {
-  const sorted = useMemo(
-    () => [...data].sort((a, b) => b.value - a.value),
-    [data],
-  );
+  const [sortKey, setSortKey] = useState<"value" | "name">("value");
+  const sorted = useMemo(() => {
+    const next = [...data];
+    if (sortKey === "name") {
+      next.sort((a, b) => a.channel.localeCompare(b.channel, "ru"));
+    } else {
+      next.sort((a, b) => b.value - a.value);
+    }
+    return next;
+  }, [data, sortKey]);
   const chartHeight = getShareBreakdownChartHeight(sorted.length, compact);
   const rows = useMemo<ShareInlineRow[]>(
     () =>
@@ -496,6 +571,10 @@ export function MerchSalesChannelsChart({
     [sorted],
   );
 
+  const headerExtra = (
+    <ShareSortControls sortKey={sortKey} onChange={setSortKey} />
+  );
+
   if (rows.length === 0) {
     return (
       <ChartWidget
@@ -503,6 +582,7 @@ export function MerchSalesChannelsChart({
         height={chartHeight}
         className={className}
         compact={compact}
+        headerExtra={headerExtra}
       >
         <div className="flex h-full items-center justify-center text-sm text-[var(--muted)]">
           Нет данных по выбранным каналам
@@ -517,8 +597,9 @@ export function MerchSalesChannelsChart({
       height={chartHeight}
       className={className}
       compact={compact}
+      headerExtra={headerExtra}
     >
-      <ShareBreakdownInlineRows rows={rows} labelClassName="w-24 sm:w-36" />
+      <ShareBreakdownInlineRows rows={rows} labelClassName="w-auto sm:w-36" />
     </ChartWidget>
   );
 }
@@ -604,7 +685,7 @@ export function ChannelMixChart({
             width={compact ? 80 : 90}
             tick={{ fontSize: 12, fill: "#8B8B8E" }}
           />
-          <Tooltip formatter={(value: number) => formatCurrency(value)} />
+          <AdaptiveTooltip formatter={tooltipFormatCurrency} />
           <Bar dataKey="value" name="Выручка" fill={COLORS.secondary} radius={[0, 4, 4, 0]} isAnimationActive={false} />
         </BarChart>
       </ResponsiveContainer>
@@ -646,7 +727,7 @@ export function TopProductsChart({
             width={90}
             tick={{ fontSize: 12, fill: "#8B8B8E" }}
           />
-          <Tooltip formatter={(value: number) => formatCurrency(value)} />
+          <AdaptiveTooltip formatter={tooltipFormatCurrency} />
           <Bar dataKey="revenue" name="Выручка" fill={COLORS.secondary} radius={[0, 4, 4, 0]} isAnimationActive={false} />
         </BarChart>
       </ResponsiveContainer>
@@ -701,7 +782,7 @@ export function SubscriptionPlansChart({
             <span
               className={clsx(
                 "shrink-0 truncate font-medium text-[var(--foreground)]",
-                compact ? "w-[88px] text-[10px]" : "w-[110px] text-xs sm:w-[140px]",
+                compact ? "w-[88px] text-xs" : "w-[110px] text-xs sm:w-[140px]",
               )}
               title={item.plan}
             >
@@ -803,7 +884,7 @@ export const SubscriptionPriceCategoryShareChart = memo(
                     tickLine={false}
                     padding={{ top: 0, bottom: 0 }}
                   />
-                  <Tooltip content={<PriceCategoryShareTooltip />} />
+                  <AdaptiveTooltip content={<PriceCategoryShareTooltip />} />
                   <Bar
                     dataKey="sold"
                     name="Продано"
@@ -842,7 +923,7 @@ export const SubscriptionPriceCategoryShareChart = memo(
               <div className="mt-2 overflow-auto rounded-md border border-[var(--border)]">
                 <table className="min-w-full border-collapse text-xs">
                   <thead>
-                    <tr className="border-b border-[var(--border)] text-left text-[10px] font-semibold uppercase tracking-wide text-[var(--muted)]">
+                    <tr className="border-b border-[var(--border)] text-left text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
                       <th className="px-2 py-2">Категория</th>
                       <th className="px-2 py-2 text-right">Продано, шт</th>
                       <th className="px-2 py-2 text-right">Доля</th>
@@ -1027,7 +1108,7 @@ export function MatchRevenueChart({
         />
         <YAxis
           domain={yDomain}
-          tick={{ fontSize: 10, fill: "#8B8B8E" }}
+          tick={{ fontSize: 11, fill: "#8B8B8E" }}
           width={48}
           tickFormatter={(value) =>
             value >= 1_000_000
@@ -1037,12 +1118,7 @@ export function MatchRevenueChart({
                 : String(value)
           }
         />
-        <Tooltip
-          formatter={(value: number, name: string) => [
-            formatCurrency(value),
-            name === "tickets" ? "Билеты" : "Мерч",
-          ]}
-        />
+        <AdaptiveTooltip formatter={tooltipFormatMatchRevenue} />
         <Legend
           verticalAlign="bottom"
           wrapperStyle={{

@@ -2,7 +2,7 @@
 
 import { useDeferredValue, useMemo, useState, type ReactNode } from "react";
 import clsx from "clsx";
-import { Card, CardContent, CardHeader } from "@/components/ui/Card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { useFilterState } from "@/context/FilterContext";
 import { getSubscriptions } from "@/lib/mock/hockey";
 import {
@@ -93,7 +93,7 @@ export function SubscriptionCampaignPaceWidget() {
 
       <div
         className={clsx(
-          "grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2",
+          "grid min-w-0 grid-cols-1 gap-4 min-[1024px]:grid-cols-2",
           tableOpen ? "items-start" : "items-stretch",
         )}
       >
@@ -153,9 +153,7 @@ function CampaignPaceCard({
     <Card className={clsx("min-w-0", stretch && "h-full")}>
       <CardHeader className="sm:items-start">
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold leading-snug text-[var(--foreground)]">
-            {title}
-          </h3>
+          <CardTitle>{title}</CardTitle>
           <p className="mt-1 text-xs leading-snug text-[var(--muted)]">
             {subtitle}
           </p>

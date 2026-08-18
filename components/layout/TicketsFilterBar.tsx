@@ -52,7 +52,7 @@ function FilterGroup({
       <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
         {title}
       </p>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:items-end xl:flex xl:flex-wrap">
+      <div className="grid grid-cols-1 gap-3 xl:flex xl:flex-wrap xl:items-end">
         {children}
       </div>
     </div>

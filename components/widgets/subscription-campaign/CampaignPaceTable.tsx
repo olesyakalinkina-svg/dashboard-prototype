@@ -39,7 +39,7 @@ export function CampaignPaceTable({
         <div className="mt-2 max-h-72 overflow-auto rounded-md border border-[var(--border)]">
           <table className="min-w-full border-collapse text-xs">
             <thead className="sticky top-0 bg-white">
-              <tr className="border-b border-[var(--border)] text-left text-[10px] font-semibold uppercase tracking-wide text-[var(--muted)]">
+              <tr className="border-b border-[var(--border)] text-left text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
                 <th className="px-2 py-2">День</th>
                 <th className="px-2 py-2">{mainSeasonName}</th>
                 <th className="px-2 py-2">{benchmarkSeasonName}</th>

@@ -56,9 +56,9 @@ export const KpiCard = memo(function KpiCard({
 
   const body = (
     <>
-      <p className="text-xs leading-snug text-[var(--muted)]">{title}</p>
+      <p className="text-xs leading-snug text-[var(--muted)] min-[360px]:text-[12px]">{title}</p>
       <p
-        className="mt-1 break-words text-lg font-semibold text-[var(--foreground)] min-[480px]:text-xl sm:text-2xl"
+        className="mt-1 break-words text-[18px] font-semibold leading-snug text-[var(--foreground)] min-[430px]:text-[20px] xl:text-2xl"
         title={tooltipValue}
       >
         {displayValue}
@@ -83,7 +83,7 @@ export const KpiCard = memo(function KpiCard({
 
   return (
     <Card className={clsx("min-w-0", className)}>
-      <CardContent className="pt-3 sm:pt-4">{body}</CardContent>
+      <CardContent className="p-3 pt-3 sm:pt-4">{body}</CardContent>
     </Card>
   );
 });
@@ -96,7 +96,7 @@ export function MerchKpiCards({ merchKpis }: { merchKpis: MerchKpiData }) {
   const kpiProps = { changeLabel: seasonChangeLabel };
 
   return (
-    <div className="grid min-w-0 grid-cols-1 gap-3 min-[480px]:grid-cols-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-5 xl:gap-2">
+    <div className="grid min-w-0 grid-cols-2 gap-2 min-[768px]:grid-cols-3 min-[768px]:gap-3 min-[1024px]:grid-cols-4 xl:grid-cols-5 xl:gap-2">
       <KpiCard
         title="Выручка"
         value={formatCurrency(merchKpis.revenue)}
@@ -132,6 +132,7 @@ export function MerchKpiCards({ merchKpis }: { merchKpis: MerchKpiData }) {
         {...kpiProps}
       />
       <KpiCard
+        className="min-[768px]:max-[1023px]:col-span-1 max-[767px]:col-span-2"
         title="Маржинальность"
         value={formatPercent(merchKpis.marginPct)}
         change={sc?.marginPctChange}
@@ -154,7 +155,7 @@ export function MatchSalesKpiCards({
   const kpiProps = { changeLabel: seasonChangeLabel };
 
   return (
-    <div className="grid min-w-0 grid-cols-1 gap-3 min-[480px]:grid-cols-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-6 xl:gap-2">
+    <div className="grid min-w-0 grid-cols-2 gap-2 min-[768px]:grid-cols-3 min-[768px]:gap-3 min-[1024px]:grid-cols-4 xl:grid-cols-6 xl:gap-2">
       <KpiCard
         title="Общая выручка"
         value={formatCurrency(matchSalesKpis.totalRevenue)}
@@ -222,7 +223,7 @@ export const TabKpiCards = memo(function TabKpiCards({
     const seasonChangeLabel = sc ? `к сезону ${sc.previousSeason}` : undefined;
 
     return (
-      <div className="grid min-w-0 grid-cols-1 gap-3 min-[480px]:grid-cols-2 md:gap-4 lg:grid-cols-4">
+      <div className="grid min-w-0 grid-cols-2 gap-2 min-[768px]:gap-3 min-[1024px]:grid-cols-4">
         <KpiCard
           title="Выручка"
           value={formatCurrency(subscriptionsKpis.revenue)}
@@ -269,7 +270,7 @@ export const TabKpiCards = memo(function TabKpiCards({
         : 0;
 
     return (
-      <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 min-[480px]:grid-cols-2 md:grid-cols-3 md:gap-4 lg:grid-cols-4">
+      <div className="grid min-w-0 grid-cols-2 items-stretch gap-2 min-[768px]:grid-cols-3 min-[768px]:gap-3 min-[1024px]:grid-cols-4">
         <KpiCard
           title="Выручка"
           value={formatCurrency(ticketsKpis.revenue)}
@@ -287,7 +288,6 @@ export const TabKpiCards = memo(function TabKpiCards({
           hideTrend={false}
         />
         <KpiCard
-          className="md:max-lg:col-start-3 md:max-lg:row-start-1"
           title="Выручка сегодня"
           value={formatCurrency(ticketsKpis.revenueToday)}
           compactCurrency
@@ -296,7 +296,6 @@ export const TabKpiCards = memo(function TabKpiCards({
           hideTrend
         />
         <KpiCard
-          className="md:max-lg:col-start-3 md:max-lg:row-start-2"
           title="Билеты сегодня"
           value={formatNumber(ticketsKpis.ticketsToday)}
           subtitle="За текущий день"
@@ -315,6 +314,7 @@ export const TabKpiCards = memo(function TabKpiCards({
           hideTrend
         />
         <KpiCard
+          className="col-span-2 min-[768px]:col-span-3 min-[1024px]:col-span-4"
           title="Заполняемость (вся билетная масса/вместимость)"
           value={formatPercent(ticketsKpis.fillRate)}
           subtitle="Купленные и бесплатные билеты"

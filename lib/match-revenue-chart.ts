@@ -3,7 +3,7 @@ export const MATCH_REVENUE_CHART_MIN_WIDTH = 700;
 /** Y-axis width (48) + chart left margin (0) + small buffer. */
 export const MATCH_REVENUE_CHART_LEFT_GUTTER = 56;
 export const MATCH_REVENUE_CHART_RIGHT_GUTTER = 8;
-export const MATCH_REVENUE_MOBILE_CHART_HEIGHT = 310;
+export const MATCH_REVENUE_MOBILE_CHART_HEIGHT = 250;
 export const MATCH_REVENUE_DESKTOP_CHART_HEIGHT = 280;
 export const MATCH_REVENUE_MOBILE_BREAKPOINT = 768;
 

@@ -8,10 +8,10 @@ import {
   Line,
   LineChart,
   ResponsiveContainer,
-  Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import { AdaptiveTooltip } from "@/components/charts/AdaptiveTooltip";
 import {
   getMerchTrendPeriodLabel,
   getMerchTrendXAxisProps,
@@ -111,7 +111,7 @@ export function SubscriptionsSalesWidget({
                 tick={{ fontSize: 11, fill: "#8B8B8E" }}
                 tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`}
               />
-              <Tooltip content={<PlanFactTooltip />} />
+              <AdaptiveTooltip content={<PlanFactTooltip />} />
               <Legend wrapperStyle={{ fontSize: 11 }} iconSize={10} />
               <ChartZoomReferenceArea selectionArea={selectionArea} />
               <Line

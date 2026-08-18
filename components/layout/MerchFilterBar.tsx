@@ -71,7 +71,7 @@ export function MerchFilterBar() {
       onReset={resetMerchFilters}
       activeFilterCount={activeFilterCount}
     >
-      <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end">
+      <div className="grid grid-cols-1 gap-3 xl:flex xl:flex-wrap xl:items-end">
         <Select
           label="Сезон"
           value={merchFilters.season}

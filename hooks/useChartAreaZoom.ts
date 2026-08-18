@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useIsCoarsePointer } from "@/hooks/useLayoutMode";
 
 type ZoomChartRow = {
   [key: string]: string | number | null | undefined;
@@ -70,15 +71,18 @@ export function useChartAreaZoom<T extends ZoomChartRow>(
     setSelectionEnd(null);
   }, []);
 
+  const isCoarsePointer = useIsCoarsePointer();
+
   const handleMouseDown = useCallback(
     (state: ChartSyncState) => {
+      if (isCoarsePointer) return;
       const index = getIndexFromState(displayData, state, xKey);
       if (index < 0) return;
       setIsSelecting(true);
       setSelectionStart(index);
       setSelectionEnd(index);
     },
-    [displayData, xKey],
+    [displayData, isCoarsePointer, xKey],
   );
 
   const handleMouseMove = useCallback(

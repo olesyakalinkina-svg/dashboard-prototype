@@ -6,10 +6,10 @@ import {
   Line,
   LineChart,
   ResponsiveContainer,
-  Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import { AdaptiveTooltip } from "@/components/charts/AdaptiveTooltip";
 import type { CampaignPacePoint } from "@/lib/subscription-campaign";
 import {
   formatCampaignCountAxis,
@@ -180,7 +180,7 @@ export function CampaignPaceChart({
               tick={{ fontSize: 11, fill: "#8B8B8E" }}
               tickFormatter={formatY}
             />
-            <Tooltip
+            <AdaptiveTooltip
               allowEscapeViewBox={{ x: false, y: false }}
               wrapperStyle={{ zIndex: 20, pointerEvents: "none" }}
               cursor={{ stroke: "#8B8B8E", strokeDasharray: "3 3" }}
