@@ -49,6 +49,7 @@ export type MatchSalesTreeNode = {
   ticketsSold: number;
   freeTickets: number;
   issuedTickets: number;
+  occupancyIssuedTickets: number;
   capacity: number | null;
   loyaltyDiscountPct: number;
   hasChildren: boolean;
@@ -107,6 +108,7 @@ function metricsFromAgg(
     ticketsSold: agg.ticketsSold,
     freeTickets: agg.freeTickets,
     issuedTickets: agg.issuedTickets,
+    occupancyIssuedTickets: 0,
     loyaltyDiscountPct: ticketSalesLoyaltyDiscountPct(agg),
   };
 }
@@ -273,6 +275,7 @@ export function flattenExpandedMatchSalesTree(
       ticketsSold: node.ticketsSold,
       freeTickets: node.freeTickets,
       issuedTickets: node.issuedTickets,
+      occupancyIssuedTickets: node.occupancyIssuedTickets,
       capacity: node.capacity,
       loyaltyDiscountPct: node.loyaltyDiscountPct,
       depth,
@@ -394,6 +397,7 @@ function sectionNodeFromMatchRow(
     ticketsSold: row.ticketsSold,
     freeTickets: row.freeTickets,
     issuedTickets: row.issuedTickets,
+    occupancyIssuedTickets: row.occupancyIssuedTickets,
     capacity: row.capacity,
     loyaltyDiscountPct: row.loyaltyDiscountPct,
     hasChildren: children.length > 0,
@@ -531,6 +535,7 @@ export function computeMatchSalesTree(
       ticketsSold: row.ticketsSold,
       freeTickets: row.freeTickets,
       issuedTickets: row.issuedTickets,
+      occupancyIssuedTickets: row.occupancyIssuedTickets,
       capacity: row.capacity,
       loyaltyDiscountPct: row.loyaltyDiscountPct,
       hasChildren,

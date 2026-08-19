@@ -61,41 +61,92 @@ function merchTx(
 const ARENA_DATE = d(2025, 9, 15);
 const NORTH_DATE = d(2025, 8, 20);
 
-/** Arena-shop heavy, jerseys-heavy. */
+export const MERCH_FIXTURE_ARENA_TOP_PRODUCTS = [
+  "Джерси игровое",
+  "Футболка домашняя",
+  "Свитшот с капюшоном",
+  "Брелок клубный",
+  "Значок клубный",
+] as const;
+
+export const MERCH_FIXTURE_ARENA_EXCLUDED_SKU = "Футболка гостевая";
+export const MERCH_FIXTURE_NORTH_TOP_SKU = "Свитшот с капюшоном";
+
+/** Arena-shop heavy, jerseys-heavy. Split into 7 SKUs so top-5 ranking is testable. */
 const ARENA_SALES: Transaction[] = [
   merchTx("fx-m-a1", MERCH_FIXTURE_ARENA_MATCH_ID, ARENA_DATE, {
-    amount: 400_000,
-    quantity: 40,
+    amount: 180_000,
+    quantity: 18,
     merchSalesPoint: "flagship",
     productCategory: "jerseys",
+    description: "Джерси игровое",
   }),
   merchTx("fx-m-a2", MERCH_FIXTURE_ARENA_MATCH_ID, ARENA_DATE, {
-    amount: 100_000,
-    quantity: 20,
+    amount: 120_000,
+    quantity: 12,
+    merchSalesPoint: "flagship",
+    productCategory: "jerseys",
+    description: "Футболка домашняя",
+  }),
+  merchTx("fx-m-a3", MERCH_FIXTURE_ARENA_MATCH_ID, ARENA_DATE, {
+    amount: 70_000,
+    quantity: 7,
+    merchSalesPoint: "flagship",
+    productCategory: "jerseys",
+    description: "Свитшот с капюшоном",
+  }),
+  merchTx("fx-m-a4", MERCH_FIXTURE_ARENA_MATCH_ID, ARENA_DATE, {
+    amount: 30_000,
+    quantity: 3,
+    merchSalesPoint: "flagship",
+    productCategory: "jerseys",
+    description: "Футболка гостевая",
+  }),
+  merchTx("fx-m-a5", MERCH_FIXTURE_ARENA_MATCH_ID, ARENA_DATE, {
+    amount: 45_000,
+    quantity: 9,
     merchSalesPoint: "arena_north",
     productCategory: "souvenirs",
+    description: "Брелок клубный",
+  }),
+  merchTx("fx-m-a6", MERCH_FIXTURE_ARENA_MATCH_ID, ARENA_DATE, {
+    amount: 32_000,
+    quantity: 7,
+    merchSalesPoint: "arena_north",
+    productCategory: "souvenirs",
+    description: "Значок клубный",
+  }),
+  merchTx("fx-m-a7", MERCH_FIXTURE_ARENA_MATCH_ID, ARENA_DATE, {
+    amount: 23_000,
+    quantity: 4,
+    merchSalesPoint: "arena_north",
+    productCategory: "souvenirs",
+    description: "Термокружка",
   }),
   merchTx("fx-m-a-mall", MERCH_FIXTURE_ARENA_MATCH_ID, ARENA_DATE, {
     amount: 50_000,
     quantity: 5,
     merchSalesPoint: "mall_raduga",
     productCategory: "apparel",
+    description: "Шорты тренировочные",
   }),
 ];
 
-/** North-kiosk heavy, apparel-heavy. */
+/** North-kiosk heavy, apparel-heavy. Only 2 SKUs — both shown. */
 const NORTH_SALES: Transaction[] = [
   merchTx("fx-m-b1", MERCH_FIXTURE_NORTH_MATCH_ID, NORTH_DATE, {
     amount: 80_000,
     quantity: 8,
     merchSalesPoint: "flagship",
     productCategory: "jerseys",
+    description: "Джерси игровое",
   }),
   merchTx("fx-m-b2", MERCH_FIXTURE_NORTH_MATCH_ID, NORTH_DATE, {
     amount: 320_000,
     quantity: 32,
     merchSalesPoint: "arena_north",
     productCategory: "apparel",
+    description: "Свитшот с капюшоном",
   }),
 ];
 

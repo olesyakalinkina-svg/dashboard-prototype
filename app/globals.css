@@ -65,7 +65,7 @@ body {
   }
 }
 
-/* Local table scroll with sticky header + first column and a fade for more columns. */
+/* Local table scroll with sticky header + first column. */
 .sticky-scroll-table {
   overflow-x: auto;
   max-width: 100%;
@@ -76,6 +76,20 @@ body {
 .sticky-scroll-table table {
   border-collapse: separate;
   border-spacing: 0;
+}
+
+/* Row borders on <tr> are ignored with border-collapse:separate — horizontal rules on cells only. */
+.sticky-scroll-table thead th,
+.sticky-scroll-table tbody td {
+  border-bottom: 1px solid var(--border);
+}
+
+.sticky-scroll-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.sticky-scroll-table tbody td:not(:first-child) {
+  overflow: hidden;
 }
 
 .sticky-scroll-table thead th {
@@ -91,7 +105,6 @@ body {
   left: 0;
   z-index: 1;
   background: var(--card);
-  box-shadow: 8px 0 8px -8px rgba(0, 0, 0, 0.18);
 }
 
 .sticky-scroll-table thead th:first-child {

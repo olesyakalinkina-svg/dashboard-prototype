@@ -10,21 +10,24 @@ import {
 } from "@tanstack/react-table";
 import { ChevronDown, ChevronUp, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Card, CardContent, CardHeader } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { StickyScrollTable } from "@/components/ui/StickyScrollTable";
 import { TreeExpandButton } from "@/components/ui/TreeExpandButton";
 import { TableExcelButton } from "@/components/ui/ExcelDownloadButton";
 import { InlineBarCell } from "@/components/ui/InlineBarCell";
 import { MultiSelect } from "@/components/ui/MultiSelect";
-import { useFilterData } from "@/context/FilterContext";
+import { useFilterData, useTicketsViewResetEpoch } from "@/context/FilterContext";
 import {
   ALL_SECTORS,
   hasAllowedFilterIntersection,
+  NO_SECTORS_FILTER_VALUE,
 } from "@/lib/ticket-filter-options";
 import { filterMatchesByTicketFilters, filterTicketTransactions } from "@/lib/filters";
 import { formatCurrency, formatDate, formatPercent } from "@/lib/format";
 import {
   buildAvailabilityIndex,
+  buildPlanIndex,
   buildZoneSectorMatchTree,
   flattenZoneSectorTree,
   hydrateZoneSectorTree,
@@ -38,12 +41,21 @@ import type { DashboardFilters, PriceZone, Sector, TicketFilters } from "@/types
 
 const EMPTY_FILTER_COMBO_MESSAGE = "Нет данных для выбранного сочетания фильтров";
 
+const DATE_COLUMN_WIDTH_CLASS = "w-[7rem]";
+const BAR_COLUMN_WIDTH_CLASS = "w-[10.5rem] max-w-[10.5rem]";
+const DATE_COLUMN_SIZE = 112;
+const BAR_COLUMN_SIZE = 168;
+
 const COLUMN_WIDTH_CLASS: Record<string, string> = {
   eventLabel: "w-auto min-w-0",
-  date: "w-[6.75rem]",
-  revenue: "w-[10.5rem]",
-  occupancy: "w-[11rem]",
+  date: DATE_COLUMN_WIDTH_CLASS,
+  revenue: BAR_COLUMN_WIDTH_CLASS,
+  occupancy: BAR_COLUMN_WIDTH_CLASS,
 };
+
+function isMetricColumn(columnId: string): boolean {
+  return columnId === "revenue" || columnId === "occupancy";
+}
 
 function columnAlignClass(columnId: string, header: boolean): string {
   if (columnId === "date") {
@@ -51,7 +63,7 @@ function columnAlignClass(columnId: string, header: boolean): string {
       ? "text-right"
       : "whitespace-nowrap text-right tabular-nums";
   }
-  if (columnId === "revenue" || columnId === "occupancy") {
+  if (isMetricColumn(columnId)) {
     return header ? "text-left" : "";
   }
   return "text-left";
@@ -84,7 +96,7 @@ type ZoneSectorSortId = "eventLabel" | "date" | "revenue" | "occupancy";
 type ZoneSectorTableMeta = {
   expandedSet: ReadonlySet<string>;
   toggleExpanded: (id: string) => void;
-  barMax: { occupancy: number; revenue: number };
+  barMax: { revenue: number };
 };
 
 function isSortId(id: string): id is ZoneSectorSortId {
@@ -106,15 +118,23 @@ function barClass(
   return leafClass;
 }
 
+function capOccupancyPct(occupancy: number): number {
+  return Math.min(100, occupancy);
+}
+
 function NullableBar({
   value,
   max,
   formatted,
+  trailingFormatted,
+  share,
   barClassName,
 }: {
   value: number | null;
   max: number;
   formatted: string;
+  trailingFormatted?: string;
+  share?: number;
   barClassName: string;
 }) {
   if (value == null) return <span className="text-[var(--muted)]">—</span>;
@@ -122,7 +142,9 @@ function NullableBar({
     <InlineBarCell
       value={value}
       max={max}
+      share={share}
       formatted={formatted}
+      trailingFormatted={trailingFormatted}
       barClassName={barClassName}
     />
   );
@@ -199,7 +221,7 @@ const COLUMNS: ColumnDef<ZoneSectorFlatRow, unknown>[] = [
           />
           <span
             className={clsx(
-              "min-w-0 break-words md:whitespace-nowrap",
+              "min-w-0 break-words",
               item.level === "leaf" ? "text-[var(--muted)]" : "font-medium",
             )}
           >
@@ -212,21 +234,37 @@ const COLUMNS: ColumnDef<ZoneSectorFlatRow, unknown>[] = [
   {
     accessorKey: "date",
     header: "Дата",
-    size: 108,
+    size: DATE_COLUMN_SIZE,
     cell: ({ row }) => (row.original.date ? formatDate(row.original.date) : ""),
   },
   {
     accessorKey: "revenue",
     header: "Выручка",
-    size: 168,
+    size: BAR_COLUMN_SIZE,
     cell: ({ row, table }) => {
       const item = row.original;
+      const { revenue, planRevenue } = item;
       const { barMax } = table.options.meta as ZoneSectorTableMeta;
+      const fulfillmentPct =
+        revenue != null && planRevenue != null && planRevenue > 0
+          ? (revenue / planRevenue) * 100
+          : null;
+      const showPlanPct = item.level === "match";
       return (
         <NullableBar
-          value={item.revenue}
+          value={revenue}
           max={barMax.revenue}
-          formatted={item.revenue == null ? "—" : formatCurrency(item.revenue)}
+          share={fulfillmentPct ?? undefined}
+          formatted={revenue == null ? "—" : formatCurrency(revenue)}
+          trailingFormatted={
+            showPlanPct
+              ? revenue == null
+                ? undefined
+                : fulfillmentPct !== null
+                  ? formatPercent(fulfillmentPct)
+                  : "—"
+              : undefined
+          }
           barClassName={barClass(item.level, "bg-rose-400", "bg-rose-300", "bg-rose-200")}
         />
       );
@@ -234,16 +272,18 @@ const COLUMNS: ColumnDef<ZoneSectorFlatRow, unknown>[] = [
   },
   {
     accessorKey: "occupancy",
-    header: "% заполняемости",
-    size: 176,
-    cell: ({ row, table }) => {
+    header: "Заполняемость",
+    size: BAR_COLUMN_SIZE,
+    cell: ({ row }) => {
       const item = row.original;
-      const { barMax } = table.options.meta as ZoneSectorTableMeta;
+      const occupancy =
+        item.occupancy == null ? null : capOccupancyPct(item.occupancy);
       return (
         <NullableBar
-          value={item.occupancy}
-          max={Math.max(100, barMax.occupancy)}
-          formatted={item.occupancy == null ? "—" : formatPercent(item.occupancy)}
+          value={occupancy}
+          max={100}
+          share={occupancy ?? undefined}
+          formatted={occupancy == null ? "—" : formatPercent(occupancy)}
           barClassName={barClass(item.level, "bg-emerald-500", "bg-emerald-300", "bg-emerald-200")}
         />
       );
@@ -252,6 +292,11 @@ const COLUMNS: ColumnDef<ZoneSectorFlatRow, unknown>[] = [
 ];
 
 export function TicketsZoneSectorWidget() {
+  const ticketsViewResetEpoch = useTicketsViewResetEpoch();
+  return <TicketsZoneSectorTable key={ticketsViewResetEpoch} />;
+}
+
+function TicketsZoneSectorTable() {
   const { appliedFilters, appliedTicketFilters } = useFilterData();
   const queryKey = ticketsQueryKey(appliedFilters, appliedTicketFilters);
   const transactions = useMemo(
@@ -268,7 +313,7 @@ export function TicketsZoneSectorWidget() {
   const matchesById = useMemo(() => new Map(matches.map((m) => [m.id, m])), [matches]);
 
   const [mode, setMode] = useState<DetailMode>("zones_to_sectors");
-  const [selectedSectorIds, setSelectedSectorIds] = useState<Sector[]>([]);
+  const [selectedSectorIds, setSelectedSectorIds] = useState<string[]>([]);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([{ id: "date", desc: true }]);
@@ -292,6 +337,10 @@ export function TicketsZoneSectorWidget() {
     () => buildAvailabilityIndex(matchesById, agg),
     [matchesById, agg],
   );
+  const planIndex = useMemo(
+    () => buildPlanIndex(matchesById),
+    [matchesById],
+  );
 
   const treeContext = useMemo<ZoneSectorTreeContext>(
     () => ({
@@ -300,9 +349,10 @@ export function TicketsZoneSectorWidget() {
       matchesById,
       localMatchIds: [],
       localPriceZones: globalPriceZones,
-      localSectors: selectedSectorIds,
+      localSectors: selectedSectorIds as Sector[],
+      planIndex,
     }),
-    [agg, availability, matchesById, globalPriceZones, selectedSectorIds],
+    [agg, availability, matchesById, globalPriceZones, selectedSectorIds, planIndex],
   );
 
   const tree = useMemo(
@@ -364,15 +414,11 @@ export function TicketsZoneSectorWidget() {
   );
 
   const barMax = useMemo(() => {
-    let occupancy = 0;
     let revenue = 0;
     for (const node of filteredTree) {
-      if (node.occupancy != null) {
-        occupancy = Math.max(occupancy, node.occupancy);
-      }
       revenue = Math.max(revenue, node.revenue ?? 0);
     }
-    return { occupancy, revenue };
+    return { revenue };
   }, [filteredTree]);
 
   const tableMeta = useMemo<ZoneSectorTableMeta>(
@@ -420,9 +466,7 @@ export function TicketsZoneSectorWidget() {
     <Card className="flex h-full min-w-0 flex-col">
       <CardHeader>
         <div className="flex w-full flex-wrap items-center justify-between gap-3">
-          <h3 className="min-w-0 text-[18px] font-semibold leading-tight text-[var(--foreground)]">
-            Продажи по ценовым зонам и секторам
-          </h3>
+          <CardTitle>Продажи по ценовым зонам и секторам на арене</CardTitle>
           <div className="flex w-full min-w-0 items-center justify-end gap-2 sm:w-auto">
             <div className="relative min-w-0 flex-1 sm:w-48 sm:flex-none">
               <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
@@ -449,32 +493,28 @@ export function TicketsZoneSectorWidget() {
           </button>
         </div>
 
-        <div
-          className={clsx(
-            "relative z-40",
-            showMobileFilters ? "block" : "hidden md:block",
-          )}
-        >
+        <div className={showMobileFilters ? "block" : "hidden md:block"}>
           <div className="flex flex-wrap items-end gap-2">
             <MultiSelect
               label="Секторы"
               options={sectorOptions}
               value={selectedSectorIds}
-              onChange={(value) => setSelectedSectorIds(value as Sector[])}
+              onChange={setSelectedSectorIds}
               emptyMeansAll
+              noneValue={NO_SECTORS_FILTER_VALUE}
               searchable
               searchPlaceholder="Поиск сектора..."
               selectAllLabel="Все секторы"
               allSelectedLabel="Все секторы"
             />
             {hasLocalFilters && (
-              <button
-                type="button"
-                className="min-h-11 rounded-md border border-[var(--border)] px-3 text-sm"
+              <Button
+                variant="ghost"
                 onClick={() => setSelectedSectorIds([])}
+                className="shrink-0"
               >
                 Сбросить фильтры
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -502,11 +542,6 @@ export function TicketsZoneSectorWidget() {
               По секторам
             </button>
           </div>
-          {hasLocalFilters && (
-            <span className="rounded-full border border-[var(--border)] px-2 py-1 text-xs">
-              Фильтры · 1
-            </span>
-          )}
         </div>
 
         {!filterComboValid && (
@@ -522,9 +557,9 @@ export function TicketsZoneSectorWidget() {
           <>
             <div className="min-w-0">
               <StickyScrollTable>
-              <table className="w-full min-w-[28rem] table-fixed text-sm leading-snug md:min-w-[36rem]">
+              <table className="w-full min-w-[37rem] table-fixed text-sm leading-snug">
                 <colgroup>
-                  <col />
+                  <col className={COLUMN_WIDTH_CLASS.eventLabel} />
                   <col className={COLUMN_WIDTH_CLASS.date} />
                   <col className={COLUMN_WIDTH_CLASS.revenue} />
                   <col className={COLUMN_WIDTH_CLASS.occupancy} />
@@ -571,6 +606,7 @@ export function TicketsZoneSectorWidget() {
                           key={cell.id}
                           className={clsx(
                             "px-3 py-2.5 text-[var(--foreground)]",
+                            isMetricColumn(cell.column.id) && "overflow-hidden",
                             COLUMN_WIDTH_CLASS[cell.column.id],
                             columnAlignClass(cell.column.id, false),
                             cell.column.id === "eventLabel" && "relative z-[1]",

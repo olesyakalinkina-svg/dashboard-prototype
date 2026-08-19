@@ -86,6 +86,11 @@ export type MatchSalesRow = {
   ticketsSold: number;
   freeTickets: number;
   issuedTickets: number;
+  /**
+   * Arena issued tickets for occupancy % (parking excluded).
+   * `issuedTickets` still includes parking quantity.
+   */
+  occupancyIssuedTickets: number;
   capacity: number;
   loyaltyDiscountPct: number;
 };
@@ -95,7 +100,7 @@ export type MerchMatchSalesRow = {
   eventLabel: string;
   date: Date;
   revenue: number;
-  /** Match-level merch sales plan (`getMatchMerchPlanRevenue`); 0 when the planning base is missing. */
+  /** Match-level merch sales plan (`getMatchMerchPlanRevenue` or explicit match-id target); 0 when missing. */
   planRevenue: number;
   avgCheck: number;
   receipts: number;
@@ -142,6 +147,23 @@ export type Match = {
   ticketSalesWindowDays: number;
   /** Optional overrides for chart demo scenarios in mock data. */
   ticketSalesProfile?: TicketSalesProfile;
+  /**
+   * Raised ticket-count plan when realized paid+parking sales would exceed
+   * 105% of the formula plan. Used by KPIs and match tables.
+   */
+  ticketPlanTickets?: number;
+  /**
+   * Raised revenue plan when realized ticket revenue would exceed 105% of
+   * the formula plan (capacity × fill × avg price + parking).
+   */
+  ticketPlanRevenue?: number;
+  /**
+   * Raised merch revenue plan when realized match-table merch would exceed
+   * 103% of the formula plan (or 100% when the ticket revenue plan is met).
+   * Explicit `MERCH_PLAN_FULFILLMENT_BY_MATCH_ID` rows set this to
+   * `round(actual / target)` instead of those bands.
+   */
+  merchPlanRevenue?: number;
 };
 
 export type Promotion = {

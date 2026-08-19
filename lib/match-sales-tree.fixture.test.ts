@@ -46,6 +46,7 @@ import {
   getTicketIssuedQuantity,
   ticketSalesAvgPrice,
 } from "@/lib/ticket-sales-metrics";
+import { issuedOccupancyPercent } from "@/lib/ticket-plan";
 import type { Transaction } from "@/types/dashboard";
 
 function currentMatch(tree: MatchSalesTreeNode[]) {
@@ -123,9 +124,9 @@ describe("fixture integrity", () => {
       10,
     );
     expect(match.capacity).toBe(12_000);
-    expect((match.issuedTickets / match.capacity!) * 100).toBe(
-      expectedMatchMetrics.occupancyPercentage,
-    );
+    expect(
+      issuedOccupancyPercent(match.occupancyIssuedTickets, match.capacity),
+    ).toBe(expectedMatchMetrics.occupancyPercentage);
   });
 
   it("does not use Math.random in the fixture", () => {
@@ -386,7 +387,7 @@ describe("§4 metrics", () => {
     expect(expectedIncompleteMatchMetrics.occupancyPercentage).toBeNull();
     const fillPct =
       incomplete.capacity != null && incomplete.capacity > 0
-        ? (incomplete.issuedTickets / incomplete.capacity) * 100
+        ? (incomplete.occupancyIssuedTickets / incomplete.capacity) * 100
         : null;
     const planPct =
       incomplete.planRevenue != null && incomplete.planRevenue > 0

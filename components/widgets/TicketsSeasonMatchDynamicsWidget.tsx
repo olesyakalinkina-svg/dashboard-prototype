@@ -180,7 +180,10 @@ export const TicketsSeasonMatchDynamicsWidget = memo(
             Нет данных для построения графика
           </div>
         ) : (
-          <div className="min-w-0 shrink-0" style={{ height: chartHeight }}>
+          <div
+            className="relative min-w-0 shrink-0 overflow-visible"
+            style={{ height: chartHeight }}
+          >
             <TicketsSeasonMatchChart
               rows={chartRows}
               views={filteredViews}

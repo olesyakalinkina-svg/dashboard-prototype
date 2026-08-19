@@ -18,14 +18,13 @@ import {
 
   ResponsiveContainer,
 
-  Tooltip,
-
   XAxis,
 
   YAxis,
 
 } from "recharts";
 
+import { AdaptiveTooltip } from "@/components/charts/AdaptiveTooltip";
 import { ChartScrollContainer } from "@/components/charts/ChartScrollContainer";
 
 import {
@@ -292,7 +291,7 @@ export function MerchSalesChannelsTrendWidget({
 
                 />
 
-                <Tooltip content={<ChannelTrendTooltip />} />
+                <AdaptiveTooltip content={<ChannelTrendTooltip />} />
 
                 <Legend wrapperStyle={{ fontSize: 12 }} />
 

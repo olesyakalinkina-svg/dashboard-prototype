@@ -1,20 +1,29 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_DASHBOARD_FILTERS } from "@/lib/filter-coverage";
-import { computeMerchMatchSalesTable } from "@/lib/filters";
+import {
+  computeMatchSalesTable,
+  computeMerchMatchSalesTable,
+  filterMatchesByMerchFilters,
+} from "@/lib/filters";
 import {
   DEFAULT_MERCH_FILTERS,
   MERCH_PRODUCT_CATEGORY_LABELS,
   MERCH_SALES_POINT_LABELS,
 } from "@/lib/merch-filter-options";
+import { DEFAULT_TICKET_FILTERS } from "@/lib/ticket-filter-options";
 import {
   buildDefaultMerchFixtureTree,
+  MERCH_FIXTURE_ARENA_EXCLUDED_SKU,
   MERCH_FIXTURE_ARENA_MATCH_ID,
+  MERCH_FIXTURE_ARENA_TOP_PRODUCTS,
   MERCH_FIXTURE_NORTH_MATCH_ID,
+  MERCH_FIXTURE_NORTH_TOP_SKU,
 } from "@/lib/merch-sales-tree.fixture";
 import {
   computeMerchSalesTree,
   flattenExpandedMerchSalesTree,
   MERCH_SALES_SECTION_LABELS,
+  MERCH_SALES_TOP_PRODUCTS_LIMIT,
   type MerchSalesTreeNode,
 } from "@/lib/merch-sales-tree";
 
@@ -34,7 +43,7 @@ function shareSum(node: MerchSalesTreeNode): number {
 }
 
 describe("merch sales tree", () => {
-  it("builds match → two parallel sections, not nested into each other", () => {
+  it("builds match → three parallel sections, not nested into each other", () => {
     const { tree } = buildDefaultMerchFixtureTree();
     expect(tree).toHaveLength(2);
 
@@ -43,6 +52,7 @@ describe("merch sales tree", () => {
       expect(match.children.map((child) => child.label)).toEqual([
         MERCH_SALES_SECTION_LABELS.salesChannel,
         MERCH_SALES_SECTION_LABELS.productCategory,
+        MERCH_SALES_SECTION_LABELS.topProducts,
       ]);
       expect(match.children.every((child) => child.level === "section")).toBe(
         true,
@@ -107,6 +117,9 @@ describe("merch sales tree", () => {
       )!;
       expect(channels.revenue).toBe(match.revenue);
       expect(categories.revenue).toBe(match.revenue);
+      expect(findSection(match, MERCH_SALES_SECTION_LABELS.topProducts)!.revenue).toBe(
+        match.revenue,
+      );
       expect(sumChildren(channels, "revenue")).toBe(match.revenue);
       expect(sumChildren(categories, "revenue")).toBe(match.revenue);
       expect(sumChildren(channels, "units")).toBe(match.units);
@@ -183,6 +196,7 @@ describe("merch sales tree", () => {
       "match",
       "section",
       "section",
+      "section",
     ]);
 
     const channels = findSection(match, MERCH_SALES_SECTION_LABELS.salesChannel)!;
@@ -194,7 +208,50 @@ describe("merch sales tree", () => {
     expect(oneSection.some((row) => row.level === "productCategory")).toBe(
       false,
     );
-    expect(oneSection.filter((row) => row.level === "section")).toHaveLength(2);
+    expect(oneSection.filter((row) => row.level === "section")).toHaveLength(3);
+    expect(oneSection.some((row) => row.level === "topProduct")).toBe(false);
+  });
+
+  it("ranks top-5 SKUs by match revenue and shows fewer when a match has <5", () => {
+    const { tree } = buildDefaultMerchFixtureTree();
+    const arena = tree.find((node) => node.matchId === MERCH_FIXTURE_ARENA_MATCH_ID)!;
+    const north = tree.find((node) => node.matchId === MERCH_FIXTURE_NORTH_MATCH_ID)!;
+    const arenaTop = findSection(arena, MERCH_SALES_SECTION_LABELS.topProducts)!;
+    const northTop = findSection(north, MERCH_SALES_SECTION_LABELS.topProducts)!;
+
+    expect(arenaTop.children).toHaveLength(MERCH_SALES_TOP_PRODUCTS_LIMIT);
+    expect(arenaTop.children.map((child) => child.level)).toEqual(
+      Array(MERCH_SALES_TOP_PRODUCTS_LIMIT).fill("topProduct"),
+    );
+    expect(arenaTop.children.map((child) => child.label)).toEqual([
+      ...MERCH_FIXTURE_ARENA_TOP_PRODUCTS,
+    ]);
+    expect(arenaTop.children.map((child) => child.revenue)).toEqual([
+      180_000, 120_000, 70_000, 45_000, 32_000,
+    ]);
+    expect(arenaTop.children.every((child) => child.planRevenue === null)).toBe(
+      true,
+    );
+    expect(
+      arenaTop.children.every((child) => child.purchaseConversionPct === 0),
+    ).toBe(true);
+    expect(arenaTop.children.some((child) => child.label === MERCH_FIXTURE_ARENA_EXCLUDED_SKU)).toBe(
+      false,
+    );
+    expect(sumChildren(arenaTop, "revenue")).toBe(447_000);
+    expect(sumChildren(arenaTop, "revenue")).toBeLessThan(arena.revenue);
+
+    expect(northTop.children).toHaveLength(2);
+    expect(northTop.children[0]?.label).toBe(MERCH_FIXTURE_NORTH_TOP_SKU);
+    expect(northTop.children.map((child) => child.revenue)).toEqual([
+      320_000, 80_000,
+    ]);
+    expect(sumChildren(northTop, "revenue")).toBe(north.revenue);
+
+    expect(arenaTop.children[1]?.label).toBe("Футболка домашняя");
+    expect(
+      northTop.children.some((child) => child.label === "Футболка домашняя"),
+    ).toBe(false);
   });
 });
 
@@ -215,6 +272,7 @@ describe("merch sales tree vs live mock", () => {
     const byId = new Map(rows.map((row) => [row.matchId, row]));
     const channelVectors = new Set<string>();
     const categoryVectors = new Set<string>();
+    const topProductVectors = new Set<string>();
 
     for (const match of tree) {
       const row = byId.get(match.matchId)!;
@@ -235,12 +293,38 @@ describe("merch sales tree vs live mock", () => {
         match,
         MERCH_SALES_SECTION_LABELS.productCategory,
       );
+      const topProducts = findSection(
+        match,
+        MERCH_SALES_SECTION_LABELS.topProducts,
+      );
+
+      expect(match.receipts).toBeGreaterThan(0);
+      expect(match.revenue).toBeGreaterThan(0);
+
       expect(channels).toBeDefined();
       expect(categories).toBeDefined();
+      expect(topProducts).toBeDefined();
+      expect(match.children.map((child) => child.label)).toEqual([
+        MERCH_SALES_SECTION_LABELS.salesChannel,
+        MERCH_SALES_SECTION_LABELS.productCategory,
+        MERCH_SALES_SECTION_LABELS.topProducts,
+      ]);
       expect(sumChildren(channels!, "revenue")).toBe(match.revenue);
       expect(sumChildren(categories!, "revenue")).toBe(match.revenue);
       expect(shareSum(channels!)).toBeCloseTo(100, 5);
       expect(shareSum(categories!)).toBeCloseTo(100, 5);
+      expect(topProducts!.children.length).toBeGreaterThan(0);
+      expect(topProducts!.children.length).toBeLessThanOrEqual(
+        MERCH_SALES_TOP_PRODUCTS_LIMIT,
+      );
+      expect(
+        topProducts!.children.every((child) => child.level === "topProduct"),
+      ).toBe(true);
+      const topRevenues = topProducts!.children.map((child) => child.revenue);
+      expect(topRevenues).toEqual([...topRevenues].sort((a, b) => b - a));
+      expect(sumChildren(topProducts!, "revenue")).toBeLessThanOrEqual(
+        match.revenue,
+      );
       expect(
         channels!.children.every(
           (child) =>
@@ -260,10 +344,30 @@ describe("merch sales tree vs live mock", () => {
           .map((child) => `${child.label}:${(child.sharePct ?? 0).toFixed(1)}`)
           .join("|"),
       );
+      topProductVectors.add(
+        topProducts!.children.map((child) => child.label).join("|"),
+      );
     }
 
     expect(channelVectors.size).toBeGreaterThan(1);
     expect(categoryVectors.size).toBeGreaterThan(1);
+    expect(topProductVectors.size).toBeGreaterThan(1);
+
+    const allowed = filterMatchesByMerchFilters(DEFAULT_MERCH_FILTERS);
+    const ticketRows = computeMatchSalesTable(
+      DEFAULT_DASHBOARD_FILTERS,
+      DEFAULT_TICKET_FILTERS,
+    );
+    const completed = allowed.filter((match) => match.eventCompleted);
+    const upcoming = allowed.filter((match) => !match.eventCompleted);
+    const rowIds = new Set(rows.map((row) => row.matchId));
+
+    expect(upcoming.length).toBeGreaterThan(0);
+    expect(rows).toHaveLength(completed.length);
+    expect(rowIds).toEqual(new Set(completed.map((match) => match.id)));
+    expect(rows.every((row) => row.receipts > 0 && row.revenue > 0)).toBe(true);
+    expect(ticketRows.length).toBeGreaterThan(rows.length);
+    expect(ticketRows.length).toBe(allowed.length);
 
     const fulfillmentKeys = new Set(
       tree.map((match) => (match.revenue / (match.planRevenue ?? 0)).toFixed(3)),

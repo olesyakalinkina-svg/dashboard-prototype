@@ -3,6 +3,7 @@ import {
   ALL_SECTORS,
   NON_VIP_PRICE_ZONES,
   NON_VIP_SECTORS,
+  NO_SECTORS_FILTER_VALUE,
   allowedPriceZonesForSector,
   allowedSectorsForPriceZone,
   hasAllowedFilterIntersection,
@@ -21,6 +22,7 @@ import {
 import {
   buildAvailabilityIndex,
   buildMatrixRows,
+  buildPlanIndex,
   buildZoneSectorMatchTree,
   buildZoneSectorTree,
   collectInvalidSectorPriceZoneRecords,
@@ -36,9 +38,12 @@ import {
   resolveAllowedCell,
   sumMatchBySectors,
   sumMatchByZones,
+  allocateComposedChildPlans,
 } from "@/lib/tickets-zone-sector-analytics";
 import type { Match, PriceZone, Sector, Transaction } from "@/types/dashboard";
-import { isSoldOutOccupancyMatch } from "@/lib/ticket-plan";
+import { getMatchPlanArenaRevenue, getMatchPlanRevenue, isSoldOutOccupancyMatch, HIGH_REVENUE_PLAN_THRESHOLD, MAX_MID_REVENUE_OCCUPANCY, MAX_REGULAR_TICKET_PLAN_FULFILLMENT, MAX_TICKET_PLAN_FULFILLMENT, MID_REVENUE_PLAN_MIN, MIN_HIGH_REVENUE_OCCUPANCY, MIN_OVER_PLAN_OCCUPANCY, MIN_SOLD_OUT_TICKET_PLAN_FULFILLMENT, OVER_PLAN_REVENUE_THRESHOLD } from "@/lib/ticket-plan";
+import { formatPercent, percentOneDecimal } from "@/lib/format";
+import { getMatches, getTransactions } from "@/lib/mock/data-store";
 
 const MATCHES: Match[] = [
   {
@@ -215,6 +220,12 @@ describe("filters against the allowed matrix", () => {
     });
     expect(rows).toEqual([]);
   });
+
+  it("explicit no-sectors sentinel is empty, not all sectors", () => {
+    expect(hasAllowedFilterIntersection([], [NO_SECTORS_FILTER_VALUE])).toBe(false);
+    expect(visibleSectorsForFilters([], [NO_SECTORS_FILTER_VALUE])).toEqual([]);
+    expect(visiblePriceZonesForFilters([], [NO_SECTORS_FILTER_VALUE])).toEqual([]);
+  });
 });
 
 describe("empty allowed vs illegal combos", () => {
@@ -389,6 +400,18 @@ describe("tickets-zone-sector analytics", () => {
     expect(aOcc.zoneInMatch).toBe(30);
     expect(aOcc.sectorInMatch).toBe(50);
     expect(aOcc.zoneInSector).toBe(75);
+    expect(occupancyPercent(15, 10)).toBe(100);
+    expect(occupancyPercent(10, 10)).toBe(100);
+    const oversold = computeOccupancy(
+      "m1",
+      "A",
+      "from_1500_to_2500",
+      { inZone: 20, inSector: 20, inCombo: 20 },
+      availability,
+    );
+    expect(oversold.zoneInMatch).toBe(100);
+    expect(oversold.sectorInMatch).toBe(100);
+    expect(oversold.zoneInSector).toBe(100);
     const miss = computeOccupancy(
       "m1",
       "D4",
@@ -658,6 +681,7 @@ describe("zone-sector hierarchical tree", () => {
     expect(matchTree[0]!.children).toEqual([]);
     expect(hydrated[0]!.children.length).toBeGreaterThan(0);
     expect(hydrated[0]!.revenue).toBe(matchTree[0]!.revenue);
+    expect(hydrated[0]!.planRevenue).toBe(matchTree[0]!.planRevenue);
   });
 
   it("hydrate of a page does not attach children to other matches", () => {
@@ -696,6 +720,247 @@ describe("zone-sector hierarchical tree", () => {
     const collapsed = flattenZoneSectorTree(hydratedPage, new Set());
     expect(collapsed).toHaveLength(15);
     expect(collapsed.every((row) => row.level === "match")).toBe(true);
+  });
+});
+
+describe("zone-sector revenue plan (capacity fallback + composed children)", () => {
+  const treeOptions = {
+    transactions: TXS,
+    matchesById,
+    localMatchIds: [] as string[],
+    localPriceZones: [] as PriceZone[],
+    localSectors: [] as Sector[],
+  };
+
+  it("match plan is arena ticket-plan, not parking-inclusive Продажи total", () => {
+    const tree = buildZoneSectorTree({ ...treeOptions, mode: "zones_to_sectors" });
+    const match = tree[0]!;
+    const arenaPlan = getMatchPlanArenaRevenue(MATCHES[0]!);
+    expect(match.planRevenue).toBe(arenaPlan);
+    expect(match.planRevenue).toBeGreaterThan(0);
+    expect(match.planRevenue).toBeLessThan(getMatchPlanRevenue(MATCHES[0]!));
+  });
+
+  it("buildPlanIndex still splits by catalog capacity (fallback / why 269% happened)", () => {
+    const planIndex = buildPlanIndex(matchesById);
+    const matchPlan = planIndex.matchPlan.get("m1")!;
+    let comboSum = 0;
+    for (const [key, value] of planIndex.comboPlan) {
+      if (key.startsWith("m1|")) comboSum += value;
+    }
+    expect(comboSum).toBe(matchPlan);
+
+    const d2Mid = planIndex.comboPlan.get(comboKey("m1", "D2", "from_1500_to_2500"))!;
+    const vip = planIndex.comboPlan.get(comboKey("m1", "VIP", "from_4000_to_6000"))!;
+    const aMid = planIndex.comboPlan.get(comboKey("m1", "A", "from_1500_to_2500"))!;
+    expect(getComboAvailableMass(MATCHES[0]!, "D2", "from_1500_to_2500")).toBe(329);
+    expect(d2Mid).toBeGreaterThan(0);
+    expect(d2Mid).toBeLessThan(matchPlan);
+    expect(Math.abs(d2Mid - (matchPlan * 329) / 12_000)).toBeLessThanOrEqual(1);
+    expect(Math.abs(vip - (matchPlan * 400) / 12_000)).toBeLessThanOrEqual(1);
+    expect(Math.abs(aMid - (matchPlan * 320) / 12_000)).toBeLessThanOrEqual(1);
+  });
+
+  it("tree children use composed plans, not a D2-sized capacity share of the match", () => {
+    const planIndex = buildPlanIndex(matchesById);
+    const matchPlan = planIndex.matchPlan.get("m1")!;
+    const aMidCapacity = planIndex.comboPlan.get(comboKey("m1", "A", "from_1500_to_2500"))!;
+
+    const tree = buildZoneSectorTree({ ...treeOptions, mode: "sectors_to_zones" });
+    const match = tree[0]!;
+    const sectorA = match.children.find((child) => child.sectorId === "A")!;
+    const mid = sectorA.children.find((leaf) => leaf.zoneId === "from_1500_to_2500")!;
+    expect(mid.planRevenue).toBeGreaterThan(0);
+    expect(mid.planRevenue).toBeLessThan(match.planRevenue!);
+    expect(mid.planRevenue).not.toBe(aMidCapacity);
+    expect(mid.planRevenue).not.toBe(matchPlan);
+
+    const fulfillment = match.revenue! / match.planRevenue!;
+    expect(mid.revenue! / mid.planRevenue!).toBeCloseTo(fulfillment, 8);
+    expect(sectorA.revenue! / sectorA.planRevenue!).toBeCloseTo(fulfillment, 8);
+
+    const hiddenD2 = match.children.find((child) => child.sectorId === "D2");
+    expect(hiddenD2).toBeUndefined();
+  });
+
+  it("visible leaf plans sum to the zone plan (hidden zero-sale sectors get no plan)", () => {
+    const tree = buildZoneSectorTree({ ...treeOptions, mode: "zones_to_sectors" });
+    const match = tree[0]!;
+    const mid = match.children.find((child) => child.zoneId === "from_1500_to_2500")!;
+    const visibleLeafPlan = mid.children.reduce(
+      (sum, leaf) => sum + (leaf.planRevenue ?? 0),
+      0,
+    );
+    expect(visibleLeafPlan).toBeCloseTo(mid.planRevenue!, 6);
+    expect(mid.children.some((leaf) => leaf.sectorId === "D2")).toBe(false);
+    const zoneSum = match.children.reduce((sum, zone) => sum + (zone.planRevenue ?? 0), 0);
+    expect(zoneSum).toBeCloseTo(match.planRevenue!, 6);
+  });
+
+  it("sector filter scales match plan to that sector's capacity share", () => {
+    const planIndex = buildPlanIndex(matchesById);
+    const aPlan =
+      (planIndex.comboPlan.get(comboKey("m1", "A", "up_to_1500")) ?? 0) +
+      (planIndex.comboPlan.get(comboKey("m1", "A", "from_1500_to_2500")) ?? 0) +
+      (planIndex.comboPlan.get(comboKey("m1", "A", "from_2500_to_4000")) ?? 0);
+    const tree = buildZoneSectorTree({
+      ...treeOptions,
+      localSectors: ["A"],
+      mode: "sectors_to_zones",
+    });
+    const match = tree[0]!;
+    expect(match.planRevenue).toBe(aPlan);
+    expect(match.planRevenue).toBeLessThan(planIndex.matchPlan.get("m1")!);
+    expect(match.children).toHaveLength(1);
+    expect(match.children[0]!.sectorId).toBe("A");
+    expect(match.children[0]!.planRevenue).toBeCloseTo(match.planRevenue!, 6);
+  });
+});
+
+describe("composed zone/sector plan % (Динамо-like mix)", () => {
+  const ZONE_REVENUE = {
+    up_to_1500: 4_424_265,
+    from_1500_to_2500: 7_977_500,
+    from_2500_to_4000: 7_459_840,
+    from_4000_to_6000: 1_984_250,
+  } as const;
+  const MATCH_REVENUE =
+    ZONE_REVENUE.up_to_1500 +
+    ZONE_REVENUE.from_1500_to_2500 +
+    ZONE_REVENUE.from_2500_to_4000 +
+    ZONE_REVENUE.from_4000_to_6000;
+
+  function dynamoMatch(): Match {
+    const match: Match = {
+      id: "dyn-15-05-26",
+      date: new Date(2026, 4, 15),
+      opponent: "Динамо Мск",
+      attendance: 12_000,
+      capacity: 12_000,
+      season: "2025/26",
+      league: "KHL",
+      tournamentStage: "regular",
+      matchClass: "class_1",
+      arena: "main",
+      eventCompleted: true,
+      ticketSalesWindowDays: 14,
+    };
+    const targetArena = Math.round(MATCH_REVENUE / 0.99);
+    const arenaBase = getMatchPlanArenaRevenue(match);
+    const fullBase = getMatchPlanRevenue(match);
+    match.ticketPlanRevenue = Math.round((targetArena * fullBase) / arenaBase);
+    return match;
+  }
+
+  function dynamoTxs(matchId: string): Transaction[] {
+    return [
+      tx("dyn-low-c2", "C2", "up_to_1500", ZONE_REVENUE.up_to_1500, 4000, { matchId }),
+      tx("dyn-mid-a", "A", "from_1500_to_2500", 5_000_000, 2500, { matchId }),
+      tx("dyn-mid-d4", "D4", "from_1500_to_2500", 2_977_500, 1400, { matchId }),
+      tx("dyn-hi-b1", "B1", "from_2500_to_4000", ZONE_REVENUE.from_2500_to_4000, 2200, {
+        matchId,
+      }),
+      tx("dyn-vip", "VIP", "from_4000_to_6000", ZONE_REVENUE.from_4000_to_6000, 400, {
+        matchId,
+      }),
+    ];
+  }
+
+  it("capacity split would put VIP far above 105% while match is ~99%", () => {
+    const match = dynamoMatch();
+    const byId = new Map([[match.id, match]]);
+    const planIndex = buildPlanIndex(byId);
+    const arenaPlan = planIndex.matchPlan.get(match.id)!;
+    expect(percentOneDecimal((MATCH_REVENUE / arenaPlan) * 100)).toBe(99);
+
+    let vipCapacityPlan = 0;
+    let cheapCapacityPlan = 0;
+    for (const [key, value] of planIndex.comboPlan) {
+      if (key.startsWith(`${match.id}|`) && key.endsWith("|from_4000_to_6000")) {
+        vipCapacityPlan += value;
+      }
+      if (key.startsWith(`${match.id}|`) && key.endsWith("|up_to_1500")) {
+        cheapCapacityPlan += value;
+      }
+    }
+    expect(percentOneDecimal((ZONE_REVENUE.from_4000_to_6000 / vipCapacityPlan) * 100)).toBeGreaterThan(105);
+    expect(
+      percentOneDecimal((ZONE_REVENUE.from_4000_to_6000 / vipCapacityPlan) * 100),
+    ).toBeGreaterThan(200);
+    expect(percentOneDecimal((ZONE_REVENUE.up_to_1500 / cheapCapacityPlan) * 100)).toBeLessThan(60);
+  });
+
+  it("expanded Динамо-like match: max zone % ≤ 105 and weighted avg ≈ match % (1 decimal)", () => {
+    const match = dynamoMatch();
+    const byId = new Map([[match.id, match]]);
+    const tree = buildZoneSectorTree({
+      transactions: dynamoTxs(match.id),
+      matchesById: byId,
+      localMatchIds: [],
+      localPriceZones: [],
+      localSectors: [],
+      mode: "zones_to_sectors",
+    });
+    const root = tree[0]!;
+    expect(root.label).toContain("Динамо Мск");
+    expect(root.revenue).toBe(MATCH_REVENUE);
+    const matchPct = percentOneDecimal((root.revenue! / root.planRevenue!) * 100);
+    expect(matchPct).toBe(99);
+
+    const zones = root.children;
+    expect(zones).toHaveLength(4);
+    let maxZonePct = 0;
+    let planWeightedPct = 0;
+    let planSum = 0;
+    let revenueSum = 0;
+    for (const zone of zones) {
+      expect(zone.planRevenue).toBeGreaterThan(0);
+      const rawPct = (zone.revenue! / zone.planRevenue!) * 100;
+      const zonePct = percentOneDecimal(rawPct);
+      expect(zonePct, `${zone.label}`).toBeLessThanOrEqual(105);
+      expect(zonePct).toBe(matchPct);
+      maxZonePct = Math.max(maxZonePct, zonePct);
+      planWeightedPct += zonePct * zone.planRevenue!;
+      planSum += zone.planRevenue!;
+      revenueSum += zone.revenue!;
+    }
+    expect(maxZonePct).toBeLessThanOrEqual(105);
+    expect(planSum).toBeCloseTo(root.planRevenue!, 0);
+    expect(revenueSum).toBe(root.revenue);
+    expect(percentOneDecimal((revenueSum / planSum) * 100)).toBe(matchPct);
+    expect(planWeightedPct / planSum).toBeCloseTo(matchPct, 1);
+
+    const mid = zones.find((zone) => zone.zoneId === "from_1500_to_2500")!;
+    expect(mid.children.map((leaf) => leaf.sectorId)).toEqual(["A", "D4"]);
+    const zonePct = percentOneDecimal((mid.revenue! / mid.planRevenue!) * 100);
+    let sectorPlanSum = 0;
+    let sectorWeighted = 0;
+    for (const leaf of mid.children) {
+      const leafPct = percentOneDecimal((leaf.revenue! / leaf.planRevenue!) * 100);
+      expect(leafPct).toBeLessThanOrEqual(105);
+      expect(leafPct).toBe(zonePct);
+      sectorPlanSum += leaf.planRevenue!;
+      sectorWeighted += leafPct * leaf.planRevenue!;
+    }
+    expect(sectorPlanSum).toBeCloseTo(mid.planRevenue!, 6);
+    expect(sectorWeighted / sectorPlanSum).toBeCloseTo(zonePct, 1);
+  });
+
+  it("allocates child plans so each % equals parent fulfillment and sums to parent plan", () => {
+    const parentRevenue = 1000;
+    const parentPlan = Math.round(1000 / 0.99);
+    const revenues = [200, 800];
+    const plans = allocateComposedChildPlans(parentRevenue, parentPlan, [
+      { revenue: 200, capacityPlan: 800 },
+      { revenue: 800, capacityPlan: 50 },
+    ]);
+    const sum = plans.reduce((total, value) => total + value, 0);
+    expect(sum).toBeCloseTo(parentPlan, 6);
+    const parentRatio = parentRevenue / parentPlan;
+    for (let i = 0; i < plans.length; i += 1) {
+      expect(revenues[i]! / plans[i]!).toBeCloseTo(parentRatio, 8);
+      expect(revenues[i]! / plans[i]!).toBeLessThanOrEqual(MAX_TICKET_PLAN_FULFILLMENT + 1e-9);
+    }
   });
 });
 
@@ -884,6 +1149,36 @@ describe("sector capacity occupancy (not issued/issued)", () => {
       800,
     );
   });
+
+  it("caps zone occupancy at 100% when issued exceeds that zone's capacity", () => {
+    const overflow: Transaction[] = [
+      tx("overflow-zone", "A", "from_1500_to_2500", 2_000_000, 20_000),
+    ];
+    const tree = buildZoneSectorTree({
+      transactions: overflow,
+      matchesById,
+      localMatchIds: [],
+      localPriceZones: [],
+      localSectors: [],
+      mode: "zones_to_sectors",
+    });
+    const midZone = tree[0]!.children.find(
+      (child) => child.zoneId === "from_1500_to_2500",
+    )!;
+    expect(midZone.issued).toBe(20_000);
+    expect(midZone.occupancy).toBe(100);
+    expect(midZone.children[0]!.occupancy).toBe(100);
+    const sectorTree = buildZoneSectorTree({
+      transactions: overflow,
+      matchesById,
+      localMatchIds: [],
+      localPriceZones: [],
+      localSectors: [],
+      mode: "sectors_to_zones",
+    });
+    const sectorA = sectorTree[0]!.children.find((child) => child.sectorId === "A")!;
+    expect(sectorA.occupancy).toBe(100);
+  });
 });
 
 describe("class_1 and playoff sellout occupancy", () => {
@@ -996,6 +1291,173 @@ describe("class_1 and playoff sellout occupancy", () => {
     });
     expect(isSoldOutOccupancyMatch(class3)).toBe(false);
     expect(class3Tree[0]!.occupancy).toBeLessThan(100);
+  });
+});
+
+describe("dashboard zone-sector match occupancy bands", () => {
+  function zoneSectorMatchRows() {
+    const matches = getMatches();
+    const transactions = getTransactions();
+    const matchesById = new Map(matches.map((match) => [match.id, match]));
+    const tree = buildZoneSectorTree({
+      transactions,
+      matchesById,
+      localMatchIds: [],
+      localPriceZones: [],
+      localSectors: [],
+      mode: "zones_to_sectors",
+    });
+    return { matchesById, tree };
+  }
+
+  function walkZoneSectorNodes(
+    nodes: ReturnType<typeof buildZoneSectorTree>,
+    visit: (node: (typeof nodes)[number]) => void,
+  ) {
+    for (const node of nodes) {
+      visit(node);
+      walkZoneSectorNodes(node.children, visit);
+    }
+  }
+
+  it("keeps every zone and sector occupancy at most 100%", () => {
+    const matches = getMatches();
+    const transactions = getTransactions();
+    const matchesById = new Map(matches.map((match) => [match.id, match]));
+    const occupancyEps = 1e-9;
+    let zoneOrSector = 0;
+    for (const mode of ["zones_to_sectors", "sectors_to_zones"] as const) {
+      const tree = buildZoneSectorTree({
+        transactions,
+        matchesById,
+        localMatchIds: [],
+        localPriceZones: [],
+        localSectors: [],
+        mode,
+      });
+      walkZoneSectorNodes(tree, (row) => {
+        if (row.level === "match" || row.kind === "dash") return;
+        if (row.occupancy == null) return;
+        zoneOrSector += 1;
+        expect(
+          row.occupancy,
+          `${mode} ${row.id} ${row.label}`,
+        ).toBeLessThanOrEqual(100 + occupancyEps);
+      });
+    }
+    expect(zoneOrSector).toBeGreaterThan(0);
+  });
+
+  it("keeps class_1 and playoff match revenue/plan in [99%, 105%]", () => {
+    const { matchesById, tree } = zoneSectorMatchRows();
+    let soldOut = 0;
+    for (const row of tree) {
+      if (row.level !== "match" || row.kind === "dash") continue;
+      const match = matchesById.get(row.matchId);
+      if (!match || !isSoldOutOccupancyMatch(match)) continue;
+      if (row.revenue == null || row.planRevenue == null || !(row.planRevenue > 0)) {
+        continue;
+      }
+      soldOut += 1;
+      const revUi = percentOneDecimal((row.revenue / row.planRevenue) * 100);
+      expect(
+        revUi,
+        `${row.id} ${row.label} ${match.matchClass}`,
+      ).toBeGreaterThanOrEqual(99);
+      expect(revUi).toBeLessThanOrEqual(105);
+    }
+    expect(soldOut).toBeGreaterThan(0);
+  });
+
+  it("keeps class_2 and class_3 match revenue/plan at most 90%", () => {
+    const { matchesById, tree } = zoneSectorMatchRows();
+    let regular = 0;
+    for (const row of tree) {
+      if (row.level !== "match" || row.kind === "dash") continue;
+      const match = matchesById.get(row.matchId);
+      if (!match || isSoldOutOccupancyMatch(match)) continue;
+      if (match.matchClass !== "class_2" && match.matchClass !== "class_3") {
+        continue;
+      }
+      if (row.revenue == null || row.planRevenue == null || !(row.planRevenue > 0)) {
+        continue;
+      }
+      regular += 1;
+      expect(
+        percentOneDecimal((row.revenue / row.planRevenue) * 100),
+        `${row.id} ${row.label} ${match.matchClass}`,
+      ).toBeLessThanOrEqual(90);
+    }
+    expect(regular).toBeGreaterThan(0);
+  });
+
+  it("keeps every match revenue/plan at most 105%", () => {
+    const { tree } = zoneSectorMatchRows();
+    let withPlan = 0;
+    for (const row of tree) {
+      if (row.level !== "match" || row.kind === "dash") continue;
+      if (row.revenue == null || row.planRevenue == null || !(row.planRevenue > 0)) {
+        continue;
+      }
+      withPlan += 1;
+      expect(
+        percentOneDecimal((row.revenue / row.planRevenue) * 100),
+        `${row.id} ${row.label}`,
+      ).toBeLessThanOrEqual(105);
+    }
+    expect(withPlan).toBeGreaterThan(0);
+  });
+
+  it("keeps occupancy in [89%, 96%] when match revenue/plan is in [89%, 95%]", () => {
+    const { tree } = zoneSectorMatchRows();
+    let mid = 0;
+    for (const row of tree) {
+      if (row.level !== "match" || row.kind === "dash") continue;
+      if (row.revenue == null || row.planRevenue == null || !(row.planRevenue > 0)) {
+        continue;
+      }
+      const revUi = percentOneDecimal((row.revenue / row.planRevenue) * 100);
+      if (revUi < 89 || revUi > 95) {
+        continue;
+      }
+      mid += 1;
+      expect(row.occupancy, `${row.id} ${row.label}`).not.toBeNull();
+      expect(
+        percentOneDecimal(row.occupancy!),
+        `${row.id} ${row.label} occupancy with revenue/plan in [89%, 95%]`,
+      ).toBeGreaterThanOrEqual(89);
+      expect(percentOneDecimal(row.occupancy!)).toBeLessThanOrEqual(96);
+    }
+    expect(mid).toBeGreaterThan(0);
+  });
+
+  it("keeps visible match occupancy in the revenue/plan bands", () => {
+    const { tree } = zoneSectorMatchRows();
+    let mid = 0;
+    let high = 0;
+    let over = 0;
+    for (const row of tree) {
+      if (row.level !== "match" || row.kind === "dash") continue;
+      if (row.revenue == null || row.planRevenue == null || !(row.planRevenue > 0)) {
+        continue;
+      }
+      const revUi = percentOneDecimal((row.revenue / row.planRevenue) * 100);
+      expect(row.occupancy, `${row.id} ${row.label} occupancy`).not.toBeNull();
+      expect(percentOneDecimal(row.occupancy!)).toBeLessThanOrEqual(100);
+      if (revUi >= 100) {
+        over += 1;
+        expect(formatPercent(row.occupancy!)).toBe(formatPercent(100));
+      } else if (revUi > 95) {
+        high += 1;
+        expect(percentOneDecimal(row.occupancy!)).toBeGreaterThanOrEqual(96);
+      } else if (revUi >= 89) {
+        mid += 1;
+        expect(percentOneDecimal(row.occupancy!)).toBeGreaterThanOrEqual(89);
+        expect(percentOneDecimal(row.occupancy!)).toBeLessThanOrEqual(96);
+      }
+    }
+    expect(mid).toBeGreaterThan(0);
+    expect(over).toBeGreaterThan(0);
   });
 });
 

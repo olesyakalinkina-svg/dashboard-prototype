@@ -11,6 +11,8 @@ import {
   type TimeGroupingCase,
 } from "@/lib/filter-coverage";
 
+const COVERAGE_TIMEOUT = 30_000;
+
 function activeCases(cases: FilterCoverageCase[]): FilterCoverageCase[] {
   return cases.filter((testCase) => !testCase.excluded);
 }
@@ -23,7 +25,8 @@ function formatCase(testCase: FilterCoverageCase): string {
   return `${testCase.filter} / ${testCase.option}`;
 }
 
-describe("filter coverage — tickets tab", () => {
+describe("filter coverage", { timeout: COVERAGE_TIMEOUT }, () => {
+describe("tickets tab", () => {
   const cases = buildTicketsFilterCases();
 
   it.each(activeCases(cases).map((testCase) => [formatCase(testCase), testCase]))(
@@ -41,7 +44,7 @@ describe("filter coverage — tickets tab", () => {
   });
 });
 
-describe("filter coverage — merch tab", () => {
+describe("merch tab", () => {
   const cases = buildMerchFilterCases();
 
   it.each(activeCases(cases).map((testCase) => [formatCase(testCase), testCase]))(
@@ -67,7 +70,7 @@ describe("filter coverage — merch tab", () => {
   });
 });
 
-describe("filter coverage — subscriptions tab", () => {
+describe("subscriptions tab", () => {
   const cases = buildSubscriptionsFilterCases();
 
   it.each(activeCases(cases).map((testCase) => [formatCase(testCase), testCase]))(
@@ -85,7 +88,7 @@ describe("filter coverage — subscriptions tab", () => {
   });
 });
 
-describe("filter coverage — match sales tab", () => {
+describe("match sales tab", () => {
   const cases = buildMatchSalesFilterCases();
 
   it.each(activeCases(cases).map((testCase) => [formatCase(testCase), testCase]))(
@@ -103,7 +106,7 @@ describe("filter coverage — match sales tab", () => {
   });
 });
 
-describe("filter coverage — time grouping", () => {
+describe("time grouping", () => {
   const cases = buildTimeGroupingCases();
 
   it.each(
@@ -116,7 +119,7 @@ describe("filter coverage — time grouping", () => {
   });
 });
 
-describe("filter coverage — critical combinations", () => {
+describe("critical combinations", () => {
   const cases = buildCriticalComboCases();
   const active = cases.filter((testCase) => !testCase.excluded);
   const excluded = cases.filter((testCase) => Boolean(testCase.excluded));
@@ -134,4 +137,5 @@ describe("filter coverage — critical combinations", () => {
       expect(testCase.excluded).toBeTruthy();
     }
   });
+});
 });

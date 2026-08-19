@@ -21,6 +21,7 @@ import {
   formatNumber,
   formatPercent,
 } from "@/lib/format";
+import { issuedOccupancyPercent } from "@/lib/ticket-plan";
 import type { ExcelValue } from "@/lib/excel-export";
 
 const MATCH_SALES_EXCEL_HEADERS = [
@@ -79,10 +80,7 @@ function MetricsGrid({
   row: MatchSalesTreeNode | MatchSalesFlatRow;
   compact?: boolean;
 }) {
-  const fillPct =
-    row.capacity != null && row.capacity > 0
-      ? (row.issuedTickets / row.capacity) * 100
-      : null;
+  const fillPct = issuedOccupancyPercent(row.occupancyIssuedTickets, row.capacity);
   const revenueFulfillmentPct =
     row.planRevenue != null && row.planRevenue > 0
       ? (row.revenue / row.planRevenue) * 100
@@ -155,7 +153,7 @@ function MetricsGrid({
       <div>
         <dt className="text-[var(--muted)]">Оформлено</dt>
         <dd className="text-[var(--foreground)]">
-          {formatNumber(row.issuedTickets)} шт
+          {formatNumber(row.occupancyIssuedTickets)} шт
           {fillPct !== null ? ` (${formatPercent(fillPct)})` : " (—)"}
         </dd>
       </div>
@@ -170,10 +168,7 @@ function MetricsGrid({
 }
 
 function DetailMetrics({ row }: { row: MatchSalesTreeNode | MatchSalesFlatRow }) {
-  const fillPct =
-    row.capacity != null && row.capacity > 0
-      ? (row.issuedTickets / row.capacity) * 100
-      : null;
+  const fillPct = issuedOccupancyPercent(row.occupancyIssuedTickets, row.capacity);
   const revenueFulfillmentPct =
     row.planRevenue != null && row.planRevenue > 0
       ? (row.revenue / row.planRevenue) * 100
@@ -429,19 +424,19 @@ export const MobileSalesCards = memo(function MobileSalesCards({
         )}
 
         {pagination.pageCount > 1 && (
-          <div className="flex items-center justify-between pt-1 text-xs">
+          <div className="flex items-center justify-between pt-1 text-xs leading-none">
             <button
               type="button"
               disabled={pagination.pageIndex === 0}
               onClick={() => setPage((value) => Math.max(0, value - 1))}
               className={clsx(
-                "min-h-11 rounded-md border border-[var(--border)] px-3",
+                "inline-flex min-h-11 items-center rounded-md border border-[var(--border)] px-3 leading-none",
                 pagination.pageIndex === 0 && "opacity-40",
               )}
             >
               Назад
             </button>
-            <span className="text-[var(--muted)]">
+            <span className="inline-flex min-h-11 items-center leading-none text-[var(--muted)]">
               {pagination.pageIndex + 1} / {pagination.pageCount}
             </span>
             <button
@@ -453,7 +448,7 @@ export const MobileSalesCards = memo(function MobileSalesCards({
                 )
               }
               className={clsx(
-                "min-h-11 rounded-md border border-[var(--border)] px-3",
+                "inline-flex min-h-11 items-center rounded-md border border-[var(--border)] px-3 leading-none",
                 pagination.pageIndex >= pagination.pageCount - 1 &&
                   "opacity-40",
               )}

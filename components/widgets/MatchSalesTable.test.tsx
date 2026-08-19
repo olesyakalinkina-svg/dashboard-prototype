@@ -263,6 +263,7 @@ describe("MatchSalesTable integration (E2E stand-in)", () => {
       ticketsSold: 1,
       freeTickets: 0,
       issuedTickets: 1,
+      occupancyIssuedTickets: 1,
       capacity: 100,
       loyaltyDiscountPct: 0,
       hasChildren: false,
@@ -279,6 +280,7 @@ describe("MatchSalesTable integration (E2E stand-in)", () => {
       ticketsSold: node.ticketsSold,
       freeTickets: node.freeTickets,
       issuedTickets: node.issuedTickets,
+      occupancyIssuedTickets: node.occupancyIssuedTickets,
       capacity: node.capacity ?? 0,
       loyaltyDiscountPct: node.loyaltyDiscountPct,
     }));
@@ -303,5 +305,17 @@ describe("MatchSalesTable integration (E2E stand-in)", () => {
     expect(screen.getByText(incomplete.label)).toBeTruthy();
     const dashes = screen.getAllByText("—");
     expect(dashes.length).toBeGreaterThan(0);
+  });
+
+  it("keeps metric bars inside a fixed-layout grid table", () => {
+    const { container } = renderSales();
+    const table = container.querySelector('[data-testid="desktop-sales-table"]');
+    expect(table?.className).toContain("table-fixed");
+    const bar = container.querySelector(
+      '[data-testid="desktop-sales-table"] tbody td .relative.h-6',
+    );
+    expect(bar?.className).toContain("w-full");
+    expect(bar?.className).toContain("min-w-0");
+    expect(bar?.className).not.toContain("min-w-[120px]");
   });
 });

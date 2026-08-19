@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_DASHBOARD_FILTERS } from "@/lib/filter-coverage";
 import { computeTicketsMatchCumulativeSeries } from "@/lib/filters";
 import { MOCK_TODAY } from "@/lib/mock/constants";
+import { formatShortMonthYear } from "@/lib/format";
 import { DEFAULT_TICKET_FILTERS } from "@/lib/ticket-filter-options";
 import * as seasonMatchChart from "@/lib/tickets-season-match-chart";
 import {
@@ -15,12 +16,15 @@ import {
   buildSeasonMatchXAxisTicks,
   computeSeasonMatchStatus,
   formatSeasonMatchAxisLabel,
+  formatSeasonMatchDateLabel,
   fromSeasonMatchSelectorValue,
   getSeasonMatchChartWidth,
+  getSeasonMatchAxisTickOffsets,
   isSeasonMatchCurrentlyOnSale,
   SEASON_MATCH_CHART_DAY_WIDTH,
   SEASON_MATCH_CHART_MIN_WIDTH,
   SEASON_MATCH_CHART_MOBILE_MAX_WIDTH,
+  SEASON_MATCH_AXIS_STAGGER_DY,
   SEASON_MATCH_CURRENT_SALES_LABEL,
   SEASON_MATCH_CURRENT_SALES_VALUE,
   SEASON_MATCH_LAST_COMPLETED_FALLBACK_COUNT,
@@ -525,6 +529,34 @@ describe("tickets season match chart — helpers", () => {
     );
     expect(filterContext).toContain("timeGrouping: grouping");
   });
+
+  it("keeps the hover tooltip from being clipped by the chart scroll box", () => {
+    const chart = readFileSync(
+      join(
+        process.cwd(),
+        "components/widgets/tickets-season-match/TicketsSeasonMatchChart.tsx",
+      ),
+      "utf8",
+    );
+    const adaptive = readFileSync(
+      join(process.cwd(), "components/charts/AdaptiveTooltip.tsx"),
+      "utf8",
+    );
+    const tooltip = readFileSync(
+      join(
+        process.cwd(),
+        "components/widgets/tickets-season-match/TicketsSeasonMatchTooltip.tsx",
+      ),
+      "utf8",
+    );
+
+    expect(chart).toContain("AdaptiveTooltip");
+    expect(adaptive).toContain("createPortal");
+    expect(adaptive).toContain("document.body");
+    expect(adaptive).toContain('AdaptiveTooltip.displayName = "Tooltip"');
+    expect(tooltip).toContain("formatSeasonMatchDateLabel");
+    expect(tooltip).not.toContain("max-h-72");
+  });
 });
 
 describe("tickets season match chart — mock series", () => {
@@ -596,6 +628,31 @@ describe("tickets season match chart — mock series", () => {
 
     expect(weeklyLabels).toContain("17.05.26");
     expect(dailyLabels).toContain("17.05.26");
+  });
+
+  it("keeps independent Dynamo current-sales series rather than a shared copy", () => {
+    const series = computeTicketsMatchCumulativeSeries(
+      DEFAULT_DASHBOARD_FILTERS,
+      DEFAULT_TICKET_FILTERS,
+    );
+    const match15 = series.find((item) => item.matchId === "match-15");
+    const match16 = series.find((item) => item.matchId === "match-16");
+    expect(match15).toBeDefined();
+    expect(match16).toBeDefined();
+    expect(match15!.points).not.toBe(match16!.points);
+
+    const views = selectSeasonMatchChartViews(
+      buildSeasonMatchSeriesViews(series),
+    );
+    const rows = buildSeasonMatchChartRows(views, series);
+    const fact15 = seasonMatchFactKey("match-15");
+    const fact16 = seasonMatchFactKey("match-16");
+    const overlap = rows.filter(
+      (row) => row[fact15] != null && row[fact16] != null,
+    );
+
+    expect(overlap.length).toBeGreaterThan(3);
+    expect(overlap.some((row) => row[fact15] !== row[fact16])).toBe(true);
   });
 
   it("falls back to the last three completed matches when the tab has only finished games", () => {
@@ -700,6 +757,110 @@ describe("tickets season match chart — current sales selector", () => {
       ),
     });
     expect(viewIds(autoViews)).toEqual(["sale"]);
+  });
+});
+
+describe("tickets season match chart — x-axis ticks", () => {
+  const seasonStart = new Date(2025, 7, 11).getTime();
+  const saleStartJan = new Date(2026, 0, 19).getTime();
+  const matchFeb3 = new Date(2026, 1, 3).getTime();
+  const saleStartMar = new Date(2026, 2, 2).getTime();
+  const matchMar14 = new Date(2026, 2, 14).getTime();
+  const seasonEnd = new Date(2026, 3, 22).getTime();
+
+  function seasonRows(): TicketsSeasonMatchChartRow[] {
+    return [
+      { dateKey: seasonStart, periodLabel: "11 авг." },
+      { dateKey: saleStartJan, periodLabel: "19 янв" },
+      { dateKey: matchFeb3, periodLabel: "03 фев" },
+      { dateKey: saleStartMar, periodLabel: "02 мар" },
+      { dateKey: matchMar14, periodLabel: "14 мар" },
+      { dateKey: seasonEnd, periodLabel: "22 апр." },
+    ];
+  }
+
+  function axisLabels(
+    rows: TicketsSeasonMatchChartRow[],
+    matchDateKeys: number[],
+    chartWidth = 900,
+  ) {
+    const ticks = buildSeasonMatchXAxisTicks(rows, {
+      grouping: "week",
+      matchDateKeys,
+      chartWidth,
+    });
+    return {
+      ticks,
+      labels: ticks.map((tick) =>
+        formatSeasonMatchAxisLabel(tick, rows, matchDateKeys),
+      ),
+    };
+  }
+
+  it("keeps match dates and month ticks, dropping nearby sale-start labels", () => {
+    const rows = seasonRows();
+    const matchDateKeys = [matchFeb3, matchMar14];
+    const { ticks, labels } = axisLabels(rows, matchDateKeys);
+
+    expect(labels).toContain("03.02.26");
+    expect(labels).toContain("14.03.26");
+    expect(labels).not.toContain("19 янв");
+    expect(labels).not.toContain("02 мар");
+    expect(labels).not.toContain("11 авг.");
+
+    expect(ticks).not.toContain(saleStartJan);
+    expect(ticks).not.toContain(saleStartMar);
+    expect(ticks).toContain(matchFeb3);
+    expect(ticks).toContain(matchMar14);
+
+    const februaryStart = new Date(2026, 1, 1).getTime();
+    expect(ticks).not.toContain(februaryStart);
+
+    expect(labels).toContain(formatShortMonthYear(new Date(2026, 0, 1)));
+  });
+
+  it("shows only the match date on a short campaign window", () => {
+    const rows: TicketsSeasonMatchChartRow[] = [
+      { dateKey: saleStartJan, periodLabel: "19 янв" },
+      { dateKey: matchFeb3, periodLabel: "03 фев" },
+    ];
+    const { ticks, labels } = axisLabels(rows, [matchFeb3], 420);
+
+    expect(labels).toEqual(["03.02.26"]);
+    expect(ticks).toEqual([matchFeb3]);
+  });
+
+  it("keeps close match dates and staggers the later label", () => {
+    const first = new Date(2026, 4, 15).getTime();
+    const second = new Date(2026, 4, 17).getTime();
+    const rows: TicketsSeasonMatchChartRow[] = [
+      { dateKey: new Date(2026, 3, 20).getTime(), periodLabel: "20 апр" },
+      { dateKey: first, periodLabel: "15 мая" },
+      { dateKey: second, periodLabel: "17 мая" },
+    ];
+    const matchDateKeys = [first, second];
+    const { ticks, labels } = axisLabels(rows, matchDateKeys, 760);
+
+    expect(labels).toContain("15.05.26");
+    expect(labels).toContain("17.05.26");
+
+    const offsets = getSeasonMatchAxisTickOffsets(ticks, rows, 760);
+    expect(offsets.get(first)).toBe(0);
+    expect(offsets.get(second)).toBe(SEASON_MATCH_AXIS_STAGGER_DY);
+  });
+
+  it("formats match ticks as dd.MM.yy and month ticks as short month+year", () => {
+    expect(formatSeasonMatchDateLabel(matchFeb3)).toBe("03.02.26");
+    expect(
+      formatSeasonMatchAxisLabel(
+        new Date(2026, 0, 1).getTime(),
+        seasonRows(),
+        [matchFeb3],
+      ),
+    ).toBe(formatShortMonthYear(new Date(2026, 0, 1)));
+    expect(
+      formatSeasonMatchAxisLabel(matchFeb3, seasonRows(), [matchFeb3]),
+    ).toBe("03.02.26");
   });
 });
 

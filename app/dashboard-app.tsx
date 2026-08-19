@@ -194,6 +194,10 @@ const DashboardShell = memo(function DashboardShell() {
   );
 });
 
+/** Same 2-col template for Продажи and zone-sector so left-column cards share width. */
+const TICKETS_TWO_COL_GRID_CLASS =
+  "grid min-w-0 grid-cols-1 items-start gap-4 min-[1024px]:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]";
+
 const TicketsSalesSection = memo(function TicketsSalesSection({
   matchSales,
   filters,
@@ -223,7 +227,7 @@ const TicketsMatchDynamicsSection = memo(function TicketsMatchDynamicsSection() 
   );
 
   return (
-    <div className="min-w-0 xl:min-h-0 xl:flex-1">
+    <div className="min-w-0">
       {ticketsChartsPending ? (
         <ChartSkeleton height={380} />
       ) : (
@@ -292,23 +296,24 @@ function DashboardPanels() {
 
         {activeTab === "tickets" && (
           <>
-            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+            <div className={TICKETS_TWO_COL_GRID_CLASS}>
               <TicketsSalesSection
                 matchSales={matchSales}
                 filters={appliedFilters}
                 ticketFilters={appliedTicketFilters}
               />
-              <div className="flex min-w-0 flex-col gap-4 min-[1024px]:max-xl:grid min-[1024px]:max-xl:grid-cols-2 xl:min-h-0">
+              <div className="flex min-w-0 flex-col gap-4">
                 <TicketsMatchDynamicsSection />
-                <div className="min-w-0 xl:min-h-0 xl:flex-1">
-                  <TicketsPlanFactWidget
-                    data={ticketsPlanFactTrend}
-                    timeGrouping={ticketChartTimeGrouping}
-                  />
-                </div>
+                <TicketsPlanFactWidget
+                  data={ticketsPlanFactTrend}
+                  timeGrouping={ticketChartTimeGrouping}
+                />
               </div>
             </div>
-            <TicketsZoneSectorWidget />
+            <div className={TICKETS_TWO_COL_GRID_CLASS}>
+              <TicketsZoneSectorWidget />
+              <div aria-hidden="true" className="hidden min-[1024px]:block" />
+            </div>
           </>
         )}
 
@@ -320,12 +325,14 @@ function DashboardPanels() {
               <TopProductsChart data={topProducts} />
             </div>
             <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-2">
-              <MerchMatchSalesTable data={merchMatchSales} />
-              <MerchSkuSalesTable data={merchSkuSales} />
-            </div>
-            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 min-[1024px]:grid-cols-2">
-              <MerchSalesChannelsChart data={merchSalesChannelRevenue} />
-              <MerchProductCategoriesChart data={merchProductCategoryRevenue} />
+              <div className="flex min-w-0 flex-col gap-4">
+                <MerchMatchSalesTable data={merchMatchSales} />
+                <MerchSalesChannelsChart data={merchSalesChannelRevenue} />
+              </div>
+              <div className="flex min-w-0 flex-col gap-4">
+                <MerchSkuSalesTable data={merchSkuSales} />
+                <MerchProductCategoriesChart data={merchProductCategoryRevenue} />
+              </div>
             </div>
           </>
         )}

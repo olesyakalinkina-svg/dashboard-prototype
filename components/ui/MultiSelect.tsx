@@ -210,6 +210,21 @@ export function MultiSelect({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [closeDropdown]);
 
+  useEffect(() => {
+    if (!open) return;
+
+    function handleScroll(event: Event) {
+      const menu = menuRef.current;
+      if (menu && event.target instanceof Node && menu.contains(event.target)) {
+        return;
+      }
+      closeDropdown();
+    }
+
+    window.addEventListener("scroll", handleScroll, true);
+    return () => window.removeEventListener("scroll", handleScroll, true);
+  }, [open, closeDropdown]);
+
   function commitValue(nextValue: string[]) {
     if (applyOnClose) {
       setDraftValue(nextValue);
@@ -243,7 +258,11 @@ export function MultiSelect({
       const next = stripNoneValue(activeValue, noneValue).filter(
         (v) => v !== optionValue,
       );
-      commitValue(emptyMeansAll && next.length === 0 ? [] : next);
+      if (emptyMeansAll && next.length === 0) {
+        commitValue(noneValue ? [noneValue] : []);
+        return;
+      }
+      commitValue(next);
       return;
     }
 
@@ -275,7 +294,6 @@ export function MultiSelect({
       ref={rootRef}
       className={clsx(
         "relative flex w-full min-w-0 flex-col gap-1 xl:w-auto",
-        open && "z-50",
         className,
       )}
     >

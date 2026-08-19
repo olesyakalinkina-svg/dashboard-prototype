@@ -1,7 +1,9 @@
 import { endOfDay, format, isAfter } from "date-fns";
 import { ru } from "date-fns/locale";
 import {
+  allocateIntegerShares,
   getSectorCapacitiesForMatch,
+  splitSectorCapacity,
   splitSectorCapacityForDemand,
 } from "@/lib/arena-sector-inventory";
 import {
@@ -16,6 +18,10 @@ import {
   visibleSectorsForFilters,
 } from "@/lib/ticket-filter-options";
 import { getTicketFreeQuantity, getTicketIssuedQuantity } from "@/lib/ticket-sales-metrics";
+import {
+  getMatchPlanArenaRevenue,
+  MAX_TICKET_PLAN_FULFILLMENT,
+} from "@/lib/ticket-plan";
 import type { Match, PriceZone, Sector, Transaction } from "@/types/dashboard";
 
 export {
@@ -97,6 +103,23 @@ type BuildOptions = {
   localSectors: Sector[];
 };
 
+export type ZoneSectorPlanIndex = {
+  /** Arena ticket-plan revenue for the match (parking excluded). */
+  matchPlan: Map<string, number>;
+  /**
+   * Capacity-split fallback of matchPlan by match|sector|zone.
+   * Tree children overwrite this with a revenue-composed share so child
+   * fulfillment %s average to the parent. Sum per match = matchPlan.
+   */
+  comboPlan: Map<string, number>;
+};
+
+export type ComposedPlanShare = {
+  revenue: number;
+  /** Catalog-capacity share; used only when parent fulfillment is 0. */
+  capacityPlan: number;
+};
+
 export type ZoneSectorTreeContext = {
   agg: KeyedAgg;
   availability: AvailabilityIndex;
@@ -104,6 +127,8 @@ export type ZoneSectorTreeContext = {
   localMatchIds: string[];
   localPriceZones: PriceZone[];
   localSectors: Sector[];
+  /** Optional; built from matches when omitted. */
+  planIndex?: ZoneSectorPlanIndex;
 };
 
 export type ZoneSectorTreeLevel = "match" | "section" | "leaf";
@@ -123,6 +148,11 @@ export type ZoneSectorTreeNode = {
   issued: number | null;
   avgPrice: number | null;
   occupancy: number | null;
+  /**
+   * Arena ticket-plan for this row. Match keeps the match arena plan;
+   * zones and sectors get a composed share so child %s average to the parent.
+   */
+  planRevenue: number | null;
   hasChildren: boolean;
   children: ZoneSectorTreeNode[];
 };
@@ -305,6 +335,212 @@ export function buildAvailabilityIndex(
   return { zoneInMatch, sectorInMatch, zoneInSector, leftoverByMatch };
 }
 
+/**
+ * Fallback split of each match's arena ticket-plan across allowed
+ * sector×zone combos in proportion to catalog capacity
+ * (`splitSectorCapacity`), not demand. Used when match fulfillment is 0;
+ * visible tree rows reallocate by actual revenue mix instead.
+ */
+export function buildPlanIndex(
+  matchesById: Map<string, Match>,
+): ZoneSectorPlanIndex {
+  const matchPlan = new Map<string, number>();
+  const comboPlan = new Map<string, number>();
+
+  for (const match of matchesById.values()) {
+    const plan = getMatchPlanArenaRevenue(match);
+    matchPlan.set(match.id, plan);
+    const sectors = getSectorCapacitiesForMatch(match);
+    const weights: { id: string; weight: number }[] = [];
+    if (sectors) {
+      for (const sector of ALL_SECTORS) {
+        const cap = sectors[sector] ?? 0;
+        if (!(cap > 0)) continue;
+        const split = splitSectorCapacity(sector, cap);
+        for (const zone of allowedPriceZonesForSector(sector)) {
+          const mass = split[zone] ?? 0;
+          if (!(mass > 0)) continue;
+          weights.push({
+            id: comboKey(match.id, sector, zone),
+            weight: mass,
+          });
+        }
+      }
+    }
+    const allocated = allocateIntegerShares(plan, weights);
+    for (const [key, value] of allocated) {
+      comboPlan.set(key, value);
+    }
+  }
+
+  return { matchPlan, comboPlan };
+}
+
+/**
+ * Allocate `parentPlan` across children so that:
+ * - `sum(child.revenue) / sum(child.plan)` equals parent fulfillment
+ * - no child fulfillment exceeds `MAX_TICKET_PLAN_FULFILLMENT` (105%)
+ * - the plan-weighted average of child % equals the parent %
+ *
+ * When parent fulfillment > 0: `childPlan = childRevenue / fulfillment`
+ * (every child shows the same % as the parent). When fulfillment is 0,
+ * fall back to capacity shares, then cap and residual-adjust.
+ */
+export function allocateComposedChildPlans(
+  parentRevenue: number,
+  parentPlan: number,
+  children: ReadonlyArray<ComposedPlanShare>,
+): number[] {
+  const n = children.length;
+  if (n === 0) return [];
+  if (!(parentPlan > 0)) return Array.from({ length: n }, () => 0);
+
+  const fulfillment = parentRevenue > 0 ? parentRevenue / parentPlan : 0;
+  const plans = Array.from({ length: n }, () => 0);
+
+  if (fulfillment > 0) {
+    let assigned = 0;
+    let lastIdx = -1;
+    for (let i = 0; i < n; i += 1) {
+      const revenue = children[i]!.revenue;
+      if (!(revenue > 0)) continue;
+      lastIdx = i;
+      plans[i] = revenue / fulfillment;
+      assigned += plans[i]!;
+    }
+    if (lastIdx >= 0) {
+      plans[lastIdx]! += parentPlan - assigned;
+    }
+  } else {
+    for (let i = 0; i < n; i += 1) {
+      plans[i] = Math.max(0, children[i]!.capacityPlan);
+    }
+  }
+
+  return enforceMaxChildFulfillment(parentPlan, children, plans);
+}
+
+function enforceMaxChildFulfillment(
+  parentPlan: number,
+  children: ReadonlyArray<ComposedPlanShare>,
+  plans: number[],
+): number[] {
+  const floors = children.map((child) =>
+    child.revenue > 0 ? child.revenue / MAX_TICKET_PLAN_FULFILLMENT : 0,
+  );
+  const next = plans.map((plan, i) => Math.max(plan, floors[i]!));
+  const sum = next.reduce((total, value) => total + value, 0);
+  const extra = sum - parentPlan;
+  if (extra <= 1e-9) {
+    if (extra < -1e-9 && next.length > 0) {
+      let maxI = 0;
+      for (let i = 1; i < next.length; i += 1) {
+        if (next[i]! > next[maxI]!) maxI = i;
+      }
+      next[maxI]! += parentPlan - sum;
+    }
+    return next;
+  }
+
+  let slackSum = 0;
+  const slack = next.map((plan, i) => {
+    const room = plan - floors[i]!;
+    if (room > 1e-12) slackSum += room;
+    return room;
+  });
+  if (slackSum <= 1e-12) return next;
+
+  const take = Math.min(extra, slackSum);
+  for (let i = 0; i < next.length; i += 1) {
+    if (slack[i]! > 0) next[i]! -= (take * slack[i]!) / slackSum;
+  }
+  return next;
+}
+
+function applyComposedPlans(
+  parentRevenue: number | null,
+  parentPlan: number | null,
+  children: ZoneSectorTreeNode[],
+): ZoneSectorTreeNode[] {
+  if (children.length === 0) return children;
+  const allocated = allocateComposedChildPlans(
+    parentRevenue ?? 0,
+    parentPlan ?? 0,
+    children.map((child) => ({
+      revenue: child.kind === "dash" ? 0 : (child.revenue ?? 0),
+      capacityPlan: child.planRevenue ?? 0,
+    })),
+  );
+  return children.map((child, index) => {
+    const planRevenue =
+      child.kind === "dash" || parentPlan == null ? null : allocated[index]!;
+    return {
+      ...child,
+      planRevenue,
+      children: applyComposedPlans(child.revenue, planRevenue, child.children),
+    };
+  });
+}
+
+function resolvePlanIndex(options: ZoneSectorTreeContext): ZoneSectorPlanIndex {
+  return options.planIndex ?? buildPlanIndex(options.matchesById);
+}
+
+function comboPlanOf(
+  planIndex: ZoneSectorPlanIndex,
+  matchId: string,
+  sectorId: Sector,
+  zoneId: PriceZone,
+): number {
+  return planIndex.comboPlan.get(comboKey(matchId, sectorId, zoneId)) ?? 0;
+}
+
+function sumFilteredComboPlan(
+  planIndex: ZoneSectorPlanIndex,
+  matchId: string,
+  selectedZones: readonly PriceZone[],
+  selectedSectors: readonly Sector[],
+): number {
+  const sectors = visibleSectorsForFilters(selectedZones, selectedSectors);
+  const zones = visiblePriceZonesForFilters(selectedZones, selectedSectors);
+  const zoneSet = new Set(zones);
+  let sum = 0;
+  for (const sector of sectors) {
+    for (const zone of allowedPriceZonesForSector(sector)) {
+      if (!zoneSet.has(zone)) continue;
+      sum += comboPlanOf(planIndex, matchId, sector, zone);
+    }
+  }
+  return sum;
+}
+
+function matchPlanForContext(
+  options: ZoneSectorTreeContext,
+  matchId: string,
+): number {
+  const planIndex = resolvePlanIndex(options);
+  const filtered = sumFilteredComboPlan(
+    planIndex,
+    matchId,
+    options.localPriceZones,
+    options.localSectors,
+  );
+  if (filtered > 0) return filtered;
+  if (options.localPriceZones.length > 0 || options.localSectors.length > 0) {
+    return 0;
+  }
+  return planIndex.matchPlan.get(matchId) ?? 0;
+}
+
+function sumNodePlanRevenue(nodes: ZoneSectorTreeNode[]): number {
+  let sum = 0;
+  for (const node of nodes) {
+    sum += node.planRevenue ?? 0;
+  }
+  return sum;
+}
+
+/** Issued / capacity × 100. Never above 100% (oversell or parking-adjacent inflation). */
 export function occupancyPercent(
   issued: number,
   availableMass: number,
@@ -602,7 +838,7 @@ function rollupChildren(
     free,
     issued,
     avgPrice: sold > 0 ? revenue / sold : null,
-    occupancy,
+    occupancy: occupancy == null ? null : Math.min(100, occupancy),
   };
 }
 
@@ -611,7 +847,7 @@ function leafFromCell(
   matchId: string,
   label: string,
   cell: AllowedCellDisplay,
-  extras: { zoneId?: PriceZone; sectorId?: Sector },
+  extras: { zoneId?: PriceZone; sectorId?: Sector; planRevenue: number | null },
 ): ZoneSectorTreeNode {
   return {
     id,
@@ -627,7 +863,8 @@ function leafFromCell(
     free: cell.free,
     issued: cell.issued,
     avgPrice: cell.avgPrice,
-    occupancy: cell.occupancy,
+    occupancy: cell.occupancy == null ? null : Math.min(100, cell.occupancy),
+    planRevenue: extras.planRevenue,
     hasChildren: false,
     children: [],
   };
@@ -662,6 +899,7 @@ function buildSectionChildren(
   options: ZoneSectorTreeContext & { mode: DetailMode },
 ): ZoneSectorTreeNode[] {
   const { agg, availability } = options;
+  const planIndex = resolvePlanIndex(options);
   if (options.mode === "zones_to_sectors") {
     const visibleZones = visiblePriceZonesForFilters(
       options.localPriceZones,
@@ -680,7 +918,11 @@ function buildSectionChildren(
           matchId,
           sector,
           resolveAllowedCell(matchId, sector, zone, agg, availability),
-          { zoneId: zone, sectorId: sector },
+          {
+            zoneId: zone,
+            sectorId: sector,
+            planRevenue: comboPlanOf(planIndex, matchId, sector, zone),
+          },
         ),
       );
       const mass = massFromLeaves(availability, matchId, leaves);
@@ -697,6 +939,7 @@ function buildSectionChildren(
           leaves,
           kind === "dash" ? null : occupancyFromMass(issuedFromNodes(leaves), mass),
         ),
+        planRevenue: sumNodePlanRevenue(leaves),
         hasChildren: visibleLeaves.length > 0,
         children: visibleLeaves,
       };
@@ -720,7 +963,11 @@ function buildSectionChildren(
         matchId,
         PRICE_ZONE_LABELS[zone],
         resolveAllowedCell(matchId, sector, zone, agg, availability),
-        { zoneId: zone, sectorId: sector },
+        {
+          zoneId: zone,
+          sectorId: sector,
+          planRevenue: comboPlanOf(planIndex, matchId, sector, zone),
+        },
       ),
     );
     const mass = massFromLeaves(availability, matchId, leaves);
@@ -737,6 +984,7 @@ function buildSectionChildren(
         leaves,
         kind === "dash" ? null : occupancyFromMass(issuedFromNodes(leaves), mass),
       ),
+      planRevenue: sumNodePlanRevenue(leaves),
       hasChildren: visibleLeaves.length > 0,
       children: visibleLeaves,
     };
@@ -797,6 +1045,7 @@ export function buildZoneSectorMatchTree(
       );
       const kind = matchTotalsKind(totals);
       const capacity = match.capacity > 0 ? match.capacity : 0;
+      const planRevenue = matchPlanForContext(options, match.id);
       const metrics =
         kind === "dash"
           ? {
@@ -807,6 +1056,7 @@ export function buildZoneSectorMatchTree(
               issued: null,
               avgPrice: null,
               occupancy: null,
+              planRevenue: null,
             }
           : {
               kind,
@@ -816,6 +1066,7 @@ export function buildZoneSectorMatchTree(
               issued: totals.issued,
               avgPrice: totals.sold > 0 ? totals.revenue / totals.sold : null,
               occupancy: occupancyFromMass(totals.issued, capacity),
+              planRevenue,
             };
       return {
         id: `m:${match.id}`,
@@ -839,14 +1090,17 @@ export function hydrateZoneSectorTree(
     const children = buildSectionChildren(node.matchId, options);
     const match = options.matchesById.get(node.matchId);
     const capacity = match && match.capacity > 0 ? match.capacity : 0;
+    const planRevenue = matchPlanForContext(options, node.matchId);
+    const composed = applyComposedPlans(node.revenue, planRevenue, children);
     return {
       ...node,
       ...rollupChildren(
-        children,
-        occupancyFromMass(issuedFromNodes(children), capacity),
+        composed,
+        occupancyFromMass(issuedFromNodes(composed), capacity),
       ),
-      hasChildren: children.length > 0,
-      children,
+      planRevenue,
+      hasChildren: composed.length > 0,
+      children: composed,
     };
   });
 }
@@ -868,6 +1122,7 @@ export function buildZoneSectorTree(
     localMatchIds: options.localMatchIds,
     localPriceZones: options.localPriceZones,
     localSectors: options.localSectors,
+    planIndex: buildPlanIndex(options.matchesById),
   };
   return hydrateZoneSectorTree(buildZoneSectorMatchTree(ctx), {
     ...ctx,
@@ -882,7 +1137,12 @@ export function flattenZoneSectorTree(
   const rows: ZoneSectorFlatRow[] = [];
   const walk = (node: ZoneSectorTreeNode, depth: number) => {
     const { children, ...rest } = node;
-    rows.push({ ...rest, depth, hasChildren: node.hasChildren || children.length > 0 });
+    rows.push({
+      ...rest,
+      occupancy: rest.occupancy == null ? null : Math.min(100, rest.occupancy),
+      depth,
+      hasChildren: node.hasChildren || children.length > 0,
+    });
     if (!node.hasChildren || !expanded.has(node.id)) return;
     for (const child of children) walk(child, depth + 1);
   };

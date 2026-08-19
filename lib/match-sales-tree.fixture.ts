@@ -294,7 +294,7 @@ export const expectedMatchMetrics: FrozenMatchMetrics = {
   issued: 32,
   averagePrice: 53_000 / 29,
   loyaltyDiscount: 2_000,
-  occupancyPercentage: (32 / 12_000) * 100,
+  occupancyPercentage: (32 / 13_440) * 100,
 };
 
 export const expectedByTicketType: Record<TicketType, FrozenMatchMetrics> = {
@@ -394,7 +394,7 @@ export const expectedPrevMatchMetrics: FrozenMatchMetrics = {
   issued: 10,
   averagePrice: 24_000 / 10,
   loyaltyDiscount: 0,
-  occupancyPercentage: (10 / 12_000) * 100,
+    occupancyPercentage: (10 / 13_440) * 100,
 };
 
 export const expectedIncompleteMatchMetrics: FrozenMatchMetrics = {
@@ -492,6 +492,7 @@ export function buildFixtureMatchRows(
       ticketsSold: metrics.sold,
       freeTickets: metrics.free,
       issuedTickets: metrics.issued,
+      occupancyIssuedTickets: metrics.issued,
       capacity: match.capacity,
       loyaltyDiscountPct: metrics.loyaltyDiscountPct,
     });

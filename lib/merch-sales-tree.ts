@@ -1,4 +1,5 @@
 import { filterMerchTransactions } from "@/lib/filters";
+import { getMerchProductName } from "@/lib/merch-catalog";
 import {
   ALL_MERCH_PRODUCT_CATEGORIES,
   ALL_MERCH_SALES_POINTS,
@@ -19,13 +20,19 @@ import type {
 
 export { paginateTopLevel, toggleExpandedKey };
 
-export type MerchSalesSectionKind = "salesChannel" | "productCategory";
+export type MerchSalesSectionKind =
+  | "salesChannel"
+  | "productCategory"
+  | "topProducts";
 
 export type MerchSalesTreeLevel =
   | "match"
   | "section"
   | "salesChannel"
-  | "productCategory";
+  | "productCategory"
+  | "topProduct";
+
+export const MERCH_SALES_TOP_PRODUCTS_LIMIT = 5;
 
 export type MerchSalesMetrics = {
   revenue: number;
@@ -63,12 +70,14 @@ type BranchAgg = {
 const SECTION_ORDER: MerchSalesSectionKind[] = [
   "salesChannel",
   "productCategory",
+  "topProducts",
 ];
 
 export const MERCH_SALES_SECTION_LABELS: Record<MerchSalesSectionKind, string> =
   {
     salesChannel: "Канал продаж",
     productCategory: "Категория товара",
+    topProducts: "Топ-5 товаров",
   };
 
 function createBranchAgg(): BranchAgg {
@@ -117,6 +126,10 @@ function channelKey(matchId: string, channel: MerchSalesPoint): string {
 
 function categoryKey(matchId: string, category: MerchProductCategory): string {
   return `mm:${matchId}|cat:${category}`;
+}
+
+function productKey(matchId: string, productName: string): string {
+  return `mm:${matchId}|sku:${productName}`;
 }
 
 export function getMerchSalesExpandScopeKey(
@@ -236,6 +249,7 @@ export type MerchMatchAggregate = {
   agg: BranchAgg;
   channels: Map<MerchSalesPoint, BranchAgg>;
   categories: Map<MerchProductCategory, BranchAgg>;
+  products: Map<string, BranchAgg>;
 };
 
 function applyDimensionTransaction<K>(
@@ -267,6 +281,7 @@ export function buildMerchMatchAggregateIndex(
         agg: createBranchAgg(),
         channels: new Map(),
         categories: new Map(),
+        products: new Map(),
       };
       index.set(tx.matchId, match);
     }
@@ -277,6 +292,10 @@ export function buildMerchMatchAggregateIndex(
       getMerchProductCategory(tx),
       tx,
     );
+    const productName = getMerchProductName(tx.description);
+    if (productName) {
+      applyDimensionTransaction(match.products, productName, tx);
+    }
   }
 
   return index;
@@ -340,6 +359,44 @@ function leafNodesFromBuckets<K extends string>(
   return nodes;
 }
 
+function compareTopProducts(
+  a: [string, BranchAgg],
+  b: [string, BranchAgg],
+): number {
+  const revenueCmp = b[1].revenue - a[1].revenue;
+  if (revenueCmp !== 0) return revenueCmp;
+  const unitsCmp = b[1].units - a[1].units;
+  if (unitsCmp !== 0) return unitsCmp;
+  return a[0].localeCompare(b[0], "ru");
+}
+
+function topProductNodesFromBuckets(
+  matchId: string,
+  buckets: Map<string, BranchAgg>,
+  matchRevenue: number,
+  limit = MERCH_SALES_TOP_PRODUCTS_LIMIT,
+): MerchSalesTreeNode[] {
+  return [...buckets.entries()]
+    .filter(([, agg]) => agg.units > 0 || agg.revenue > 0)
+    .sort(compareTopProducts)
+    .slice(0, limit)
+    .map(([productName, agg]) =>
+      metricsFromAgg(agg, {
+        id: productKey(matchId, productName),
+        level: "topProduct",
+        matchId,
+        date: null,
+        label: productName,
+        planRevenue: null,
+        attendance: 0,
+        purchaseConversionPct: 0,
+        sharePct: sharePct(agg.revenue, matchRevenue),
+        hasChildren: false,
+        children: [],
+      }),
+    );
+}
+
 function sectionNodeFromMatchRow(
   row: MerchMatchSalesRow,
   section: MerchSalesSectionKind,
@@ -389,6 +446,11 @@ function sectionNodesFromAggregate(
         aggregate.categories,
         MERCH_PRODUCT_CATEGORY_LABELS,
         categoryKey,
+        row.revenue,
+      ),
+      topProducts: topProductNodesFromBuckets(
+        row.matchId,
+        aggregate.products,
         row.revenue,
       ),
     };
@@ -486,18 +548,24 @@ export function getMerchSalesBarMaxima(nodes: MerchSalesTreeNode[]): {
   avgCheck: number;
   receipts: number;
   units: number;
+  purchaseConversionPct: number;
 } {
   let revenue = 0;
   let avgCheck = 0;
   let receipts = 0;
   let units = 0;
+  let purchaseConversionPct = 0;
 
   for (const node of nodes) {
     revenue = Math.max(revenue, node.revenue, node.planRevenue ?? 0);
     avgCheck = Math.max(avgCheck, node.avgCheck);
     receipts = Math.max(receipts, node.receipts);
     units = Math.max(units, node.units);
+    purchaseConversionPct = Math.max(
+      purchaseConversionPct,
+      node.purchaseConversionPct,
+    );
   }
 
-  return { revenue, avgCheck, receipts, units };
+  return { revenue, avgCheck, receipts, units, purchaseConversionPct };
 }

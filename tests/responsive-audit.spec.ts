@@ -26,6 +26,10 @@ async function waitForDashboard(page: Page) {
   await expect(page.getByText("Выручка").first()).toBeVisible({
     timeout: 60_000,
   });
+  // Layout hooks default to desktop until matchMedia runs after mount.
+  await expect(
+    page.getByTestId("filter-trigger").or(page.getByTestId("filter-desktop-bar")),
+  ).toBeVisible({ timeout: 15_000 });
 }
 
 async function openTab(page: Page, label: string) {
@@ -251,7 +255,7 @@ test.describe("responsive audit — 18 checks", () => {
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await expect(dialog).toHaveAttribute("aria-modal", "true");
-    await page.getByRole("button", { name: "Закрыть" }).click();
+    await page.getByRole("button", { name: "Закрыть", exact: true }).click();
     await expect(dialog).toHaveCount(0);
     await expect(trigger).toBeFocused();
   });

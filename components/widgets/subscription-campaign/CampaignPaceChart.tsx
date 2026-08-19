@@ -181,10 +181,7 @@ export function CampaignPaceChart({
               tickFormatter={formatY}
             />
             <AdaptiveTooltip
-              allowEscapeViewBox={{ x: false, y: false }}
-              wrapperStyle={{ zIndex: 20, pointerEvents: "none" }}
               cursor={{ stroke: "#8B8B8E", strokeDasharray: "3 3" }}
-              isAnimationActive={false}
               active={pinnedIndex != null ? true : undefined}
               defaultIndex={pinnedIndex ?? undefined}
               content={

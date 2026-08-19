@@ -15,6 +15,7 @@ import {
   getSubscriptionRedemptions,
   getSubscriptions,
 } from "@/lib/mock/hockey";
+import { issuedOccupancyPercent } from "@/lib/ticket-plan";
 
 describe("match sales subscription redemptions", () => {
   const filters = DEFAULT_DASHBOARD_FILTERS;
@@ -90,7 +91,7 @@ describe("match sales subscription redemptions", () => {
       );
       expect(row.ticketsSold).toBeGreaterThanOrEqual(ticket?.ticketsSold ?? 0);
       expect(row.fillRate).toBe(
-        row.capacity > 0 ? (row.issuedTickets / row.capacity) * 100 : 0,
+        issuedOccupancyPercent(row.issuedTickets, row.capacity) ?? 0,
       );
     }
 

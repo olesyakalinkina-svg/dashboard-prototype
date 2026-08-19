@@ -39,7 +39,19 @@ import {
 } from "@/lib/format";
 import type { MerchMatchSalesRow } from "@/types/dashboard";
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 15;
+
+const BAR_COLUMN_WIDTH_CLASS = "w-[10.5rem]";
+const COLUMN_WIDTH_CLASS: Record<string, string> = {
+  eventLabel: "w-auto min-w-0",
+  date: "w-[7rem]",
+  revenue: BAR_COLUMN_WIDTH_CLASS,
+  avgCheck: "w-[9rem]",
+  receipts: "w-[8rem]",
+  units: "w-[9rem]",
+  upt: "w-[4.5rem]",
+  purchaseConversionPct: "w-[6.5rem] max-w-[6.5rem]",
+};
 
 type MerchSalesTableMeta = {
   expandedSet: ReadonlySet<string>;
@@ -49,6 +61,7 @@ type MerchSalesTableMeta = {
     avgCheck: number;
     receipts: number;
     units: number;
+    purchaseConversionPct: number;
   };
 };
 
@@ -245,15 +258,17 @@ const MERCH_SALES_COLUMNS: ColumnDef<MerchSalesFlatRow, unknown>[] = [
   {
     accessorKey: "purchaseConversionPct",
     header: "Конверсия в покупку",
-    cell: ({ row }) => {
+    cell: ({ row, table }) => {
       if (row.original.level !== "match" && row.original.level !== "section") {
         return "—";
       }
+      const { barMax } = table.options.meta as MerchSalesTableMeta;
       return (
         <InlineBarCell
           value={row.original.purchaseConversionPct}
-          max={100}
+          max={barMax.purchaseConversionPct}
           formatted={formatPercent(row.original.purchaseConversionPct)}
+          compactLabels
           barClassName={getBarClass(
             row.original.level,
             "bg-blue-500",
@@ -282,7 +297,7 @@ function summaryFromMatchNodes(nodes: MerchSalesTreeNode[]) {
     totalAttendance > 0 ? (matchReceipts / totalAttendance) * 100 : 0;
 
   return (
-    <tr className="border-t-2 border-[var(--border)] bg-[var(--background)] font-medium">
+    <tr className="border-t-2 border-[var(--border)] font-medium">
       <td className="px-3 py-2.5">Итого</td>
       <td className="px-3 py-2.5" />
       <td className="px-3 py-2.5">{formatCurrency(totalRevenue)}</td>
@@ -410,14 +425,22 @@ export const MerchSalesTableView = memo(function MerchSalesTableView({
       </CardHeader>
       <CardContent className="flex min-w-0 flex-1 flex-col">
         <StickyScrollTable>
-        <table className="w-full min-w-[56rem] text-sm leading-snug">
+        <table className="w-full min-w-[52rem] table-fixed text-sm leading-snug">
+          <colgroup>
+            {table.getAllLeafColumns().map((column) => (
+              <col key={column.id} className={COLUMN_WIDTH_CLASS[column.id]} />
+            ))}
+          </colgroup>
           <thead>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id} className="border-b border-[var(--border)]">
                 {hg.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="cursor-pointer px-3 py-2 text-left text-xs font-medium text-[var(--muted)]"
+                    className={clsx(
+                      "cursor-pointer px-3 py-2 text-left text-xs font-medium leading-tight text-[var(--muted)]",
+                      COLUMN_WIDTH_CLASS[header.column.id],
+                    )}
                     onClick={header.column.getToggleSortingHandler()}
                   >
                     <span className="inline-flex items-center gap-1">
@@ -439,13 +462,14 @@ export const MerchSalesTableView = memo(function MerchSalesTableView({
             {table.getRowModel().rows.map((row) => (
               <tr
                 key={row.id}
-                className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background)]"
+                className="border-b border-[var(--border)] last:border-0"
               >
                 {row.getVisibleCells().map((cell) => (
                   <td
                     key={cell.id}
                     className={clsx(
                       "px-3 py-2.5 text-[var(--foreground)]",
+                      COLUMN_WIDTH_CLASS[cell.column.id],
                       cell.column.id === "eventLabel" && "relative z-20",
                     )}
                     onClick={
@@ -467,23 +491,23 @@ export const MerchSalesTableView = memo(function MerchSalesTableView({
           <span>
             {filteredTree.length} мероприятий
           </span>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2 leading-none">
             <button
               type="button"
               onClick={goPrev}
               disabled={pagination.pageIndex === 0}
-              className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40"
+              className="inline-flex min-h-11 items-center rounded border border-[var(--border)] px-3 py-1.5 leading-none disabled:opacity-40"
             >
               Назад
             </button>
-            <span>
+            <span className="inline-flex min-h-11 items-center leading-none">
               {pagination.pageIndex + 1} / {pagination.pageCount}
             </span>
             <button
               type="button"
               onClick={goNext}
               disabled={pagination.pageIndex >= pagination.pageCount - 1}
-              className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40"
+              className="inline-flex min-h-11 items-center rounded border border-[var(--border)] px-3 py-1.5 leading-none disabled:opacity-40"
             >
               Вперёд
             </button>

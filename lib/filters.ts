@@ -57,10 +57,17 @@ import { getMerchListAmount } from "@/lib/merch-catalog";
 import {
   getMatchPlanRevenue,
   getMatchPlanTickets,
+  issuedOccupancyPercent,
+  occupancyMassCapacity,
   LEGACY_TICKET_PLAN_AVG_PRICE,
   TICKET_PLAN_AVG_PRICE,
 } from "@/lib/ticket-plan";
-import { getMatchMerchPlanRevenue, merchPlanScale } from "@/lib/merch-plan";
+import {
+  explicitMerchPlanFulfillment,
+  getMatchMerchPlanRevenue,
+  merchPlanRevenueForTarget,
+  merchPlanScale,
+} from "@/lib/merch-plan";
 import {
   getPurchaseDateBounds,
   isDateInTournamentStage,
@@ -243,6 +250,13 @@ function passesMerchOrderDate(
   orderDateRange: MerchFilters["orderDateRange"],
 ): boolean {
   return passesOrderDateRange(tx.date, orderDateRange);
+}
+
+function passesMerchSeasonDateBounds(date: Date, season: string): boolean {
+  // Start is already enforced by the ticket-sales cutoff. Cap the end so
+  // 2024/25 off-match YoY does not include 2025/26 store sales.
+  const bounds = getPurchaseDateBounds(season);
+  return startOfDay(date) <= startOfDay(bounds.max);
 }
 
 function getDateCutoff(days: number): Date {
@@ -760,6 +774,13 @@ function filterMerchTransactionsImpl(
     }
     if (!tx.matchId) {
       if (merchFilters.matchId.length > 0) return false;
+      // Off-match merch has no match.season; keep YoY from swallowing the next season.
+      if (
+        merchFilters.season !== "all" &&
+        !passesMerchSeasonDateBounds(tx.date, merchFilters.season)
+      ) {
+        return false;
+      }
       return passesMerchTournamentStage(tx, merchFilters);
     }
     if (!allowedMatchIds.has(tx.matchId)) return false;
@@ -1154,11 +1175,7 @@ function countTickets(txs: Transaction[]): number {
 function countIssuedTickets(txs: Transaction[]): number {
   let total = 0;
   for (const tx of txs) {
-    const freeQty = tx.freeQuantity ?? (tx.amount === 0 ? tx.quantity : 0);
-    total += freeQty;
-    if (tx.amount > 0) {
-      total += tx.quantity;
-    }
+    total += getTicketIssuedQuantity(tx);
   }
   return total;
 }
@@ -1394,10 +1411,12 @@ function computeTicketsKpiMetrics(
   const matchLevelFilters = matchLevelTicketFilters(ticketFilters);
   const planFactTxs = filterTicketTransactions(filters, matchLevelFilters);
 
-  const eligibleCapacity = sumEligibleTicketCapacity(matchLevelFilters);
+  const eligibleCapacity = sumEligibleOccupancyCapacity(matchLevelFilters);
   const ticketsIssued = countIssuedTickets(planFactTxs);
   const fillRate =
-    eligibleCapacity > 0 ? (ticketsIssued / eligibleCapacity) * 100 : 0;
+    eligibleCapacity > 0
+      ? Math.min(100, (ticketsIssued / eligibleCapacity) * 100)
+      : 0;
 
   const planRevenue = sumTicketPlanRevenue(filters, matchLevelFilters);
   const planFactRevenue = sumAmount(planFactTxs);
@@ -1677,7 +1696,7 @@ function matchHasEligibleTicketSaleDay(
   return false;
 }
 
-function sumEligibleTicketCapacity(ticketFilters: TicketFilters): number {
+function sumEligibleOccupancyCapacity(ticketFilters: TicketFilters): number {
   const cutoff = getTicketsSeasonCutoff(ticketFilters.season);
   const now = endOfDay(MOCK_TODAY);
   const allowedMatches = filterMatchesByTicketFilters(ticketFilters);
@@ -1686,7 +1705,7 @@ function sumEligibleTicketCapacity(ticketFilters: TicketFilters): number {
     if (!matchHasEligibleTicketSaleDay(match, cutoff, now)) {
       return total;
     }
-    return total + match.capacity;
+    return total + occupancyMassCapacity(match.capacity);
   }, 0);
 }
 
@@ -3185,9 +3204,10 @@ export function computeMatchSalesTable(
 
   for (const tx of issuedTxs) {
     if (!tx.matchId) continue;
+    const qty = getTicketIssuedQuantity(tx);
     issuedByMatch.set(
       tx.matchId,
-      (issuedByMatch.get(tx.matchId) ?? 0) + getTicketIssuedQuantity(tx),
+      (issuedByMatch.get(tx.matchId) ?? 0) + qty,
     );
   }
 
@@ -3204,6 +3224,7 @@ export function computeMatchSalesTable(
 
   for (const match of allowedMatches) {
     const issuedTickets = issuedByMatch.get(match.id) ?? 0;
+    const occupancyIssuedTickets = issuedTickets;
     const agg = aggByMatch.get(match.id) ?? createTicketSalesAgg();
     if (isEmptyTicketSalesAgg(agg, issuedTickets)) {
       continue;
@@ -3221,6 +3242,7 @@ export function computeMatchSalesTable(
       ticketsSold: agg.ticketsSold,
       freeTickets: agg.freeTickets,
       issuedTickets,
+      occupancyIssuedTickets,
       capacity: match.capacity,
       loyaltyDiscountPct: ticketSalesLoyaltyDiscountPct(agg),
     });
@@ -3268,11 +3290,17 @@ export function computeMerchMatchSalesTable(
   const scale = merchPlanScale(merchFilters);
 
   for (const match of allowedMatches) {
-    const agg = aggByMatch.get(match.id);
-    if (!agg || agg.revenue <= 0 || agg.receipts <= 0) continue;
+    if (!match.eventCompleted) continue;
+
+    const agg = aggByMatch.get(match.id) ?? createMerchMetrics();
+    if (agg.receipts <= 0 || agg.revenue <= 0) continue;
 
     const attendance = getMatchAttendance(match);
-    const planRevenue = Math.round(getMatchMerchPlanRevenue(match) * scale);
+    const explicitTarget = explicitMerchPlanFulfillment(match.id);
+    const planRevenue =
+      explicitTarget != null && agg.revenue > 0
+        ? merchPlanRevenueForTarget(agg.revenue, explicitTarget)
+        : Math.round(getMatchMerchPlanRevenue(match) * scale);
 
     rows.push({
       matchId: match.id,
@@ -3280,10 +3308,10 @@ export function computeMerchMatchSalesTable(
       date: match.date,
       revenue: agg.revenue,
       planRevenue,
-      avgCheck: agg.revenue / agg.receipts,
+      avgCheck: agg.receipts > 0 ? agg.revenue / agg.receipts : 0,
       receipts: agg.receipts,
       units: agg.units,
-      upt: agg.units / agg.receipts,
+      upt: agg.receipts > 0 ? agg.units / agg.receipts : 0,
       attendance,
       purchaseConversionPct:
         attendance > 0 ? (agg.receipts / attendance) * 100 : 0,
@@ -3418,7 +3446,7 @@ export function computeCombinedMatchSalesTable(
     }
 
     const capacity = ticket?.capacity ?? match.capacity;
-    const fillRate = capacity > 0 ? (issuedTickets / capacity) * 100 : 0;
+    const fillRate = issuedOccupancyPercent(issuedTickets, capacity) ?? 0;
 
     rows.push({
       matchId,
@@ -3458,8 +3486,14 @@ function computeMatchSalesKpiMetrics(
   const merchRevenue = rows.reduce((sum, row) => sum + row.merchRevenue, 0);
   const ticketsSold = rows.reduce((sum, row) => sum + row.ticketsSold, 0);
   const totalIssued = rows.reduce((sum, row) => sum + row.issuedTickets, 0);
-  const totalCapacity = rows.reduce((sum, row) => sum + row.capacity, 0);
-  const fillRate = totalCapacity > 0 ? (totalIssued / totalCapacity) * 100 : 0;
+  const totalOccupancyMass = rows.reduce(
+    (sum, row) => sum + occupancyMassCapacity(row.capacity),
+    0,
+  );
+  const fillRate =
+    totalOccupancyMass > 0
+      ? Math.min(100, (totalIssued / totalOccupancyMass) * 100)
+      : 0;
 
   return {
     totalRevenue: ticketRevenue + merchRevenue,

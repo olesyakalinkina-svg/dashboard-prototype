@@ -79,16 +79,27 @@ export function isAllowedSectorPriceZone(
   return zone !== "from_4000_to_6000";
 }
 
+/** Sentinel: explicit "no sectors selected" (distinct from [] = all sectors). */
+export const NO_SECTORS_FILTER_VALUE = "__no_sectors__";
+
+export function isNoSectorsFilterValue(sectors: readonly string[]): boolean {
+  return sectors.length === 1 && sectors[0] === NO_SECTORS_FILTER_VALUE;
+}
+
 /**
  * Local widget filters have an allowed intersection when at least one
  * selected sector×zone pair exists in the matrix. Empty selections mean "all".
+ * `NO_SECTORS_FILTER_VALUE` is an explicit empty selection, not "all".
  */
 export function hasAllowedFilterIntersection(
   selectedZones: readonly PriceZone[],
-  selectedSectors: readonly Sector[],
+  selectedSectors: readonly string[],
 ): boolean {
+  if (isNoSectorsFilterValue(selectedSectors)) return false;
   const zones = selectedZones.length ? selectedZones : ALL_PRICE_ZONES;
-  const sectors = selectedSectors.length ? selectedSectors : ALL_SECTORS;
+  const sectors = selectedSectors.length
+    ? (selectedSectors as Sector[])
+    : ALL_SECTORS;
   return sectors.some((sector) =>
     zones.some((zone) => isAllowedSectorPriceZone(sector, zone)),
   );
@@ -96,10 +107,13 @@ export function hasAllowedFilterIntersection(
 
 export function visiblePriceZonesForFilters(
   selectedZones: readonly PriceZone[],
-  selectedSectors: readonly Sector[],
+  selectedSectors: readonly string[],
 ): PriceZone[] {
+  if (isNoSectorsFilterValue(selectedSectors)) return [];
   const zoneSet = selectedZones.length ? new Set(selectedZones) : null;
-  const sectors = selectedSectors.length ? selectedSectors : ALL_SECTORS;
+  const sectors = selectedSectors.length
+    ? (selectedSectors as Sector[])
+    : ALL_SECTORS;
   return ALL_PRICE_ZONES.filter((zone) => {
     if (zoneSet && !zoneSet.has(zone)) return false;
     return sectors.some((sector) => isAllowedSectorPriceZone(sector, zone));
@@ -108,8 +122,9 @@ export function visiblePriceZonesForFilters(
 
 export function visibleSectorsForFilters(
   selectedZones: readonly PriceZone[],
-  selectedSectors: readonly Sector[],
+  selectedSectors: readonly string[],
 ): Sector[] {
+  if (isNoSectorsFilterValue(selectedSectors)) return [];
   const sectorSet = selectedSectors.length ? new Set(selectedSectors) : null;
   const zones = selectedZones.length ? selectedZones : ALL_PRICE_ZONES;
   return ALL_SECTORS.filter((sector) => {

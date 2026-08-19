@@ -314,7 +314,6 @@ export const TabKpiCards = memo(function TabKpiCards({
           hideTrend
         />
         <KpiCard
-          className="col-span-2 min-[768px]:col-span-3 min-[1024px]:col-span-4"
           title="Заполняемость (вся билетная масса/вместимость)"
           value={formatPercent(ticketsKpis.fillRate)}
           subtitle="Купленные и бесплатные билеты"

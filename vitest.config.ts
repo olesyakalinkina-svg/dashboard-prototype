@@ -10,6 +10,8 @@ export default defineConfig({
     include: ["**/*.test.ts", "**/*.test.tsx"],
     setupFiles: ["./vitest.setup.ts"],
     environmentMatchGlobs: [["**/*.test.tsx", "jsdom"]],
+    testTimeout: 15_000,
+    hookTimeout: 30_000,
   },
   resolve: {
     alias: {

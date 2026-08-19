@@ -3,6 +3,7 @@
 import clsx from "clsx";
 import { formatCurrency, formatPercent, formatPercentSigned } from "@/lib/format";
 import {
+  formatSeasonMatchDateLabel,
   getSeasonMatchStatusLabel,
   seasonMatchFactKey,
   seasonMatchPlanKey,
@@ -13,7 +14,28 @@ type TooltipPayloadEntry = {
   dataKey?: string;
   value?: number | null;
   color?: string;
+  payload?: {
+    periodLabel?: string;
+    dateKey?: number;
+  };
 };
+
+function formatTooltipDateLabel(
+  label: string | number | undefined,
+  payload?: TooltipPayloadEntry[],
+): string | null {
+  const periodLabel = payload?.[0]?.payload?.periodLabel;
+  if (periodLabel) return periodLabel;
+
+  if (label == null) return null;
+  if (typeof label === "number") {
+    return formatSeasonMatchDateLabel(label);
+  }
+  if (/^\d{10,}$/.test(label)) {
+    return formatSeasonMatchDateLabel(Number(label));
+  }
+  return label;
+}
 
 export function TicketsSeasonMatchTooltip({
   active,
@@ -22,11 +44,12 @@ export function TicketsSeasonMatchTooltip({
   views,
 }: {
   active?: boolean;
-  label?: string;
+  label?: string | number;
   payload?: TooltipPayloadEntry[];
   views: TicketsSeasonMatchSeriesView[];
 }) {
-  if (!active || !payload?.length || label == null) return null;
+  const dateLabel = formatTooltipDateLabel(label, payload);
+  if (!active || !payload?.length || dateLabel == null) return null;
 
   const entries = views
     .map((view) => {
@@ -67,25 +90,22 @@ export function TicketsSeasonMatchTooltip({
   if (entries.length === 0) return null;
 
   return (
-    <div className="max-h-72 w-72 overflow-y-auto rounded-md border border-[var(--border)] bg-white px-3 py-2 text-xs shadow-sm">
-      <p className="mb-2 font-medium text-[var(--foreground)]">{label}</p>
+    <div className="w-60 rounded-md border border-[var(--border)] bg-white px-2.5 py-1.5 text-xs shadow-sm">
+      <p className="mb-1.5 font-medium text-[var(--foreground)]">{dateLabel}</p>
       {entries.map((entry) => (
         <div
           key={entry.view.matchId}
-          className="mb-2 border-b border-[var(--border)] pb-2 last:mb-0 last:border-b-0 last:pb-0"
+          className="mb-1.5 border-b border-[var(--border)] pb-1.5 last:mb-0 last:border-b-0 last:pb-0"
         >
           <p className="font-medium" style={{ color: entry.view.color }}>
-            {entry.view.opponent}
+            {entry.view.opponent} — {entry.view.matchDate}
             {entry.view.isComparison ? " (сравнение)" : ""}
+            {entry.isPlanOnly ? " · план" : ""}
           </p>
-          <p className="text-[var(--muted)]">Матч: {entry.view.matchDate}</p>
           <p>
-            Накопительно: {formatCurrency(entry.revenue)}
-            {entry.isPlanOnly ? " (план)" : ""}
+            {formatCurrency(entry.revenue)} · {formatPercent(entry.completionPct)}{" "}
+            плана
           </p>
-          <p>План: {formatCurrency(entry.view.planRevenue)}</p>
-          <p>Выполнение: {formatPercent(entry.completionPct)}</p>
-          <p>Отклонение: {formatPercentSigned(entry.deviationPct)}</p>
           <p
             className={clsx(
               entry.status === "behind" && "text-[#DC2626]",
@@ -93,7 +113,8 @@ export function TicketsSeasonMatchTooltip({
               entry.status === "ahead" && "text-[#16A34A]",
             )}
           >
-            {getSeasonMatchStatusLabel(entry.status)}
+            {getSeasonMatchStatusLabel(entry.status)} ·{" "}
+            {formatPercentSigned(entry.deviationPct)}
           </p>
         </div>
       ))}

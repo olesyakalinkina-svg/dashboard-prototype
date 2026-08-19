@@ -335,19 +335,19 @@ export const MerchMobileSalesCards = memo(function MerchMobileSalesCards({
           ))
         )}
         {pagination.pageCount > 1 && (
-          <div className="flex items-center justify-between pt-1 text-xs">
+          <div className="flex items-center justify-between pt-1 text-xs leading-none">
             <button
               type="button"
               disabled={pagination.pageIndex === 0}
               onClick={() => setPage((value) => Math.max(0, value - 1))}
               className={clsx(
-                "min-h-11 rounded-md border border-[var(--border)] px-3",
+                "inline-flex min-h-11 items-center rounded-md border border-[var(--border)] px-3 leading-none",
                 pagination.pageIndex === 0 && "opacity-40",
               )}
             >
               Назад
             </button>
-            <span className="text-[var(--muted)]">
+            <span className="inline-flex min-h-11 items-center leading-none text-[var(--muted)]">
               {pagination.pageIndex + 1} / {pagination.pageCount}
             </span>
             <button
@@ -359,7 +359,7 @@ export const MerchMobileSalesCards = memo(function MerchMobileSalesCards({
                 )
               }
               className={clsx(
-                "min-h-11 rounded-md border border-[var(--border)] px-3",
+                "inline-flex min-h-11 items-center rounded-md border border-[var(--border)] px-3 leading-none",
                 pagination.pageIndex >= pagination.pageCount - 1 && "opacity-40",
               )}
             >

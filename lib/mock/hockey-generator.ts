@@ -1,4 +1,4 @@
-import { addDays, differenceInCalendarDays, isSameDay, startOfDay, subDays } from "date-fns";
+import { addDays, differenceInCalendarDays, endOfDay, isSameDay, startOfDay, subDays } from "date-fns";
 import type {
   ArenaId,
   League,
@@ -13,19 +13,14 @@ import type {
   Subscription,
   SubscriptionPlan,
   SubscriptionRedemption,
-  TicketType,
   Transaction,
   TicketSalesProfile,
   TicketSalesTempo,
 } from "@/types/dashboard";
 import {
+  ALL_PRICE_ZONES,
   ALL_SECTORS,
-  NON_VIP_MAX_UNIT_PRICE,
-  VIP_MAX_UNIT_PRICE,
-  VIP_MIN_UNIT_PRICE,
   allowedPriceZonesForSector,
-  isAllowedSectorPriceZone,
-  priceZoneFromUnitPrice,
 } from "@/lib/ticket-filter-options";
 import {
   getPreviousCampaignConfig,
@@ -45,22 +40,42 @@ import {
   getMatchTicketSalesWindowDays,
 } from "@/lib/ticket-sales-window";
 import { getMerchListAmount } from "@/lib/merch-catalog";
+import { isMerchMatchTablePoint } from "@/lib/merch-filter-options";
+import {
+  applyExplicitMatchMerchPlan,
+  applyMatchMerchPlanFloorWhenTicketsMet,
+  applyMatchMerchPlanFulfillmentBand,
+} from "@/lib/merch-plan";
 import {
   allocateIntegerShares,
+  allocateIntegerSharesWithBounds,
   getSectorCapacitiesForMatch,
   splitSectorCapacity,
 } from "@/lib/arena-sector-inventory";
+import { getTicketIssuedQuantity } from "@/lib/ticket-sales-metrics";
 import {
+  getMatchParkingCapacity,
+  getMatchPlanArenaTickets,
+  getMatchPlanArenaRevenue,
   getMatchPlanRevenue,
-  getMatchTicketPlanProfile,
-  getKhlPlanAvgPrice,
-  getMhlPlanAvgPrice,
-  getVhlPlanAvgPrice,
+  getMatchPlanTickets,
+  isRegularTicketPlanMatch,
   isSoldOutOccupancyMatch,
+  isTicketRevenuePlanMet,
   MAIN_ARENA_CAPACITY,
   MHL_ARENA_CAPACITY,
+  applyMatchTicketPlanFulfillmentBand,
+  HIGH_REVENUE_PLAN_THRESHOLD,
+  MAX_MID_REVENUE_OCCUPANCY,
+  MID_REVENUE_PLAN_MIN,
+  MIN_HIGH_REVENUE_OCCUPANCY,
+  minHighRevenueOccupancyIssued,
+  minMidRevenueOccupancyIssued,
+  maxMidRevenueOccupancyIssued,
+  occupancyMassCapacity,
+  OVER_PLAN_REVENUE_THRESHOLD,
   SECONDARY_ARENA_CAPACITY,
-  TICKET_PLAN_AVG_PRICE,
+  TICKET_PLAN_PARKING_UNIT_PRICE,
 } from "@/lib/ticket-plan";
 const HOME_ARENA: ArenaId = "main";
 const KHL_MATCH_COUNT = 16;
@@ -337,61 +352,6 @@ const SEASON_DEFINITIONS: SeasonDefinition[] = [
   },
 ];
 
-const SECTOR_PRICE_RANGE: Record<Sector, [number, number]> = {
-  A:   [2500, 3500],
-  B1:  [1800, 2800],
-  B2:  [1800, 2700],
-  B3:  [1800, 2600],
-  B4:  [1800, 2500],
-  C1:  [1300, 1800],
-  C2:  [1300, 1750],
-  C3:  [1300, 1700],
-  C4:  [1300, 1650],
-  D1:  [800, 1400],
-  D2:  [800, 1350],
-  D3:  [800, 1300],
-  D4:  [800, 1250],
-  VIP: [VIP_MIN_UNIT_PRICE, VIP_MAX_UNIT_PRICE],
-};
-
-function leagueClassPriceScale(league: League, matchClass: MatchClass): number {
-  switch (league) {
-    case "VHL":
-      return getVhlPlanAvgPrice(matchClass) / TICKET_PLAN_AVG_PRICE;
-    case "MHL":
-      return getMhlPlanAvgPrice(matchClass) / TICKET_PLAN_AVG_PRICE;
-    default:
-      return getKhlPlanAvgPrice(matchClass) / TICKET_PLAN_AVG_PRICE;
-  }
-}
-
-/**
- * Returns a random unit price for a sector, scaled by a league/class factor.
- * Ordinary sectors are clamped to [1, 3999]; VIP stays in [4000, 6000].
- */
-function randomUnitPriceForSector(
-  sector: Sector,
-  league: League,
-  matchClass: MatchClass = "class_2",
-): number {
-  if (sector === "VIP") {
-    return Math.round(
-      VIP_MIN_UNIT_PRICE + rand() * (VIP_MAX_UNIT_PRICE - VIP_MIN_UNIT_PRICE),
-    );
-  }
-  const [minBase, maxBase] = SECTOR_PRICE_RANGE[sector];
-  const scaleFactor = leagueClassPriceScale(league, matchClass);
-  const min = Math.max(
-    1,
-    Math.min(NON_VIP_MAX_UNIT_PRICE, Math.round(minBase * scaleFactor)),
-  );
-  const max = Math.max(
-    min,
-    Math.min(NON_VIP_MAX_UNIT_PRICE, Math.round(maxBase * scaleFactor)),
-  );
-  return Math.round(min + rand() * (max - min));
-}
-
 const ORDER_SOURCES: OrderSource[] = [
   "box_office",
   "official_site",
@@ -505,6 +465,333 @@ function generateOffMatchMerchSales(
   return { txs, nextId: id };
 }
 
+/**
+ * Keep 2024/25 merch slightly above 2025/26 so default KPI YoY is a modest
+ * decline (~4%), not a 40% cliff. Applied after ticket generation so the
+ * shared RNG (occupancy / parking / loyalty / plan-cap) is unchanged.
+ */
+const PREV_SEASON_MERCH_VOLUME_FACTOR = 1.04;
+const MERCH_YOY_MAX_ABS_PCT = 10;
+
+function merchTxNumericId(tx: Transaction): number {
+  const parsed = Number.parseInt(String(tx.id).replace(/\D/g, ""), 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function nextMerchTxNumericId(txs: Transaction[]): number {
+  let max = 0;
+  for (const tx of txs) {
+    const parsed = merchTxNumericId(tx);
+    if (parsed > max) max = parsed;
+  }
+  return max + 1;
+}
+
+function startOfSeasonDay(date: Date): Date {
+  return startOfDay(date);
+}
+
+function isDateInInclusiveBounds(
+  date: Date,
+  min: Date,
+  max: Date,
+): boolean {
+  const day = startOfSeasonDay(date);
+  return day >= min && day <= max;
+}
+
+function pickEvenly<T>(items: T[], count: number): T[] {
+  if (count <= 0) return [];
+  if (count >= items.length) return items.slice();
+  const picked: T[] = [];
+  const used = new Set<number>();
+  const last = Math.max(1, count - 1);
+  for (let i = 0; i < count; i += 1) {
+    let index = Math.round((i * (items.length - 1)) / last);
+    if (used.has(index)) {
+      let forward = index;
+      while (forward < items.length && used.has(forward)) forward += 1;
+      if (forward < items.length) {
+        index = forward;
+      } else {
+        let backward = index;
+        while (backward >= 0 && used.has(backward)) backward -= 1;
+        if (backward < 0) continue;
+        index = backward;
+      }
+    }
+    used.add(index);
+    picked.push(items[index]);
+  }
+  return picked;
+}
+
+function dropTransactionsById(transactions: Transaction[], dropIds: Set<string>): void {
+  if (dropIds.size === 0) return;
+  let write = 0;
+  for (let read = 0; read < transactions.length; read += 1) {
+    if (dropIds.has(transactions[read].id)) continue;
+    transactions[write] = transactions[read];
+    write += 1;
+  }
+  transactions.length = write;
+}
+
+function dropMerchSalesAndLinkedReturns(
+  transactions: Transaction[],
+  salesToDrop: Transaction[],
+): void {
+  if (salesToDrop.length === 0) return;
+  const dropIds = new Set(salesToDrop.map((tx) => tx.id));
+  const returns = transactions.filter(
+    (tx) => tx.stream === "merch" && tx.isReturn && !dropIds.has(tx.id),
+  );
+  for (const sale of salesToDrop) {
+    const returnIndex = returns.findIndex(
+      (ret) =>
+        !dropIds.has(ret.id) &&
+        ret.matchId === sale.matchId &&
+        ret.description === `Возврат: ${sale.description}`,
+    );
+    if (returnIndex >= 0) {
+      dropIds.add(returns[returnIndex].id);
+      returns.splice(returnIndex, 1);
+    }
+  }
+  dropTransactionsById(transactions, dropIds);
+}
+
+function summarizeMerchSlice(txs: Transaction[]): {
+  revenue: number;
+  receipts: number;
+  avgCheck: number;
+  returnsPct: number;
+} {
+  let revenue = 0;
+  let receipts = 0;
+  let returnsValue = 0;
+  let grossSales = 0;
+  for (const tx of txs) {
+    if (tx.isReturn) {
+      revenue -= tx.amount;
+      receipts = Math.max(0, receipts - 1);
+      returnsValue += tx.amount;
+    } else {
+      revenue += tx.amount;
+      receipts += 1;
+      grossSales += tx.amount;
+    }
+  }
+  return {
+    revenue,
+    receipts,
+    avgCheck: receipts > 0 ? revenue / receipts : 0,
+    returnsPct: grossSales > 0 ? (returnsValue / grossSales) * 100 : 0,
+  };
+}
+
+function pctChangeSafe(current: number, previous: number): number {
+  if (previous === 0) return current > 0 ? 100 : 0;
+  return ((current - previous) / previous) * 100;
+}
+
+function defaultKhlMerchSlice(
+  txs: Transaction[],
+  matchById: Map<string, Match>,
+  season: "2024/25" | "2025/26",
+): Transaction[] {
+  const bounds =
+    season === "2024/25"
+      ? {
+          min: startOfSeasonDay(
+            subDays(PREV_SEASON_START, TICKET_SALES_WINDOW_MAX_DAYS),
+          ),
+          max: startOfSeasonDay(PREV_SEASON_END),
+        }
+      : {
+          min: startOfSeasonDay(
+            subDays(SEASON_START, TICKET_SALES_WINDOW_MAX_DAYS),
+          ),
+          max: startOfSeasonDay(MOCK_TODAY),
+        };
+  return txs.filter((tx) => {
+    if (tx.stream !== "merch") return false;
+    if (!tx.matchId) {
+      return isDateInInclusiveBounds(tx.date, bounds.min, bounds.max);
+    }
+    const match = matchById.get(tx.matchId);
+    return match?.season === season && match.league === "KHL";
+  });
+}
+
+function growPrevMerchSalesToTarget(
+  transactions: Transaction[],
+  prevSales: Transaction[],
+  currentSalesCount: number,
+): void {
+  const target = Math.max(
+    0,
+    Math.round(currentSalesCount * PREV_SEASON_MERCH_VOLUME_FACTOR),
+  );
+  if (prevSales.length >= target || prevSales.length === 0) return;
+  const need = target - prevSales.length;
+  let id = nextMerchTxNumericId(transactions);
+  for (let i = 0; i < need; i += 1) {
+    const src = prevSales[i % prevSales.length];
+    transactions.push({
+      ...src,
+      id: `tx-${id++}`,
+    });
+  }
+}
+
+function trimPrevMerchSalesToTarget(
+  transactions: Transaction[],
+  prevSales: Transaction[],
+  currentSalesCount: number,
+): void {
+  const target = Math.max(
+    0,
+    Math.round(currentSalesCount * PREV_SEASON_MERCH_VOLUME_FACTOR),
+  );
+  if (prevSales.length <= target) return;
+  const keepIds = new Set(pickEvenly(prevSales, target).map((tx) => tx.id));
+  const drop = prevSales.filter((tx) => !keepIds.has(tx.id));
+  dropMerchSalesAndLinkedReturns(transactions, drop);
+}
+
+function nudgePrevMerchReturns(
+  transactions: Transaction[],
+  matchById: Map<string, Match>,
+): void {
+  const current = summarizeMerchSlice(
+    defaultKhlMerchSlice(transactions, matchById, "2025/26"),
+  );
+  let prevSlice = defaultKhlMerchSlice(transactions, matchById, "2024/25");
+  let prev = summarizeMerchSlice(prevSlice);
+  let guard = 0;
+  while (
+    Math.abs(pctChangeSafe(current.returnsPct, prev.returnsPct)) >
+      MERCH_YOY_MAX_ABS_PCT &&
+    guard < 40
+  ) {
+    guard += 1;
+    const returnsYoY = pctChangeSafe(current.returnsPct, prev.returnsPct);
+    if (returnsYoY > MERCH_YOY_MAX_ABS_PCT) {
+      const sale = prevSlice.find(
+        (tx) =>
+          !tx.isReturn &&
+          Boolean(tx.matchId) &&
+          !transactions.some(
+            (candidate) =>
+              candidate.isReturn &&
+              candidate.matchId === tx.matchId &&
+              candidate.description === `Возврат: ${tx.description}`,
+          ),
+      );
+      if (!sale) break;
+      const returnQty = Math.max(1, Math.min(sale.quantity, 1));
+      const returnAmount = Math.round((sale.amount / sale.quantity) * returnQty);
+      transactions.push({
+        id: `tx-${nextMerchTxNumericId(transactions)}`,
+        date: addDays(sale.date, 2),
+        stream: "merch",
+        description: `Возврат: ${sale.description}`,
+        matchId: sale.matchId,
+        channel: sale.channel,
+        amount: returnAmount,
+        quantity: returnQty,
+        listUnitPrice: sale.listUnitPrice,
+        merchSalesPoint: sale.merchSalesPoint,
+        productCategory: sale.productCategory,
+        isReturn: true,
+      });
+    } else {
+      const extraReturn = prevSlice.find((tx) => tx.isReturn);
+      if (!extraReturn) break;
+      dropTransactionsById(transactions, new Set([extraReturn.id]));
+    }
+    prevSlice = defaultKhlMerchSlice(transactions, matchById, "2024/25");
+    prev = summarizeMerchSlice(prevSlice);
+  }
+}
+
+function realignPreviousSeasonMerch(
+  transactions: Transaction[],
+  matches: Match[],
+): void {
+  const matchById = new Map(matches.map((match) => [match.id, match]));
+  const prevOffBounds = {
+    min: startOfSeasonDay(
+      subDays(PREV_SEASON_START, TICKET_SALES_WINDOW_MAX_DAYS),
+    ),
+    max: startOfSeasonDay(PREV_SEASON_END),
+  };
+  const curOffBounds = {
+    min: startOfSeasonDay(subDays(SEASON_START, TICKET_SALES_WINDOW_MAX_DAYS)),
+    max: startOfSeasonDay(MOCK_TODAY),
+  };
+
+  const leagues: League[] = ["KHL", "VHL", "MHL"];
+  for (const league of leagues) {
+    const currentSales = transactions
+      .filter((tx) => {
+        if (tx.stream !== "merch" || tx.isReturn || !tx.matchId) return false;
+        const match = matchById.get(tx.matchId);
+        return match?.season === "2025/26" && match.league === league;
+      })
+      .sort((left, right) => merchTxNumericId(left) - merchTxNumericId(right));
+    const prevSales = transactions
+      .filter((tx) => {
+        if (tx.stream !== "merch" || tx.isReturn || !tx.matchId) return false;
+        const match = matchById.get(tx.matchId);
+        return match?.season === "2024/25" && match.league === league;
+      })
+      .sort((left, right) => merchTxNumericId(left) - merchTxNumericId(right));
+    growPrevMerchSalesToTarget(transactions, prevSales, currentSales.length);
+    const prevAfterGrow = transactions
+      .filter((tx) => {
+        if (tx.stream !== "merch" || tx.isReturn || !tx.matchId) return false;
+        const match = matchById.get(tx.matchId);
+        return match?.season === "2024/25" && match.league === league;
+      })
+      .sort((left, right) => merchTxNumericId(left) - merchTxNumericId(right));
+    trimPrevMerchSalesToTarget(transactions, prevAfterGrow, currentSales.length);
+  }
+
+  const currentOff = transactions
+    .filter(
+      (tx) =>
+        tx.stream === "merch" &&
+        !tx.isReturn &&
+        !tx.matchId &&
+        isDateInInclusiveBounds(tx.date, curOffBounds.min, curOffBounds.max),
+    )
+    .sort((left, right) => merchTxNumericId(left) - merchTxNumericId(right));
+  const prevOff = transactions
+    .filter(
+      (tx) =>
+        tx.stream === "merch" &&
+        !tx.isReturn &&
+        !tx.matchId &&
+        isDateInInclusiveBounds(tx.date, prevOffBounds.min, prevOffBounds.max),
+    )
+    .sort((left, right) => merchTxNumericId(left) - merchTxNumericId(right));
+  growPrevMerchSalesToTarget(transactions, prevOff, currentOff.length);
+  const prevOffAfterGrow = transactions
+    .filter(
+      (tx) =>
+        tx.stream === "merch" &&
+        !tx.isReturn &&
+        !tx.matchId &&
+        isDateInInclusiveBounds(tx.date, prevOffBounds.min, prevOffBounds.max),
+    )
+    .sort((left, right) => merchTxNumericId(left) - merchTxNumericId(right));
+  trimPrevMerchSalesToTarget(transactions, prevOffAfterGrow, currentOff.length);
+
+  nudgePrevMerchReturns(transactions, matchById);
+}
+
 function pickMerchQuantity(): number {
   return rand() < 0.34 ? 1 : 2;
 }
@@ -596,6 +883,13 @@ function seededRandom(seed: number): () => number {
 }
 
 const rand = seededRandom(42);
+/** Independent of `rand` so loyalty rate can move without reshuffling occupancy/plan. */
+const loyaltyRand = seededRandom(20260515);
+/**
+ * Share of paid txs that get 5/10/15% off. Tuned so the tickets-tab KPI
+ * «Скидка программы лояльности» matches production (~3.1%).
+ */
+const LOYALTY_DISCOUNT_APPLY_RATE = 0.304;
 
 function getBaseMatchClass(opponent: string, league: League): MatchClass {
   switch (league) {
@@ -949,10 +1243,14 @@ function applyLoyaltyDiscount(grossAmount: number): {
   if (grossAmount <= 0) {
     return { amount: 0, loyaltyDiscount: 0 };
   }
-  if (rand() > 0.32) {
+  // Historical 32% gate still draws from `rand` so later mock streams stay put.
+  if (rand() <= 0.32) {
+    randomInt(0, 2);
+  }
+  if (loyaltyRand() > LOYALTY_DISCOUNT_APPLY_RATE) {
     return { amount: grossAmount, loyaltyDiscount: 0 };
   }
-  const discountPct = [5, 10, 15][randomInt(0, 2)];
+  const discountPct = ([5, 10, 15] as const)[Math.floor(loyaltyRand() * 3)];
   const loyaltyDiscount = Math.round(grossAmount * (discountPct / 100));
   return {
     amount: grossAmount - loyaltyDiscount,
@@ -960,29 +1258,42 @@ function applyLoyaltyDiscount(grossAmount: number): {
   };
 }
 
-function resolveTicketPayment(
-  grossAmount: number,
-  revenueLeft: number,
-): { amount: number; loyaltyDiscount: number } {
-  if (grossAmount <= 0 || revenueLeft <= 0) {
-    return { amount: 0, loyaltyDiscount: 0 };
-  }
-
-  const discounted = applyLoyaltyDiscount(grossAmount);
-  if (discounted.amount <= revenueLeft) {
-    return discounted;
-  }
-
+/** Paid ticket amount after optional 5/10/15% loyalty discount (~3.1% of gross). */
+function resolveTicketPayment(grossAmount: number): {
+  amount: number;
+  loyaltyDiscount?: number;
+} {
+  const { amount, loyaltyDiscount } = applyLoyaltyDiscount(grossAmount);
   return {
-    amount: Math.min(grossAmount, revenueLeft),
-    loyaltyDiscount: 0,
+    amount,
+    loyaltyDiscount: loyaltyDiscount > 0 ? loyaltyDiscount : undefined,
+  };
+}
+
+/** Occupancy-fill tickets keep the tickets-tab loyalty KPI at ~3.1%. */
+const OCCUPANCY_FILL_LOYALTY_RATE = 0.031;
+
+function resolveTicketPaymentWithRate(
+  grossAmount: number,
+  lockedLoyaltyRate?: number,
+): { amount: number; loyaltyDiscount?: number } {
+  if (lockedLoyaltyRate == null) {
+    return resolveTicketPayment(grossAmount);
+  }
+  if (!(grossAmount > 0) || !(lockedLoyaltyRate > 0)) {
+    return { amount: grossAmount };
+  }
+  const loyaltyDiscount = Math.round(grossAmount * lockedLoyaltyRate);
+  return {
+    amount: grossAmount - loyaltyDiscount,
+    loyaltyDiscount: loyaltyDiscount > 0 ? loyaltyDiscount : undefined,
   };
 }
 
 const HIGH_DEMAND_OPPONENTS = new Set(["Ак Барс", "Локомотив", "Трактор"]);
 const LOW_DEMAND_OPPONENTS = new Set(["Сочи", "Торпедо"]);
 
-/** Small opponent variance so fact stays within ~90–98% of plan. */
+/** Opponent variance around the ticket-count plan; revenue cap is applied after. */
 function getOpponentSalesFactor(opponent: string, matchClass: MatchClass): number {
   if (matchClass === "playoff") {
     return 0.96 + rand() * 0.06;
@@ -996,35 +1307,6 @@ function getOpponentSalesFactor(opponent: string, matchClass: MatchClass): numbe
   return 0.96 + rand() * 0.06;
 }
 
-/**
- * Returns the midpoint of the sector's price range scaled for league/class,
- * used only for the "closestSector" heuristic when filling the last batch.
- */
-function sectorMidPrice(
-  sector: Sector,
-  league: League,
-  matchClass: MatchClass = "class_2",
-): number {
-  if (sector === "VIP") return 5000;
-  const [min, max] = SECTOR_PRICE_RANGE[sector];
-  const mid = (min + max) / 2;
-  const scaleFactor = leagueClassPriceScale(league, matchClass);
-  return Math.min(NON_VIP_MAX_UNIT_PRICE, Math.round(mid * scaleFactor));
-}
-
-function closestSector(
-  targetPrice: number,
-  league: League = "KHL",
-  matchClass: MatchClass = "class_2",
-): Sector {
-  return ALL_SECTORS.reduce((best, zone) =>
-    Math.abs(sectorMidPrice(zone, league, matchClass) - targetPrice) <
-    Math.abs(sectorMidPrice(best, league, matchClass) - targetPrice)
-      ? zone
-      : best,
-  ALL_SECTORS[0]);
-}
-
 function randomSaleDate(match: Match, explicit?: Date): Date {
   if (explicit) return explicit;
 
@@ -1035,112 +1317,6 @@ function randomSaleDate(match: Match, explicit?: Date): Date {
   return subDays(saleEnd, randomInt(0, span));
 }
 
-function buildDayTicketSales(
-  matchId: string,
-  saleDate: Date,
-  startId: number,
-  ticketTarget: number,
-  revenueTarget: number,
-  league: League,
-  matchClass: MatchClass = "class_2",
-): Transaction[] {
-  const txs: Transaction[] = [];
-  let id = startId;
-  let ticketsLeft = ticketTarget;
-  let revenueLeft = revenueTarget;
-
-  while (ticketsLeft > 0 && revenueLeft > 0) {
-    const isLast = ticketsLeft <= 4;
-    const isParking = !isLast && rand() < 0.12;
-
-    if (isParking) {
-      const qty = isLast
-        ? ticketsLeft
-        : Math.min(randomInt(1, 2), ticketsLeft, Math.floor(revenueLeft / 500) || 1);
-      const gross = 500 * qty;
-      const orderSource = pickOrderSource();
-      txs.push({
-        id: `tx-${id++}`,
-        date: saleDate,
-        stream: "tickets",
-        description: "Парковка",
-        matchId,
-        channel: orderSource === "box_office" ? "arena" : "online",
-        amount: gross,
-        quantity: qty,
-        ticketType: "parking",
-        orderSource,
-      });
-      ticketsLeft -= qty;
-      revenueLeft -= gross;
-      continue;
-    }
-
-    if (isLast) {
-      const sector = closestSector(
-        Math.round(revenueLeft / ticketsLeft),
-        league,
-        matchClass,
-      );
-      const unitPrice = randomUnitPriceForSector(sector, league, matchClass);
-      const priceZone = priceZoneFromUnitPrice(unitPrice);
-      if (!isAllowedSectorPriceZone(sector, priceZone)) break;
-      const qty = ticketsLeft;
-      const gross = unitPrice * qty;
-      const { amount, loyaltyDiscount } = resolveTicketPayment(gross, revenueLeft);
-      if (amount <= 0) break;
-
-      const orderSource = pickOrderSource();
-      txs.push({
-        id: `tx-${id++}`,
-        date: saleDate,
-        stream: "tickets",
-        description: `Билет на арену, сектор ${sector}`,
-        matchId,
-        channel: orderSource === "box_office" ? "arena" : "online",
-        amount,
-        quantity: qty,
-        loyaltyDiscount: loyaltyDiscount > 0 ? loyaltyDiscount : undefined,
-        sector,
-        ticketType: "arena",
-        priceZone,
-        orderSource,
-      });
-      break;
-    }
-
-    const sector = randomPick(ALL_SECTORS);
-    const unitPrice = randomUnitPriceForSector(sector, league, matchClass);
-    const priceZone = priceZoneFromUnitPrice(unitPrice);
-    if (!isAllowedSectorPriceZone(sector, priceZone)) continue;
-    const qty = Math.min(randomInt(1, 4), ticketsLeft);
-    const gross = unitPrice * qty;
-    const { amount, loyaltyDiscount } = resolveTicketPayment(gross, revenueLeft);
-    if (amount <= 0) break;
-
-    const orderSource = pickOrderSource();
-    txs.push({
-      id: `tx-${id++}`,
-      date: saleDate,
-      stream: "tickets",
-      description: `Билет на арену, сектор ${sector}`,
-      matchId,
-      channel: orderSource === "box_office" ? "arena" : "online",
-      amount,
-      quantity: qty,
-      loyaltyDiscount: loyaltyDiscount > 0 ? loyaltyDiscount : undefined,
-      sector,
-      ticketType: "arena",
-      priceZone,
-      orderSource,
-    });
-    ticketsLeft -= qty;
-    revenueLeft -= amount;
-  }
-
-  return txs;
-}
-
 const PRICE_ZONE_UNIT_PRICE: Record<PriceZone, number> = {
   up_to_1500: 900,
   from_1500_to_2500: 2000,
@@ -1148,7 +1324,83 @@ const PRICE_ZONE_UNIT_PRICE: Record<PriceZone, number> = {
   from_4000_to_6000: 5000,
 };
 
+/** Parking is a separate fixed inventory. No price zone. */
+const MIN_PARKING_PAID_QUANTITY = 8;
+
+function parkingSalesForMatch(
+  match: Match,
+  arenaQty: number,
+  soldOut: boolean,
+): number {
+  const cap = getMatchParkingCapacity(match);
+  if (cap <= 0) return 0;
+  if (soldOut) return cap;
+  if (!(match.capacity > 0) || arenaQty <= 0) {
+    return Math.min(cap, MIN_PARKING_PAID_QUANTITY);
+  }
+  const fill = Math.min(1, arenaQty / match.capacity);
+  return Math.min(
+    cap,
+    Math.max(MIN_PARKING_PAID_QUANTITY, Math.round(cap * fill)),
+  );
+}
+
+/**
+ * Paid parking tickets for one match. Never sets sector or priceZone —
+ * parking is not a seating inventory combo.
+ */
+function appendParkingTicketSales(
+  match: Match,
+  dates: Date[],
+  parkingTickets: number,
+  startId: number,
+  lockedLoyaltyRate?: number,
+): { txs: Transaction[]; nextId: number } {
+  if (parkingTickets <= 0) {
+    return { txs: [], nextId: startId };
+  }
+  const saleDates =
+    dates.length > 0
+      ? dates
+      : [startOfDay(match.date <= MOCK_TODAY ? match.date : MOCK_TODAY)];
+  const txs: Transaction[] = [];
+  let id = startId;
+  let parkingLeft = parkingTickets;
+  while (parkingLeft > 0) {
+    const qty = Math.min(randomInt(1, 2), parkingLeft);
+    const saleDate = saleDates[randomInt(0, saleDates.length - 1)]!;
+    const orderSource = pickOrderSource();
+    const payment = resolveTicketPaymentWithRate(
+      TICKET_PLAN_PARKING_UNIT_PRICE * qty,
+      lockedLoyaltyRate,
+    );
+    txs.push({
+      id: `tx-${id++}`,
+      date: saleDate,
+      stream: "tickets",
+      description: "Парковка",
+      matchId: match.id,
+      channel: orderSource === "box_office" ? "arena" : "online",
+      amount: payment.amount,
+      quantity: qty,
+      loyaltyDiscount: payment.loyaltyDiscount,
+      ticketType: "parking",
+      orderSource,
+    });
+    parkingLeft -= qty;
+  }
+  return { txs, nextId: id };
+}
+
 function saleDatesOnOrBeforeToday(match: Match): Date[] {
+  const dates = eligibleSaleDates(match);
+  if (dates.length === 0) {
+    dates.push(startOfDay(match.date <= MOCK_TODAY ? match.date : MOCK_TODAY));
+  }
+  return dates;
+}
+
+function eligibleSaleDates(match: Match): Date[] {
   const salesWindowDays = getMatchTicketSalesWindowDays(match);
   const dates: Date[] = [];
   for (let offset = salesWindowDays; offset >= 0; offset -= 1) {
@@ -1156,10 +1408,90 @@ function saleDatesOnOrBeforeToday(match: Match): Date[] {
     if (saleDay > MOCK_TODAY) continue;
     dates.push(saleDay);
   }
-  if (dates.length === 0) {
-    dates.push(startOfDay(match.date <= MOCK_TODAY ? match.date : MOCK_TODAY));
-  }
   return dates;
+}
+
+type InventoryCombo = { sector: Sector; zone: PriceZone; mass: number };
+
+function comboId(sector: Sector, zone: PriceZone): string {
+  return `${sector}|${zone}`;
+}
+
+function listInventoryCombos(
+  match: Pick<Match, "arena" | "league" | "capacity">,
+): InventoryCombo[] {
+  const sectors = getSectorCapacitiesForMatch(match);
+  if (!sectors) return [];
+  const combos: InventoryCombo[] = [];
+  for (const sector of ALL_SECTORS) {
+    const sectorCap = sectors[sector] ?? 0;
+    if (!(sectorCap > 0)) continue;
+    const split = splitSectorCapacity(sector, sectorCap);
+    for (const zone of allowedPriceZonesForSector(sector)) {
+      const mass = split[zone] ?? 0;
+      if (!(mass > 0)) continue;
+      combos.push({ sector, zone, mass });
+    }
+  }
+  return combos;
+}
+
+function emitComboTicketSales(
+  match: Match,
+  quantities: Map<string, number>,
+  dates: Date[],
+  startId: number,
+  tempo?: TicketSalesTempo,
+  lockedLoyaltyRate?: number,
+): { txs: Transaction[]; nextId: number } {
+  const saleDates =
+    dates.length > 0
+      ? dates
+      : [startOfDay(match.date <= MOCK_TODAY ? match.date : MOCK_TODAY)];
+  const dailyWeights = tempo
+    ? buildTicketSalesDailyWeights(saleDates.length, tempo)
+    : saleDates.map(() => 0.8 + rand() * 0.4);
+  const dateWeights = dailyWeights.map((weight, index) => ({
+    id: String(index),
+    weight,
+  }));
+  const txs: Transaction[] = [];
+  let id = startId;
+
+  for (const [key, qtyTotal] of quantities) {
+    if (!(qtyTotal > 0)) continue;
+    const sep = key.indexOf("|");
+    const sector = key.slice(0, sep) as Sector;
+    const zone = key.slice(sep + 1) as PriceZone;
+    const byDay = allocateIntegerShares(qtyTotal, dateWeights);
+    for (let index = 0; index < saleDates.length; index += 1) {
+      const qty = byDay.get(String(index)) ?? 0;
+      if (qty <= 0) continue;
+      const unitPrice = PRICE_ZONE_UNIT_PRICE[zone];
+      const orderSource = pickOrderSource();
+      const payment = resolveTicketPaymentWithRate(
+        unitPrice * qty,
+        lockedLoyaltyRate,
+      );
+      txs.push({
+        id: `tx-${id++}`,
+        date: saleDates[index]!,
+        stream: "tickets",
+        description: `Билет на арену, сектор ${sector}`,
+        matchId: match.id,
+        channel: orderSource === "box_office" ? "arena" : "online",
+        amount: payment.amount,
+        quantity: qty,
+        loyaltyDiscount: payment.loyaltyDiscount,
+        sector,
+        ticketType: "arena",
+        priceZone: zone,
+        orderSource,
+      });
+    }
+  }
+
+  return { txs, nextId: id };
 }
 
 /**
@@ -1171,50 +1503,89 @@ function generateSoldOutMatchTicketSales(
   match: Match,
   startId: number,
 ): { txs: Transaction[]; nextId: number } {
-  const sectors = getSectorCapacitiesForMatch(match);
-  if (!sectors) {
+  const combos = listInventoryCombos(match);
+  if (combos.length === 0) {
+    return { txs: [], nextId: startId };
+  }
+  const quantities = new Map(
+    combos.map((combo) => [comboId(combo.sector, combo.zone), combo.mass]),
+  );
+  const dates = saleDatesOnOrBeforeToday(match);
+  const arenaSales = emitComboTicketSales(match, quantities, dates, startId);
+  const arenaQty = [...quantities.values()].reduce((sum, qty) => sum + qty, 0);
+  const parking = appendParkingTicketSales(
+    match,
+    dates,
+    parkingSalesForMatch(match, arenaQty, true),
+    arenaSales.nextId,
+  );
+  return {
+    txs: [...arenaSales.txs, ...parking.txs],
+    nextId: parking.nextId,
+  };
+}
+
+function generatePartialMatchTicketSales(
+  match: Match,
+  startId: number,
+): { txs: Transaction[]; nextId: number } {
+  const combos = listInventoryCombos(match);
+  const dates = eligibleSaleDates(match);
+  if (combos.length === 0 || dates.length === 0) {
     return { txs: [], nextId: startId };
   }
 
-  const dates = saleDatesOnOrBeforeToday(match);
-  const dateWeights = dates.map((_, index) => ({
-    id: String(index),
-    weight: 0.8 + rand() * 0.4,
-  }));
-  const txs: Transaction[] = [];
-  let id = startId;
+  const planTickets = getMatchPlanArenaTickets(match);
+  const profile = match.ticketSalesProfile;
+  const fulfillmentFactor =
+    profile?.fulfillmentFactor ?? 0.9 + rand() * 0.08;
+  const opponentFactor = getOpponentSalesFactor(match.opponent, match.matchClass);
+  const maxArenaIssued = Math.floor(
+    match.capacity * MAX_MID_REVENUE_OCCUPANCY,
+  );
+  const targetTickets = Math.min(
+    maxArenaIssued,
+    Math.round(planTickets * fulfillmentFactor * opponentFactor),
+  );
 
-  for (const sector of ALL_SECTORS) {
-    const sectorCap = sectors[sector] ?? 0;
-    const split = splitSectorCapacity(sector, sectorCap);
-    for (const zone of allowedPriceZonesForSector(sector)) {
-      const mass = split[zone] ?? 0;
-      if (!(mass > 0)) continue;
-      const byDay = allocateIntegerShares(mass, dateWeights);
-      for (let index = 0; index < dates.length; index += 1) {
-        const qty = byDay.get(String(index)) ?? 0;
-        if (qty <= 0) continue;
-        const unitPrice = PRICE_ZONE_UNIT_PRICE[zone];
-        const orderSource = pickOrderSource();
-        txs.push({
-          id: `tx-${id++}`,
-          date: dates[index]!,
-          stream: "tickets",
-          description: `Билет на арену, сектор ${sector}`,
-          matchId: match.id,
-          channel: orderSource === "box_office" ? "arena" : "online",
-          amount: unitPrice * qty,
-          quantity: qty,
-          sector,
-          ticketType: "arena",
-          priceZone: zone,
-          orderSource,
-        });
-      }
-    }
-  }
+  const saleDayCount = getMatchTicketSalesWindowDays(match) + 1;
+  const elapsedFraction = dates.length / saleDayCount;
+  const comboMass = combos.reduce((sum, combo) => sum + combo.mass, 0);
+  const arenaTarget = Math.min(
+    comboMass,
+    maxArenaIssued,
+    Math.max(
+      combos.length,
+      Math.round(targetTickets * elapsedFraction),
+    ),
+  );
+  const quantities = allocateIntegerSharesWithBounds(
+    arenaTarget,
+    combos.map((combo) => ({
+      id: comboId(combo.sector, combo.zone),
+      weight: combo.mass,
+      min: 1,
+      max: combo.mass,
+    })),
+  );
 
-  return { txs, nextId: id };
+  const arenaSales = emitComboTicketSales(
+    match,
+    quantities,
+    dates,
+    startId,
+    profile?.tempo,
+  );
+  const parking = appendParkingTicketSales(
+    match,
+    dates,
+    parkingSalesForMatch(match, arenaTarget, false),
+    arenaSales.nextId,
+  );
+  return {
+    txs: [...arenaSales.txs, ...parking.txs],
+    nextId: parking.nextId,
+  };
 }
 
 function generateMatchTicketSales(
@@ -1224,64 +1595,7 @@ function generateMatchTicketSales(
   if (isSoldOutOccupancyMatch(match)) {
     return generateSoldOutMatchTicketSales(match, startId);
   }
-  const planProfile = getMatchTicketPlanProfile(match);
-  const planTickets = Math.round(match.capacity * planProfile.fillRate);
-  const planRevenue = getMatchPlanRevenue(match);
-  const profile = match.ticketSalesProfile;
-  const fulfillmentFactor =
-    profile?.fulfillmentFactor ?? 0.9 + rand() * 0.08;
-  const opponentFactor = getOpponentSalesFactor(match.opponent, match.matchClass);
-  const targetRevenue = Math.round(
-    planRevenue * fulfillmentFactor * opponentFactor * (0.97 + rand() * 0.05),
-  );
-  const targetTickets = Math.min(
-    match.capacity,
-    Math.round(planTickets * fulfillmentFactor * opponentFactor),
-  );
-
-  const salesWindowDays = getMatchTicketSalesWindowDays(match);
-  const saleDayCount = salesWindowDays + 1;
-  const dailyWeights = buildTicketSalesDailyWeights(saleDayCount, profile?.tempo);
-  const weightSum = dailyWeights.reduce((sum, weight) => sum + weight, 0);
-
-  const txs: Transaction[] = [];
-  let id = startId;
-  let allocatedTickets = 0;
-  let allocatedRevenue = 0;
-
-  for (let offset = salesWindowDays; offset >= 0; offset -= 1) {
-    const saleDay = subDays(match.date, offset);
-    if (saleDay > MOCK_TODAY) {
-      continue;
-    }
-
-    const weightIndex = salesWindowDays - offset;
-    const isLastDay = offset === 0;
-    const dayTickets = isLastDay
-      ? targetTickets - allocatedTickets
-      : Math.round((targetTickets * dailyWeights[weightIndex]) / weightSum);
-    const dayRevenue = isLastDay
-      ? targetRevenue - allocatedRevenue
-      : Math.round((targetRevenue * dailyWeights[weightIndex]) / weightSum);
-
-    if (dayTickets > 0 && dayRevenue > 0) {
-      const dayTxs = buildDayTicketSales(
-        match.id,
-        saleDay,
-        id,
-        dayTickets,
-        dayRevenue,
-        match.league,
-        match.matchClass,
-      );
-      id += dayTxs.length;
-      txs.push(...dayTxs);
-      allocatedTickets += dayTxs.reduce((sum, tx) => sum + tx.quantity, 0);
-      allocatedRevenue += dayTxs.reduce((sum, tx) => sum + tx.amount, 0);
-    }
-  }
-
-  return { txs, nextId: id };
+  return generatePartialMatchTicketSales(match, startId);
 }
 
 function isWithinTicketSalesWindow(match: Match, day: Date): boolean {
@@ -1307,6 +1621,29 @@ function findUpcomingMatchInSalesWindow(
     .sort((a, b) => a.date.getTime() - b.date.getTime())[0];
 }
 
+type ArenaComboStat = { paid: number; issued: number; revenue: number };
+
+function arenaComboStats(
+  transactions: Transaction[],
+  matchId: string,
+): Map<string, ArenaComboStat> {
+  const stats = new Map<string, ArenaComboStat>();
+  for (const tx of transactions) {
+    if (tx.stream !== "tickets" || tx.ticketType !== "arena") continue;
+    if (tx.matchId !== matchId || !tx.sector || !tx.priceZone) continue;
+    const key = comboId(tx.sector, tx.priceZone);
+    let row = stats.get(key);
+    if (!row) {
+      row = { paid: 0, issued: 0, revenue: 0 };
+      stats.set(key, row);
+    }
+    if (tx.amount > 0) row.paid += tx.quantity;
+    row.issued += getTicketIssuedQuantity(tx);
+    row.revenue += tx.amount;
+  }
+  return stats;
+}
+
 function ensureMockTodayTicketSales(
   allMatches: Match[],
   transactions: Transaction[],
@@ -1326,22 +1663,173 @@ function ensureMockTodayTicketSales(
     return { txs: [], nextId: startId };
   }
 
-  const planProfile = getMatchTicketPlanProfile(upcomingMatch);
-  const tickets = randomInt(120, 280);
-  const revenue = Math.round(
-    tickets * planProfile.avgPrice * (0.95 + rand() * 0.08),
-  );
-  const dayTxs = buildDayTicketSales(
-    upcomingMatch.id,
-    today,
+  const combos = listInventoryCombos(upcomingMatch);
+  if (combos.length === 0) {
+    return { txs: [], nextId: startId };
+  }
+  const stats = arenaComboStats(transactions, upcomingMatch.id);
+  const items = combos.map((combo) => {
+    const row = stats.get(comboId(combo.sector, combo.zone));
+    const remain = Math.max(0, combo.mass - (row?.issued ?? 0));
+    return {
+      id: comboId(combo.sector, combo.zone),
+      weight: remain,
+      min: 0,
+      max: remain,
+    };
+  });
+  const room = items.reduce((sum, item) => sum + item.max, 0);
+  if (room <= 0) {
+    return { txs: [], nextId: startId };
+  }
+  const tickets = Math.min(randomInt(120, 280), room);
+  const quantities = allocateIntegerSharesWithBounds(tickets, items);
+  return emitComboTicketSales(
+    upcomingMatch,
+    quantities,
+    [today],
     startId,
-    tickets,
-    revenue,
-    upcomingMatch.league,
-    upcomingMatch.matchClass,
+    upcomingMatch.ticketSalesProfile?.tempo,
   );
+}
 
-  return { txs: dayTxs, nextId: startId + dayTxs.length };
+function generateMatchMerchSales(
+  match: Match,
+  startId: number,
+): { txs: Transaction[]; nextId: number } {
+  const txs: Transaction[] = [];
+  let id = startId;
+  const merchCount =
+    match.league === "KHL"
+      ? randomInt(55, 95)
+      : match.league === "VHL"
+        ? randomInt(18, 32)
+        : randomInt(12, 22);
+
+  for (let m = 0; m < merchCount; m++) {
+    const item = pickMerchItemForMatch(match.id);
+    const qty = pickMerchQuantity();
+    const merchSalesPoint = pickMerchSalesPointForMatch(match.id);
+    const payment = resolveMerchPayment(item, qty);
+    const costAmount = Math.round(payment.amount * (0.35 + rand() * 0.2));
+    txs.push({
+      id: `tx-${id++}`,
+      date: match.date,
+      stream: "merch",
+      description: item.desc,
+      matchId: match.id,
+      channel: "kiosk",
+      amount: payment.amount,
+      quantity: qty,
+      listUnitPrice: payment.listUnitPrice,
+      loyaltyDiscount: payment.loyaltyDiscount,
+      merchSalesPoint,
+      productCategory: item.category,
+      costAmount,
+    });
+
+    if (rand() < 0.035) {
+      const returnQty = randomInt(1, qty);
+      const returnAmount = Math.round((payment.amount / qty) * returnQty);
+      txs.push({
+        id: `tx-${id++}`,
+        date: addDays(match.date, randomInt(1, 5)),
+        stream: "merch",
+        description: `Возврат: ${item.desc}`,
+        matchId: match.id,
+        channel: "kiosk",
+        amount: returnAmount,
+        quantity: returnQty,
+        listUnitPrice: payment.listUnitPrice,
+        merchSalesPoint,
+        productCategory: item.category,
+        isReturn: true,
+      });
+    }
+  }
+
+  return { txs, nextId: id };
+}
+
+function merchMatchTableNetRevenue(
+  transactions: Transaction[],
+  matchId: string,
+): number {
+  const end = endOfDay(MOCK_TODAY);
+  let revenue = 0;
+  for (const tx of transactions) {
+    if (tx.stream !== "merch" || tx.matchId !== matchId) continue;
+    if (tx.date > end) continue;
+    if (!isMerchMatchTablePoint(tx.merchSalesPoint)) continue;
+    revenue += tx.isReturn ? -tx.amount : tx.amount;
+  }
+  return revenue;
+}
+
+function ticketRevenueThroughToday(
+  transactions: Transaction[],
+  matchId: string,
+): number {
+  const end = endOfDay(MOCK_TODAY);
+  let revenue = 0;
+  for (const tx of transactions) {
+    if (tx.stream !== "tickets" || tx.matchId !== matchId) continue;
+    if (tx.date > end) continue;
+    revenue += tx.amount;
+  }
+  return revenue;
+}
+
+/**
+ * After ticket occupancy/plan bands are final: apply explicit match-id
+ * merch % first, else raise/lower stored merch plan so match-table
+ * fulfillment is ≤103%, and 75–100% when that match's ticket revenue plan
+ * is already met. Does not emit tickets.
+ */
+function alignMatchMerchPlanFulfillment(
+  matches: Match[],
+  transactions: Transaction[],
+): void {
+  for (const match of matches) {
+    if (!match.eventCompleted) continue;
+    const merchRevenue = merchMatchTableNetRevenue(transactions, match.id);
+    if (!(merchRevenue > 0)) continue;
+
+    if (applyExplicitMatchMerchPlan(match, merchRevenue)) continue;
+
+    const ticketsMet = isTicketRevenuePlanMet(
+      match,
+      ticketRevenueThroughToday(transactions, match.id),
+    );
+    if (ticketsMet) {
+      applyMatchMerchPlanFloorWhenTicketsMet(match, merchRevenue);
+    }
+    applyMatchMerchPlanFulfillmentBand(match, merchRevenue, ticketsMet);
+  }
+}
+
+function ensureCompletedMatchMerchSales(
+  allMatches: Match[],
+  transactions: Transaction[],
+  startId: number,
+): { txs: Transaction[]; nextId: number } {
+  const withMerch = new Set<string>();
+  for (const tx of transactions) {
+    if (tx.stream === "merch" && tx.matchId) {
+      withMerch.add(tx.matchId);
+    }
+  }
+
+  const txs: Transaction[] = [];
+  let id = startId;
+  for (const match of allMatches) {
+    if (!match.eventCompleted || withMerch.has(match.id)) continue;
+    const generated = generateMatchMerchSales(match, id);
+    txs.push(...generated.txs);
+    id = generated.nextId;
+    withMerch.add(match.id);
+  }
+  return { txs, nextId: id };
 }
 
 function generateTransactions(allMatches: Match[]): Transaction[] {
@@ -1354,18 +1842,25 @@ function generateTransactions(allMatches: Match[]): Transaction[] {
     id = ticketSales.nextId;
 
     if (!match.eventCompleted) continue;
+    // Sold-out bowls cannot take free tickets; merch for those matches is
+    // appended after ticket coverage so occupancy/parking/loyalty/plan RNG
+    // stays unchanged.
     if (isSoldOutOccupancyMatch(match)) continue;
 
     const freeTicketCount = randomInt(0, 2);
+    const combos = listInventoryCombos(match);
+    const comboStats = arenaComboStats(ticketSales.txs, match.id);
     for (let f = 0; f < freeTicketCount; f++) {
       const qty = pickMerchQuantity();
+      const openCombos = combos.filter((combo) => {
+        const issued = comboStats.get(comboId(combo.sector, combo.zone))?.issued ?? 0;
+        return combo.mass - issued >= qty;
+      });
+      if (openCombos.length === 0) continue;
+      const combo = randomPick(openCombos);
       const orderSource = pickOrderSource();
       const channel: SalesChannel =
         orderSource === "box_office" ? "arena" : "online";
-      const sector = randomPick(ALL_SECTORS);
-      const unitPrice = randomUnitPriceForSector(sector, match.league, match.matchClass);
-      const priceZone = priceZoneFromUnitPrice(unitPrice);
-      if (!isAllowedSectorPriceZone(sector, priceZone)) continue;
       transactions.push({
         id: `tx-${id++}`,
         date: randomSaleDate(match),
@@ -1376,61 +1871,22 @@ function generateTransactions(allMatches: Match[]): Transaction[] {
         amount: 0,
         quantity: qty,
         freeQuantity: qty,
-        sector,
+        sector: combo.sector,
         ticketType: "arena",
-        priceZone,
+        priceZone: combo.zone,
         orderSource,
       });
+      const row = comboStats.get(comboId(combo.sector, combo.zone)) ?? {
+        paid: 0,
+        issued: 0,
+      };
+      row.issued += qty;
+      comboStats.set(comboId(combo.sector, combo.zone), row);
     }
 
-    const merchCount =
-      match.league === "KHL"
-        ? randomInt(55, 95)
-        : match.league === "VHL"
-          ? randomInt(18, 32)
-          : randomInt(12, 22);
-    for (let m = 0; m < merchCount; m++) {
-      const item = pickMerchItemForMatch(match.id);
-      const qty = pickMerchQuantity();
-      const merchSalesPoint = pickMerchSalesPointForMatch(match.id);
-      const payment = resolveMerchPayment(item, qty);
-      const costAmount = Math.round(payment.amount * (0.35 + rand() * 0.2));
-      transactions.push({
-        id: `tx-${id++}`,
-        date: match.date,
-        stream: "merch",
-        description: item.desc,
-        matchId: match.id,
-        channel: "kiosk",
-        amount: payment.amount,
-        quantity: qty,
-        listUnitPrice: payment.listUnitPrice,
-        loyaltyDiscount: payment.loyaltyDiscount,
-        merchSalesPoint,
-        productCategory: item.category,
-        costAmount,
-      });
-
-      if (rand() < 0.035) {
-        const returnQty = randomInt(1, qty);
-        const returnAmount = Math.round((payment.amount / qty) * returnQty);
-        transactions.push({
-          id: `tx-${id++}`,
-          date: addDays(match.date, randomInt(1, 5)),
-          stream: "merch",
-          description: `Возврат: ${item.desc}`,
-          matchId: match.id,
-          channel: "kiosk",
-          amount: returnAmount,
-          quantity: returnQty,
-          listUnitPrice: payment.listUnitPrice,
-          merchSalesPoint,
-          productCategory: item.category,
-          isReturn: true,
-        });
-      }
-    }
-
+    const merchSales = generateMatchMerchSales(match, id);
+    transactions.push(...merchSales.txs);
+    id = merchSales.nextId;
   }
 
   const offMatchMerchSales = generateOffMatchMerchSales(id);
@@ -1447,6 +1903,58 @@ function generateTransactions(allMatches: Match[]): Transaction[] {
     id,
   );
   transactions.push(...zoneCoverage.txs);
+  id = zoneCoverage.nextId;
+
+  const parkingCoverage = ensureParkingTicketCoverage(
+    allMatches,
+    transactions,
+    id,
+  );
+  transactions.push(...parkingCoverage.txs);
+  id = parkingCoverage.nextId;
+
+  // Completed sold-out matches skipped merch above to keep ticket RNG stable.
+  const completedMerch = ensureCompletedMatchMerchSales(
+    allMatches,
+    transactions,
+    id,
+  );
+  transactions.push(...completedMerch.txs);
+
+  realignPreviousSeasonMerch(transactions, allMatches);
+
+  // After merch/itogo streams so those RNGs stay put. Occupancy bands
+  // vs revenue/plan: [89%, 95%] → [89%, 96%] issued; (95%, 100%) → ≥96%;
+  // ≥100% → 100% arena+parking issued.
+  const midOccupancyFill = ensureMidRevenueArenaOccupancy(
+    allMatches,
+    transactions,
+    nextMerchTxNumericId(transactions),
+  );
+  transactions.push(...midOccupancyFill.txs);
+  const occupancyFill = ensureHighRevenueArenaOccupancy(
+    allMatches,
+    transactions,
+    nextMerchTxNumericId(transactions),
+  );
+  transactions.push(...occupancyFill.txs);
+
+  // Zone-sector widget is arena-only (issued vs match.capacity, arena plan).
+  const arenaBandFill = ensureZoneSectorMatchOccupancyBands(
+    allMatches,
+    transactions,
+    nextMerchTxNumericId(transactions),
+  );
+  transactions.push(...arenaBandFill.txs);
+
+  // Then fill remaining arena seats on any combo/zone/sector/match row
+  // whose revenue already beats 100% of its arena plan.
+  const overPlanFill = ensureOverPlanArenaOccupancy(
+    allMatches,
+    transactions,
+    nextMerchTxNumericId(transactions),
+  );
+  transactions.push(...overPlanFill.txs);
 
   return transactions.sort((a, b) => b.date.getTime() - a.date.getTime());
 }
@@ -1460,10 +1968,12 @@ function pushCoverageTicket(
   matchId: string,
   sector: Sector,
   zone: PriceZone,
+  qty: number,
 ): number {
+  if (!(qty > 0)) return id;
   const unitPrice = PRICE_ZONE_UNIT_PRICE[zone];
-  const qty = PRICE_ZONE_SEED_QUANTITY;
   const orderSource = pickOrderSource();
+  const payment = resolveTicketPayment(unitPrice * qty);
   txs.push({
     id: `tx-${id}`,
     date: randomSaleDate(match),
@@ -1471,8 +1981,9 @@ function pushCoverageTicket(
     description: `Билет на арену, сектор ${sector}`,
     matchId,
     channel: orderSource === "box_office" ? "arena" : "online",
-    amount: unitPrice * qty,
+    amount: payment.amount,
     quantity: qty,
+    loyaltyDiscount: payment.loyaltyDiscount,
     sector,
     ticketType: "arena",
     priceZone: zone,
@@ -1481,79 +1992,682 @@ function pushCoverageTicket(
   return id + 1;
 }
 
-/** Returns set of priceZones present per (matchId, sector) pair. */
-function arenaPriceZonesBySectorAndMatch(
-  transactions: Transaction[],
-): Map<string, Set<PriceZone>> {
-  const byKey = new Map<string, Set<PriceZone>>();
-  for (const tx of transactions) {
-    if (tx.stream !== "tickets" || tx.ticketType !== "arena" || !tx.matchId) {
-      continue;
-    }
-    if (!tx.priceZone || !tx.sector) continue;
-    const key = `${tx.matchId}::${tx.sector}`;
-    let zones = byKey.get(key);
-    if (!zones) {
-      zones = new Set();
-      byKey.set(key, zones);
-    }
-    zones.add(tx.priceZone);
-  }
-  return byKey;
-}
-
-/** Returns all (matchId, sector) pairs that appear in arena ticket transactions. */
-function arenaMatchSectorPairs(
-  transactions: Transaction[],
-): Map<string, Set<Sector>> {
-  const bySector = new Map<string, Set<Sector>>();
-  for (const tx of transactions) {
-    if (tx.stream !== "tickets" || tx.ticketType !== "arena" || !tx.matchId) {
-      continue;
-    }
-    if (!tx.sector) continue;
-    let sectors = bySector.get(tx.matchId);
-    if (!sectors) {
-      sectors = new Set();
-      bySector.set(tx.matchId, sectors);
-    }
-    sectors.add(tx.sector);
-  }
-  return bySector;
-}
-
 /**
- * Guarantee the allowed sector×priceZone matrix for every match that already
- * has arena tickets:
- * - each ordinary sector has all three lower zones and never 4000–6000;
- * - VIP has only 4000–6000.
- * Missing allowed combos are seeded. Illegal combos are never injected.
- * Parking rows are skipped (no price zone).
+ * Guarantee paid arena tickets for every inventory sector×zone combo on
+ * matches that already have arena sales. Missing allowed combos are seeded
+ * only into remaining seat mass so occupancy stays ≤ 100%. Parking is skipped.
  */
 function ensureTicketPriceZoneCoverage(
   allMatches: Match[],
   transactions: Transaction[],
   startId: number,
 ): { txs: Transaction[]; nextId: number } {
-  const matchSectors = arenaMatchSectorPairs(transactions);
-  if (matchSectors.size === 0) return { txs: [], nextId: startId };
-
-  const zonesBySectorAndMatch = arenaPriceZonesBySectorAndMatch(transactions);
-  const matchById = new Map(allMatches.map((match) => [match.id, match]));
   const txs: Transaction[] = [];
   let id = startId;
 
-  for (const matchId of matchSectors.keys()) {
-    const match = matchById.get(matchId);
-    if (!match || isSoldOutOccupancyMatch(match)) continue;
+  for (const match of allMatches) {
+    const combos = listInventoryCombos(match);
+    if (combos.length === 0) continue;
+    const stats = arenaComboStats(transactions.concat(txs), match.id);
+    if (![...stats.values()].some((row) => row.paid > 0)) continue;
 
-    for (const sector of ALL_SECTORS) {
-      const key = `${matchId}::${sector}`;
-      const present = zonesBySectorAndMatch.get(key) ?? new Set<PriceZone>();
-      for (const zone of allowedPriceZonesForSector(sector)) {
-        if (present.has(zone)) continue;
-        id = pushCoverageTicket(txs, id, match, matchId, sector, zone);
-      }
+    const sectorIssued: Partial<Record<Sector, number>> = {};
+    let matchIssued = 0;
+    for (const combo of combos) {
+      const issued = stats.get(comboId(combo.sector, combo.zone))?.issued ?? 0;
+      matchIssued += issued;
+      sectorIssued[combo.sector] = (sectorIssued[combo.sector] ?? 0) + issued;
+    }
+    const sectors = getSectorCapacitiesForMatch(match);
+    if (!sectors) continue;
+
+    for (const combo of combos) {
+      const key = comboId(combo.sector, combo.zone);
+      const row = stats.get(key) ?? { paid: 0, issued: 0 };
+      if (row.paid > 0) continue;
+      const remainCombo = combo.mass - row.issued;
+      const remainSector =
+        (sectors[combo.sector] ?? 0) - (sectorIssued[combo.sector] ?? 0);
+      const remainMatch = maxRegularArenaIssued(match) - matchIssued;
+      const qty = Math.min(
+        PRICE_ZONE_SEED_QUANTITY,
+        remainCombo,
+        remainSector,
+        remainMatch,
+      );
+      if (qty <= 0) continue;
+      id = pushCoverageTicket(
+        txs,
+        id,
+        match,
+        match.id,
+        combo.sector,
+        combo.zone,
+        qty,
+      );
+      row.paid += qty;
+      row.issued += qty;
+      stats.set(key, row);
+      matchIssued += qty;
+      sectorIssued[combo.sector] = (sectorIssued[combo.sector] ?? 0) + qty;
+    }
+  }
+
+  return { txs, nextId: id };
+}
+
+/**
+ * Guarantee paid parking (no price zone) for every match that already has
+ * arena ticket sales. Parking is a separate inventory and does not consume
+ * seating mass.
+ */
+function ensureParkingTicketCoverage(
+  allMatches: Match[],
+  transactions: Transaction[],
+  startId: number,
+): { txs: Transaction[]; nextId: number } {
+  const paidArena = new Set<string>();
+  const parkingPaid = new Map<string, number>();
+  for (const tx of transactions) {
+    if (tx.stream !== "tickets" || !tx.matchId) continue;
+    if (tx.ticketType === "arena" && tx.amount > 0) {
+      paidArena.add(tx.matchId);
+    }
+    if (tx.ticketType === "parking" && tx.amount > 0) {
+      parkingPaid.set(
+        tx.matchId,
+        (parkingPaid.get(tx.matchId) ?? 0) + tx.quantity,
+      );
+    }
+  }
+
+  const txs: Transaction[] = [];
+  let id = startId;
+
+  for (const match of allMatches) {
+    if (!paidArena.has(match.id)) continue;
+    const have = parkingPaid.get(match.id) ?? 0;
+    const need = MIN_PARKING_PAID_QUANTITY - have;
+    if (need <= 0) continue;
+    const parking = appendParkingTicketSales(
+      match,
+      saleDatesOnOrBeforeToday(match),
+      need,
+      id,
+    );
+    txs.push(...parking.txs);
+    id = parking.nextId;
+    parkingPaid.set(match.id, have + need);
+  }
+
+  return { txs, nextId: id };
+}
+
+function arenaActualsForMatch(
+  matchId: string,
+  transactions: Transaction[],
+): { issued: number; revenue: number } {
+  let issued = 0;
+  let revenue = 0;
+  for (const tx of transactions) {
+    if (tx.stream !== "tickets" || tx.ticketType !== "arena") continue;
+    if (tx.matchId !== matchId) continue;
+    issued += getTicketIssuedQuantity(tx);
+    revenue += tx.amount;
+  }
+  return { issued, revenue };
+}
+
+function emitArenaOccupancyFill(
+  match: Match,
+  stats: Map<string, ArenaComboStat>,
+  dates: Date[],
+  startId: number,
+  targetIssued: number,
+  maxIssued: number,
+): { txs: Transaction[]; nextId: number } {
+  let arenaIssued = 0;
+  for (const row of stats.values()) arenaIssued += row.issued;
+  const need = Math.max(0, Math.min(targetIssued, maxIssued) - arenaIssued);
+  if (!(need > 0)) return { txs: [], nextId: startId };
+  const quantities = allocateCheapestRemainingSeats(match, stats, need);
+  const added = [...quantities.values()].reduce((sum, qty) => sum + qty, 0);
+  if (!(added > 0)) return { txs: [], nextId: startId };
+  return emitComboTicketSales(
+    match,
+    quantities,
+    dates,
+    startId,
+    match.ticketSalesProfile?.tempo,
+    OCCUPANCY_FILL_LOYALTY_RATE,
+  );
+}
+
+/**
+ * Zone-sector match occupancy is arena issued / match.capacity against the
+ * arena ticket-plan. Fill cheapest remaining seats into the band for the
+ * current arena revenue/plan; do not sell out a 89–95% match.
+ */
+function ensureZoneSectorMatchOccupancyBands(
+  allMatches: Match[],
+  transactions: Transaction[],
+  startId: number,
+): { txs: Transaction[]; nextId: number } {
+  const txs: Transaction[] = [];
+  let id = startId;
+
+  for (const match of allMatches) {
+    if (!(match.capacity > 0)) continue;
+    const current = arenaActualsForMatch(match.id, transactions.concat(txs));
+    const arenaPlan = getMatchPlanArenaRevenue(match);
+    if (!(arenaPlan > 0) || !(current.revenue > 0)) continue;
+    if (isSoldOutOccupancyMatch(match)) continue;
+    const ratio = current.revenue / arenaPlan;
+    const cap = match.capacity;
+    if (ratio < MID_REVENUE_PLAN_MIN) continue;
+    const minIssued = Math.ceil(cap * MID_REVENUE_PLAN_MIN);
+    const maxIssued = Math.floor(cap * MAX_MID_REVENUE_OCCUPANCY);
+    if (current.issued >= minIssued) continue;
+    const stats = arenaComboStats(transactions.concat(txs), match.id);
+    const dates = saleDatesOnOrBeforeToday(match);
+    const filled = emitArenaOccupancyFill(
+      match,
+      stats,
+      dates,
+      id,
+      minIssued,
+      maxIssued,
+    );
+    txs.push(...filled.txs);
+    id = filled.nextId;
+  }
+
+  return { txs, nextId: id };
+}
+
+function ticketActualsForMatch(
+  matchId: string,
+  transactions: Transaction[],
+  redemptionIssued = 0,
+): {
+  tickets: number;
+  revenue: number;
+  occupancyIssued: number;
+  parkingIssued: number;
+} {
+  let tickets = 0;
+  let revenue = 0;
+  let occupancyIssued = redemptionIssued;
+  let parkingIssued = 0;
+  for (const tx of transactions) {
+    if (tx.stream !== "tickets" || tx.matchId !== matchId) continue;
+    tickets += tx.quantity;
+    revenue += tx.amount;
+    const issued = getTicketIssuedQuantity(tx);
+    occupancyIssued += issued;
+    if (tx.ticketType === "parking") parkingIssued += issued;
+  }
+  return { tickets, revenue, occupancyIssued, parkingIssued };
+}
+
+function maxRegularArenaIssued(match: Match): number {
+  if (!(match.capacity > 0)) return 0;
+  if (isSoldOutOccupancyMatch(match)) return match.capacity;
+  return Math.floor(match.capacity * MAX_MID_REVENUE_OCCUPANCY);
+}
+
+function allocateCheapestRemainingSeats(
+  match: Match,
+  stats: Map<string, ArenaComboStat>,
+  need: number,
+): Map<string, number> {
+  const quantities = new Map<string, number>();
+  const combos = listInventoryCombos(match);
+  const sectors = getSectorCapacitiesForMatch(match);
+  if (!sectors || need <= 0 || combos.length === 0) return quantities;
+  const arenaCap = maxRegularArenaIssued(match);
+
+  let matchIssued = 0;
+  const sectorIssued: Partial<Record<Sector, number>> = {};
+  for (const combo of combos) {
+    const issued = stats.get(comboId(combo.sector, combo.zone))?.issued ?? 0;
+    matchIssued += issued;
+    sectorIssued[combo.sector] = (sectorIssued[combo.sector] ?? 0) + issued;
+  }
+
+  const ranked = [...combos].sort((left, right) => {
+    const priceDelta =
+      PRICE_ZONE_UNIT_PRICE[left.zone] - PRICE_ZONE_UNIT_PRICE[right.zone];
+    if (priceDelta !== 0) return priceDelta;
+    return comboId(left.sector, left.zone).localeCompare(
+      comboId(right.sector, right.zone),
+    );
+  });
+
+  let remaining = need;
+  for (const combo of ranked) {
+    if (remaining <= 0) break;
+    const key = comboId(combo.sector, combo.zone);
+    const issued = stats.get(key)?.issued ?? 0;
+    const room = Math.max(
+      0,
+      Math.min(
+        combo.mass - issued,
+        (sectors[combo.sector] ?? 0) - (sectorIssued[combo.sector] ?? 0),
+        arenaCap - matchIssued,
+        remaining,
+      ),
+    );
+    if (room <= 0) continue;
+    quantities.set(key, room);
+    remaining -= room;
+    matchIssued += room;
+    sectorIssued[combo.sector] = (sectorIssued[combo.sector] ?? 0) + room;
+  }
+  return quantities;
+}
+
+/**
+ * Fill cheapest remaining arena seats then leftover parking until
+ * occupancyIssued reaches `targetIssued`, never exceeding `maxIssued`.
+ */
+function appendIssuedOccupancyFill(
+  match: Match,
+  current: {
+    occupancyIssued: number;
+    parkingIssued: number;
+  },
+  stats: Map<string, ArenaComboStat>,
+  dates: Date[],
+  startId: number,
+  targetIssued: number,
+  maxIssued: number,
+): { txs: Transaction[]; nextId: number } {
+  const txs: Transaction[] = [];
+  let id = startId;
+  const cap = Math.min(targetIssued, maxIssued);
+  const need = Math.max(0, cap - current.occupancyIssued);
+  if (!(need > 0)) return { txs, nextId: id };
+
+  const quantities = allocateCheapestRemainingSeats(match, stats, need);
+  const added = [...quantities.values()].reduce((sum, qty) => sum + qty, 0);
+  if (added > 0) {
+    const arenaSales = emitComboTicketSales(
+      match,
+      quantities,
+      dates,
+      id,
+      match.ticketSalesProfile?.tempo,
+      OCCUPANCY_FILL_LOYALTY_RATE,
+    );
+    txs.push(...arenaSales.txs);
+    id = arenaSales.nextId;
+  }
+
+  const occupancyAfterArena = current.occupancyIssued + added;
+  const parkingCap = getMatchParkingCapacity(match);
+  const parkingRoom = Math.max(0, parkingCap - current.parkingIssued);
+  const extraParking = Math.min(
+    parkingRoom,
+    Math.max(0, cap - occupancyAfterArena),
+  );
+  if (extraParking > 0) {
+    const parking = appendParkingTicketSales(
+      match,
+      dates,
+      extraParking,
+      id,
+      OCCUPANCY_FILL_LOYALTY_RATE,
+    );
+    txs.push(...parking.txs);
+    id = parking.nextId;
+  }
+  return { txs, nextId: id };
+}
+
+/**
+ * Revenue/plan in [89%, 95%]: fill remaining cheap inventory up to at least
+ * 89% occupancy, never past 96%.
+ */
+function ensureMidRevenueArenaOccupancy(
+  allMatches: Match[],
+  transactions: Transaction[],
+  startId: number,
+  redemptionsByMatch: Map<string, number> = new Map(),
+): { txs: Transaction[]; nextId: number } {
+  const txs: Transaction[] = [];
+  let id = startId;
+
+  for (const match of allMatches) {
+    if (!(match.capacity > 0)) continue;
+    const occupancyFloor = minMidRevenueOccupancyIssued(match.capacity);
+    const occupancyCeil = maxMidRevenueOccupancyIssued(match.capacity);
+    const current = ticketActualsForMatch(
+      match.id,
+      transactions.concat(txs),
+      redemptionsByMatch.get(match.id) ?? 0,
+    );
+    if (current.occupancyIssued >= occupancyFloor) continue;
+    const planRevenue = getMatchPlanRevenue(match);
+    const arenaPlan = getMatchPlanArenaRevenue(match);
+    const arena = arenaActualsForMatch(match.id, transactions.concat(txs));
+    if (!(planRevenue > 0) || !(current.revenue > 0)) continue;
+    const ratio = current.revenue / planRevenue;
+    const arenaRatio =
+      arenaPlan > 0 && arena.revenue > 0 ? arena.revenue / arenaPlan : 0;
+    const inMidBand =
+      (ratio >= MID_REVENUE_PLAN_MIN && ratio <= HIGH_REVENUE_PLAN_THRESHOLD) ||
+      (arenaRatio >= MID_REVENUE_PLAN_MIN &&
+        arenaRatio <= HIGH_REVENUE_PLAN_THRESHOLD);
+    if (!inMidBand) continue;
+    const stats = arenaComboStats(transactions.concat(txs), match.id);
+    const dates = saleDatesOnOrBeforeToday(match);
+    const filled = appendIssuedOccupancyFill(
+      match,
+      current,
+      stats,
+      dates,
+      id,
+      occupancyFloor,
+      occupancyCeil,
+    );
+    txs.push(...filled.txs);
+    id = filled.nextId;
+  }
+
+  return { txs, nextId: id };
+}
+
+/**
+ * If revenue already beats 95% of the formula plan and is still under 100%,
+ * fill remaining cheap arena seats and leftover parking up to 96% occupancy
+ * of arena+parking mass instead of leaving empty inventory.
+ */
+function ensureHighRevenueArenaOccupancy(
+  allMatches: Match[],
+  transactions: Transaction[],
+  startId: number,
+): { txs: Transaction[]; nextId: number } {
+  const txs: Transaction[] = [];
+  let id = startId;
+
+  for (const match of allMatches) {
+    if (!(match.capacity > 0)) continue;
+    if (isRegularTicketPlanMatch(match)) continue;
+    const occupancyFloor = minHighRevenueOccupancyIssued(match.capacity);
+    const occupancyMass = occupancyMassCapacity(match.capacity);
+    const current = ticketActualsForMatch(
+      match.id,
+      transactions.concat(txs),
+    );
+    if (current.occupancyIssued >= occupancyFloor) continue;
+    const planRevenue = getMatchPlanRevenue(match);
+    if (!(planRevenue > 0) || !(current.revenue > 0)) continue;
+    const ratio = current.revenue / planRevenue;
+    if (ratio <= HIGH_REVENUE_PLAN_THRESHOLD) continue;
+    if (ratio >= OVER_PLAN_REVENUE_THRESHOLD) continue;
+
+    const stats = arenaComboStats(transactions.concat(txs), match.id);
+    const dates = saleDatesOnOrBeforeToday(match);
+    const filled = appendIssuedOccupancyFill(
+      match,
+      current,
+      stats,
+      dates,
+      id,
+      occupancyFloor,
+      occupancyMass,
+    );
+    txs.push(...filled.txs);
+    id = filled.nextId;
+  }
+
+  return { txs, nextId: id };
+}
+
+function occupancyFillNetAmount(zone: PriceZone, qty: number): number {
+  const gross = PRICE_ZONE_UNIT_PRICE[zone] * qty;
+  return gross - Math.round(gross * OCCUPANCY_FILL_LOYALTY_RATE);
+}
+
+function isOverPlanRevenue(revenue: number, plan: number): boolean {
+  return plan > 0 && revenue / plan >= OVER_PLAN_REVENUE_THRESHOLD;
+}
+
+/**
+ * Per row in «Продажи по ценовым зонам и секторам на арене»: if arena
+ * revenue / plan is at least 100%, fill remaining catalog seats so occupancy
+ * is 100% (the display cap). Combo, then sector, then zone, then match.
+ */
+function allocateOverPlanArenaOccupancy(
+  match: Match,
+  stats: Map<string, ArenaComboStat>,
+  maxMatchIssued = match.capacity,
+): Map<string, number> {
+  const quantities = new Map<string, number>();
+  const combos = listInventoryCombos(match);
+  const sectors = getSectorCapacitiesForMatch(match);
+  if (!sectors || combos.length === 0 || !(match.capacity > 0)) return quantities;
+
+  const issued = new Map<string, number>();
+  const revenue = new Map<string, number>();
+  const sectorIssued: Partial<Record<Sector, number>> = {};
+  let matchIssued = 0;
+  let matchRevenue = 0;
+
+  for (const combo of combos) {
+    const key = comboId(combo.sector, combo.zone);
+    const row = stats.get(key);
+    const qty = row?.issued ?? 0;
+    const amount = row?.revenue ?? 0;
+    issued.set(key, qty);
+    revenue.set(key, amount);
+    matchIssued += qty;
+    matchRevenue += amount;
+    sectorIssued[combo.sector] = (sectorIssued[combo.sector] ?? 0) + qty;
+  }
+
+  const arenaPlan = getMatchPlanArenaRevenue(match);
+  const comboPlan = allocateIntegerShares(
+    arenaPlan,
+    combos.map((combo) => ({
+      id: comboId(combo.sector, combo.zone),
+      weight: combo.mass,
+    })),
+  );
+
+  const roomOf = (combo: InventoryCombo): number => {
+    const key = comboId(combo.sector, combo.zone);
+    return Math.max(
+      0,
+      Math.min(
+        combo.mass - (issued.get(key) ?? 0),
+        (sectors[combo.sector] ?? 0) - (sectorIssued[combo.sector] ?? 0),
+        match.capacity - matchIssued,
+        Math.max(0, maxMatchIssued - matchIssued),
+      ),
+    );
+  };
+
+  const add = (combo: InventoryCombo, qty: number) => {
+    if (!(qty > 0)) return;
+    const key = comboId(combo.sector, combo.zone);
+    quantities.set(key, (quantities.get(key) ?? 0) + qty);
+    issued.set(key, (issued.get(key) ?? 0) + qty);
+    const addedRevenue = occupancyFillNetAmount(combo.zone, qty);
+    revenue.set(key, (revenue.get(key) ?? 0) + addedRevenue);
+    matchIssued += qty;
+    matchRevenue += addedRevenue;
+    sectorIssued[combo.sector] = (sectorIssued[combo.sector] ?? 0) + qty;
+  };
+
+  const fillRemaining = (candidates: InventoryCombo[]) => {
+    const ranked = [...candidates].sort((left, right) => {
+      const priceDelta =
+        PRICE_ZONE_UNIT_PRICE[left.zone] - PRICE_ZONE_UNIT_PRICE[right.zone];
+      if (priceDelta !== 0) return priceDelta;
+      return comboId(left.sector, left.zone).localeCompare(
+        comboId(right.sector, right.zone),
+      );
+    });
+    for (const combo of ranked) add(combo, roomOf(combo));
+  };
+
+  for (const combo of combos) {
+    const key = comboId(combo.sector, combo.zone);
+    if (isOverPlanRevenue(revenue.get(key) ?? 0, comboPlan.get(key) ?? 0)) {
+      add(combo, roomOf(combo));
+    }
+  }
+
+  for (const sector of ALL_SECTORS) {
+    const sectorCombos = combos.filter((combo) => combo.sector === sector);
+    if (sectorCombos.length === 0) continue;
+    let sectorRev = 0;
+    let sectorPlan = 0;
+    for (const combo of sectorCombos) {
+      const key = comboId(combo.sector, combo.zone);
+      sectorRev += revenue.get(key) ?? 0;
+      sectorPlan += comboPlan.get(key) ?? 0;
+    }
+    if (isOverPlanRevenue(sectorRev, sectorPlan)) fillRemaining(sectorCombos);
+  }
+
+  for (const zone of ALL_PRICE_ZONES) {
+    const zoneCombos = combos.filter((combo) => combo.zone === zone);
+    if (zoneCombos.length === 0) continue;
+    let zoneRev = 0;
+    let zonePlan = 0;
+    for (const combo of zoneCombos) {
+      const key = comboId(combo.sector, combo.zone);
+      zoneRev += revenue.get(key) ?? 0;
+      zonePlan += comboPlan.get(key) ?? 0;
+    }
+    if (isOverPlanRevenue(zoneRev, zonePlan)) fillRemaining(zoneCombos);
+  }
+
+  if (isOverPlanRevenue(matchRevenue, arenaPlan) && isSoldOutOccupancyMatch(match)) {
+    fillRemaining(combos);
+  }
+
+  return quantities;
+}
+
+function mergeComboQuantities(
+  target: Map<string, number>,
+  extra: Map<string, number>,
+): void {
+  for (const [key, qty] of extra) {
+    if (!(qty > 0)) continue;
+    target.set(key, (target.get(key) ?? 0) + qty);
+  }
+}
+
+function comboStatsWithQuantities(
+  stats: Map<string, ArenaComboStat>,
+  quantities: Map<string, number>,
+): Map<string, ArenaComboStat> {
+  const next = new Map<string, ArenaComboStat>();
+  for (const [key, row] of stats) {
+    next.set(key, { ...row });
+  }
+  for (const [key, qty] of quantities) {
+    if (!(qty > 0)) continue;
+    const row = next.get(key) ?? { paid: 0, issued: 0, revenue: 0 };
+    next.set(key, {
+      paid: row.paid,
+      issued: row.issued + qty,
+      revenue: row.revenue,
+    });
+  }
+  return next;
+}
+
+/**
+ * Fill remaining arena seats so every combo / sector / zone / match row
+ * at or above its revenue plan is at 100% occupancy. When the match
+ * Продажи revenue/plan is also ≥ 100%, sell leftover arena and parking
+ * so «Оформлено» is 100% of arena+parking mass.
+ */
+function ensureOverPlanArenaOccupancy(
+  allMatches: Match[],
+  transactions: Transaction[],
+  startId: number,
+): { txs: Transaction[]; nextId: number } {
+  const txs: Transaction[] = [];
+  let id = startId;
+
+  for (const match of allMatches) {
+    if (!(match.capacity > 0)) continue;
+    if (isRegularTicketPlanMatch(match)) continue;
+    const arena = arenaActualsForMatch(match.id, transactions.concat(txs));
+    const arenaPlan = getMatchPlanArenaRevenue(match);
+    const arenaRatio =
+      arenaPlan > 0 && arena.revenue > 0 ? arena.revenue / arenaPlan : 0;
+    const maxArenaIssued = isSoldOutOccupancyMatch(match)
+      ? match.capacity
+      : Math.floor(match.capacity * MAX_MID_REVENUE_OCCUPANCY);
+    const stats = arenaComboStats(transactions.concat(txs), match.id);
+    const quantities = allocateOverPlanArenaOccupancy(
+      match,
+      stats,
+      maxArenaIssued,
+    );
+
+    if (
+      arenaRatio >= OVER_PLAN_REVENUE_THRESHOLD &&
+      isSoldOutOccupancyMatch(match)
+    ) {
+      const statsAfter = comboStatsWithQuantities(stats, quantities);
+      let arenaIssued = 0;
+      for (const row of statsAfter.values()) arenaIssued += row.issued;
+      const arenaNeed = Math.max(0, match.capacity - arenaIssued);
+      mergeComboQuantities(
+        quantities,
+        allocateCheapestRemainingSeats(match, statsAfter, arenaNeed),
+      );
+    }
+
+    const added = [...quantities.values()].reduce((sum, qty) => sum + qty, 0);
+    const dates = saleDatesOnOrBeforeToday(match);
+    if (added > 0) {
+      const arenaSales = emitComboTicketSales(
+        match,
+        quantities,
+        dates,
+        id,
+        match.ticketSalesProfile?.tempo,
+        OCCUPANCY_FILL_LOYALTY_RATE,
+      );
+      txs.push(...arenaSales.txs);
+      id = arenaSales.nextId;
+    }
+
+    const afterArena = ticketActualsForMatch(
+      match.id,
+      transactions.concat(txs),
+    );
+    if (!isOverPlanRevenue(afterArena.revenue, getMatchPlanRevenue(match))) {
+      continue;
+    }
+    if (!isSoldOutOccupancyMatch(match)) continue;
+    const occupancyMass = occupancyMassCapacity(match.capacity);
+    const parkingCap = getMatchParkingCapacity(match);
+    const parkingRoom = Math.max(0, parkingCap - afterArena.parkingIssued);
+    const extraParking = Math.min(
+      parkingRoom,
+      Math.max(0, occupancyMass - afterArena.occupancyIssued),
+    );
+    if (extraParking > 0) {
+      const parking = appendParkingTicketSales(
+        match,
+        dates,
+        extraParking,
+        id,
+        OCCUPANCY_FILL_LOYALTY_RATE,
+      );
+      txs.push(...parking.txs);
+      id = parking.nextId;
     }
   }
 
@@ -2435,5 +3549,74 @@ export function generateMockData(): {
     subscriptions,
     matches,
   );
+  applyTicketPlanFulfillmentCap(matches, transactions, subscriptionRedemptions);
+  // Class 2/3 plans are raised to ≤90% after sales. Re-fill occupancy so
+  // those matches now sitting in the 89–95% revenue band have 89–96% issued.
+  const arenaAfterCap = ensureZoneSectorMatchOccupancyBands(
+    matches,
+    transactions,
+    nextMerchTxNumericId(transactions),
+  );
+  transactions.push(...arenaAfterCap.txs);
+  const midAfterCap = ensureMidRevenueArenaOccupancy(
+    matches,
+    transactions,
+    nextMerchTxNumericId(transactions),
+  );
+  transactions.push(...midAfterCap.txs);
+  applyTicketPlanFulfillmentCap(matches, transactions, subscriptionRedemptions);
+  // Merch plan bands after ticket occupancy/class caps so those RNGs stay put.
+  alignMatchMerchPlanFulfillment(matches, transactions);
+  transactions.sort((a, b) => b.date.getTime() - a.date.getTime());
   return { matches, transactions, subscriptions, subscriptionRedemptions };
+}
+
+function applyTicketPlanFulfillmentCap(
+  matches: Match[],
+  transactions: Transaction[],
+  redemptions: SubscriptionRedemption[] = [],
+): void {
+  const actualByMatch = new Map<
+    string,
+    {
+      tickets: number;
+      revenue: number;
+      occupancyIssued: number;
+      arenaRevenue: number;
+      arenaIssued: number;
+    }
+  >();
+  for (const tx of transactions) {
+    if (tx.stream !== "tickets" || !tx.matchId) continue;
+    const row = actualByMatch.get(tx.matchId) ?? {
+      tickets: 0,
+      revenue: 0,
+      occupancyIssued: 0,
+      arenaRevenue: 0,
+      arenaIssued: 0,
+    };
+    row.tickets += tx.quantity;
+    row.revenue += tx.amount;
+    const issued = getTicketIssuedQuantity(tx);
+    row.occupancyIssued += issued;
+    if (tx.ticketType === "arena") {
+      row.arenaRevenue += tx.amount;
+      row.arenaIssued += issued;
+    }
+    actualByMatch.set(tx.matchId, row);
+  }
+  for (const redemption of redemptions) {
+    const row = actualByMatch.get(redemption.matchId);
+    if (!row) continue;
+    row.occupancyIssued += 1;
+  }
+  for (const match of matches) {
+    const actual = actualByMatch.get(match.id);
+    if (!actual) continue;
+    applyMatchTicketPlanFulfillmentBand(match, actual);
+    const ticketQtyCap = 1.04;
+    if (actual.tickets > getMatchPlanTickets(match) * ticketQtyCap) {
+      match.ticketPlanTickets = Math.ceil(actual.tickets / ticketQtyCap);
+    }
+  }
 }

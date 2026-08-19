@@ -124,11 +124,16 @@ export function MobileFilterDraftProvider({
   );
 
   const resetTicketFilters = useCallback(() => {
+    live.resetTicketFilters();
     setDraft((prev) => ({
       ...prev,
-      ticketFilters: { ...DEFAULT_TICKET_FILTERS },
+      ticketFilters: {
+        ...DEFAULT_TICKET_FILTERS,
+        matchId: [...DEFAULT_TICKET_FILTERS.matchId],
+        transactionDateRange: { ...DEFAULT_TICKET_FILTERS.transactionDateRange },
+      },
     }));
-  }, []);
+  }, [live.resetTicketFilters]);
 
   const resetMerchFilters = useCallback(() => {
     setDraft((prev) => ({

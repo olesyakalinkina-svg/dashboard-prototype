@@ -36,9 +36,22 @@ import {
   formatNumber,
   formatPercent,
 } from "@/lib/format";
+import { issuedOccupancyPercent, occupancyMassCapacity } from "@/lib/ticket-plan";
 import type { DashboardFilters, MatchSalesRow, TicketFilters } from "@/types/dashboard";
 
 const PAGE_SIZE = 15;
+
+const BAR_COLUMN_WIDTH_CLASS = "w-[10.5rem]";
+const COLUMN_WIDTH_CLASS: Record<string, string> = {
+  eventLabel: "w-auto min-w-0",
+  date: "w-[7rem]",
+  revenue: BAR_COLUMN_WIDTH_CLASS,
+  avgPrice: "w-[9rem]",
+  ticketsSold: "w-[9rem]",
+  freeTickets: "w-[6.5rem]",
+  issuedTickets: BAR_COLUMN_WIDTH_CLASS,
+  loyaltyDiscountPct: "w-[7rem]",
+};
 
 type MatchSalesTableMeta = {
   expandedSet: ReadonlySet<string>;
@@ -216,16 +229,18 @@ const MATCH_SALES_COLUMNS: ColumnDef<MatchSalesFlatRow, unknown>[] = [
     accessorKey: "issuedTickets",
     header: "Оформлено",
     cell: ({ row, table }) => {
-      const { issuedTickets, capacity } = row.original;
+      const { issuedTickets, occupancyIssuedTickets, capacity } = row.original;
       const { barMax } = table.options.meta as MatchSalesTableMeta;
       const issuedBarClass = getBarClass(row.original.level, "bg-emerald-500", "bg-emerald-300", "bg-emerald-200");
       if (capacity != null && capacity > 0) {
-        const fillPct = (issuedTickets / capacity) * 100;
+        const occupancyCap = occupancyMassCapacity(capacity);
+        const fillPct = issuedOccupancyPercent(occupancyIssuedTickets, capacity);
         return (
           <InlineBarCell
-            value={issuedTickets}
-            max={capacity}
-            formatted={`${formatNumber(issuedTickets)} шт (${formatPercent(fillPct)})`}
+            value={occupancyIssuedTickets}
+            max={occupancyCap}
+            share={fillPct ?? undefined}
+            formatted={`${formatNumber(occupancyIssuedTickets)} шт (${fillPct != null ? formatPercent(fillPct) : "—"})`}
             barClassName={issuedBarClass}
           />
         );
@@ -390,14 +405,22 @@ export const MatchSalesTable = memo(function MatchSalesTable({
         </div>
       )}
       <StickyScrollTable>
-      <table className="w-full min-w-[56rem] text-sm leading-snug" data-testid="desktop-sales-table">
+      <table className="w-full min-w-[72rem] table-fixed text-sm leading-snug" data-testid="desktop-sales-table">
+        <colgroup>
+          {table.getAllLeafColumns().map((column) => (
+            <col key={column.id} className={COLUMN_WIDTH_CLASS[column.id]} />
+          ))}
+        </colgroup>
         <thead>
           {table.getHeaderGroups().map((hg) => (
             <tr key={hg.id} className="border-b border-[var(--border)]">
               {hg.headers.map((header) => (
                 <th
                   key={header.id}
-                  className="cursor-pointer px-3 py-2 text-left text-xs font-medium text-[var(--muted)]"
+                  className={clsx(
+                    "cursor-pointer px-3 py-2 text-left text-xs font-medium text-[var(--muted)]",
+                    COLUMN_WIDTH_CLASS[header.column.id],
+                  )}
                   onClick={header.column.getToggleSortingHandler()}
                 >
                   <span className="inline-flex items-center gap-1">
@@ -426,6 +449,7 @@ export const MatchSalesTable = memo(function MatchSalesTable({
                   key={cell.id}
                   className={clsx(
                     "px-3 py-2.5 text-[var(--foreground)]",
+                    COLUMN_WIDTH_CLASS[cell.column.id],
                     cell.column.id === "eventLabel" && "relative z-20",
                   )}
                   onClick={
@@ -444,23 +468,23 @@ export const MatchSalesTable = memo(function MatchSalesTable({
       </StickyScrollTable>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs leading-snug text-[var(--muted)]">
         <span>{filteredTree.length} мероприятий</span>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2 leading-none">
           <button
             type="button"
             onClick={goPrev}
             disabled={pagination.pageIndex === 0}
-            className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40 xl:min-h-0"
+            className="inline-flex min-h-11 items-center rounded border border-[var(--border)] px-3 py-1.5 leading-none disabled:opacity-40 xl:min-h-0"
           >
             Назад
           </button>
-          <span>
+          <span className="inline-flex min-h-11 items-center leading-none xl:min-h-0">
             {pagination.pageIndex + 1} / {pagination.pageCount}
           </span>
           <button
             type="button"
             onClick={goNext}
             disabled={pagination.pageIndex >= pagination.pageCount - 1}
-            className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40 xl:min-h-0"
+            className="inline-flex min-h-11 items-center rounded border border-[var(--border)] px-3 py-1.5 leading-none disabled:opacity-40 xl:min-h-0"
           >
             Вперёд
           </button>

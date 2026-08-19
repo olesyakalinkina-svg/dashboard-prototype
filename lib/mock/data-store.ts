@@ -124,7 +124,7 @@ async function fetchRawMockData(): Promise<RawMockData> {
 
   // Fetch JSON instead of `import()` so webpack does not parse a ~40MB JS module
   // on the main thread (that is what freezes Chrome after first paint).
-  const response = await fetch("/api/mock-data");
+  const response = await fetch("/api/mock-data", { cache: "no-store" });
   if (!response.ok) {
     throw new Error(`Failed to load dashboard data (${response.status})`);
   }

@@ -237,6 +237,7 @@ const EMPTY_MATCH_SALES_KPIS: MatchSalesKpiData = {
 
 const FilterStateContext = createContext<FilterStateContextValue | null>(null);
 const FilterDataContext = createContext<FilterDataContextValue | null>(null);
+const TicketsViewResetContext = createContext(0);
 
 function emptyTicketsDataValue(
   appliedTicketFilters: TicketFilters,
@@ -447,6 +448,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [dataReady, setDataReady] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
+  const [ticketsViewResetEpoch, setTicketsViewResetEpoch] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -508,6 +510,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     beginTicketsUiTurn();
     setFilters(defaultFilters);
     setTicketFiltersState(DEFAULT_TICKET_FILTERS);
+    setTicketsViewResetEpoch((epoch) => epoch + 1);
   }, []);
 
   const resetMerchFilters = useCallback(() => {
@@ -643,17 +646,19 @@ export function FilterProvider({ children }: { children: ReactNode }) {
 
   return (
     <FilterStateContext.Provider value={stateValue}>
-      {!dataReady ? (
-        dataError ? (
-          <div className="flex min-h-screen items-center justify-center bg-[var(--background)] p-6">
-            <p className="text-sm text-red-600">{dataError}</p>
-          </div>
+      <TicketsViewResetContext.Provider value={ticketsViewResetEpoch}>
+        {!dataReady ? (
+          dataError ? (
+            <div className="flex min-h-screen items-center justify-center bg-[var(--background)] p-6">
+              <p className="text-sm text-red-600">{dataError}</p>
+            </div>
+          ) : (
+            <DashboardLoading />
+          )
         ) : (
-          <DashboardLoading />
-        )
-      ) : (
-        children
-      )}
+          children
+        )}
+      </TicketsViewResetContext.Provider>
     </FilterStateContext.Provider>
   );
 }
@@ -1174,6 +1179,10 @@ export function useFilterData() {
     throw new Error("useFilterData must be used within FilterProvider");
   }
   return ctx;
+}
+
+export function useTicketsViewResetEpoch(): number {
+  return useContext(TicketsViewResetContext);
 }
 
 export function useFilters(): FilterContextValue {

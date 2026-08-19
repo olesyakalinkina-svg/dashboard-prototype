@@ -61,6 +61,7 @@ function syntheticDataset(matchCount: number, txsPerMatch: number): {
       ticketsSold,
       freeTickets: 0,
       issuedTickets: ticketsSold,
+      occupancyIssuedTickets: ticketsSold,
       capacity: 12_000,
       loyaltyDiscountPct: 0,
     });

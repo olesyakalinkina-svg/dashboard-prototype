@@ -19,7 +19,9 @@ import { useChartAreaZoom } from "@/hooks/useChartAreaZoom";
 import {
   buildSeasonMatchXAxisTicks,
   formatSeasonMatchAxisLabel,
+  formatSeasonMatchDateLabel,
   formatSeasonMatchYAxisTick,
+  getSeasonMatchAxisTickOffsets,
   getSeasonMatchChartScrollLeft,
   getSeasonMatchChartWidth,
   getSeasonMatchLineOpacity,
@@ -28,6 +30,8 @@ import {
   pickBrightSeasonMatchIds,
   seasonMatchFactKey,
   seasonMatchPlanKey,
+  SEASON_MATCH_AXIS_MIN_TICK_GAP_PX,
+  SEASON_MATCH_AXIS_TICK_HEIGHT,
   SEASON_MATCH_CHART_MOBILE_MAX_WIDTH,
 } from "@/lib/tickets-season-match-chart";
 import type {
@@ -42,6 +46,43 @@ type ChartZoomControl = {
   isZoomed: boolean;
   resetZoom: () => void;
 };
+
+function SeasonMatchXAxisTick({
+  x = 0,
+  y = 0,
+  payload,
+  offsets,
+  rows,
+  matchDateKeys,
+}: {
+  x?: number;
+  y?: number;
+  payload?: { value?: number };
+  offsets: Map<number, number>;
+  rows: TicketsSeasonMatchChartRow[];
+  matchDateKeys: number[];
+}) {
+  const dateKey = Number(payload?.value);
+  if (!Number.isFinite(dateKey)) return null;
+
+  const label = formatSeasonMatchAxisLabel(dateKey, rows, matchDateKeys);
+  const stagger = offsets.get(dateKey) ?? 0;
+
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text
+        x={0}
+        y={0}
+        dy={12 + stagger}
+        textAnchor="middle"
+        fill="#8B8B8E"
+        fontSize={11}
+      >
+        {label}
+      </text>
+    </g>
+  );
+}
 
 export function TicketsSeasonMatchChart({
   rows,
@@ -143,15 +184,26 @@ export function TicketsSeasonMatchChart({
     [visibleViews],
   );
 
-  const xTicks = buildSeasonMatchXAxisTicks(displayData, {
-    grouping: timeGrouping,
-    matchDateKeys,
-  });
-  const showAllXTicks = xTicks.length <= 16;
+  const xTicks = useMemo(
+    () =>
+      buildSeasonMatchXAxisTicks(displayData, {
+        grouping: timeGrouping,
+        matchDateKeys,
+        chartWidth,
+      }),
+    [displayData, timeGrouping, matchDateKeys, chartWidth],
+  );
+  const tickOffsets = useMemo(
+    () => getSeasonMatchAxisTickOffsets(xTicks, displayData, chartWidth),
+    [xTicks, displayData, chartWidth],
+  );
   const showFactDots = displayData.length < 2;
 
-  const formatAxisLabel = (value: number) =>
-    formatSeasonMatchAxisLabel(Number(value), displayData, matchDateKeys);
+  const formatTooltipLabel = (value: number) => {
+    const dateKey = Number(value);
+    const row = displayData.find((entry) => entry.dateKey === dateKey);
+    return row?.periodLabel ?? formatSeasonMatchDateLabel(dateKey);
+  };
 
   useEffect(() => {
     if (!selectedMatchId) {
@@ -209,7 +261,12 @@ export function TicketsSeasonMatchChart({
   return (
     <div
       ref={scrollContainerRef}
-      className="h-full min-w-0 max-w-full overflow-x-auto overflow-y-hidden"
+      className={clsx(
+        "h-full min-w-0 max-w-full",
+        fillsContainer
+          ? "overflow-visible"
+          : "overflow-x-auto overflow-y-hidden overscroll-x-contain",
+      )}
     >
       <div
         className={clsx("relative max-w-full", CHART_ZOOM_SURFACE_CLASS)}
@@ -226,7 +283,7 @@ export function TicketsSeasonMatchChart({
         <ResponsiveContainer width="100%" height={chartHeight}>
           <LineChart
             data={displayData}
-            margin={{ top: 20, right: 20, left: 4, bottom: 8 }}
+            margin={{ top: 20, right: 20, left: 4, bottom: 12 }}
             {...chartHandlers}
           >
             <CartesianGrid strokeDasharray="3 3" stroke="#E5E5E7" />
@@ -236,13 +293,19 @@ export function TicketsSeasonMatchChart({
               scale="time"
               domain={["dataMin", "dataMax"]}
               ticks={xTicks}
-              tickFormatter={formatAxisLabel}
-              tick={{ fontSize: 11, fill: "#8B8B8E" }}
+              tick={(props) => (
+                <SeasonMatchXAxisTick
+                  {...props}
+                  offsets={tickOffsets}
+                  rows={displayData}
+                  matchDateKeys={matchDateKeys}
+                />
+              )}
               tickMargin={6}
-              interval={showAllXTicks ? 0 : "preserveEnd"}
-              minTickGap={16}
+              interval={0}
+              minTickGap={SEASON_MATCH_AXIS_MIN_TICK_GAP_PX}
               padding={{ left: 0, right: 0 }}
-              height={32}
+              height={SEASON_MATCH_AXIS_TICK_HEIGHT}
             />
             <YAxis
               domain={yDomain}
@@ -253,7 +316,8 @@ export function TicketsSeasonMatchChart({
             />
             <AdaptiveTooltip
               content={<TicketsSeasonMatchTooltip views={visibleViews} />}
-              labelFormatter={formatAxisLabel}
+              labelFormatter={formatTooltipLabel}
+              cursor={{ stroke: "#8B8B8E", strokeDasharray: "3 3" }}
             />
             <ChartZoomReferenceArea selectionArea={selectionArea} />
             {visibleViews.flatMap((view) => {

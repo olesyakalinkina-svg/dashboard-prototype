@@ -287,6 +287,27 @@ describe("match sales tree", () => {
     );
   });
 
+  it("shows Парковка under upcoming Dynamo Moscow matches (match-15, match-16)", () => {
+    const { tree } = buildTree();
+    for (const matchId of ["match-15", "match-16"]) {
+      const match = tree.find((node) => node.matchId === matchId);
+      expect(match, matchId).toBeDefined();
+      expect(match!.label).toContain("Динамо Мск");
+      const ticketType = findSection(
+        match!,
+        MATCH_SALES_SECTION_LABELS.ticketType,
+      );
+      const parking = ticketType?.children.find(
+        (child) => child.label === TICKET_TYPE_LABELS.parking,
+      );
+      expect(parking, `${matchId} parking leaf`).toBeDefined();
+      expect(parking!.ticketsSold, `${matchId} parking qty`).toBeGreaterThanOrEqual(
+        8,
+      );
+      expect(parking!.revenue, `${matchId} parking revenue`).toBeGreaterThan(0);
+    }
+  });
+
   it("hides the price-zone section when parking tickets have no zone", () => {
     const parkingFilters: TicketFilters = { ...ticketFilters, ticketType: "parking" };
     const parking = buildTree(parkingFilters);

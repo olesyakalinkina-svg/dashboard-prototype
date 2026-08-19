@@ -15,11 +15,11 @@ if (!skipWidths) {
 for (const width of widths) {
   const page = await browser.newPage({ viewport: { width, height: 1200 } });
   await page.goto(baseUrl, { waitUntil: "networkidle" });
-  await page.waitForSelector("text=Продажи по ценовым зонам и секторам", { timeout: 120000 });
-  const widgetTitle = page.locator("text=Продажи по ценовым зонам и секторам").first();
+  await page.waitForSelector("text=Продажи по ценовым зонам и секторам на арене", { timeout: 120000 });
+  const widgetTitle = page.locator("text=Продажи по ценовым зонам и секторам на арене").first();
   await widgetTitle.scrollIntoViewIfNeeded();
 
-  const rootCard = page.locator("h3:has-text('Продажи по ценовым зонам и секторам')").first().locator("xpath=ancestor::div[contains(@class,'rounded-lg')][1]");
+  const rootCard = page.locator("h3:has-text('Продажи по ценовым зонам и секторам на арене')").first().locator("xpath=ancestor::div[contains(@class,'rounded-lg')][1]");
   const cardHeightNoSelection = await rootCard.evaluate((el) => Math.round(el.getBoundingClientRect().height));
 
   await page.screenshot({ path: join(outDir, `tickets-zone-${width}-default.png`), fullPage: true });
@@ -43,8 +43,8 @@ for (const width of widths) {
 
 const page = await browser.newPage({ viewport: { width: 1440, height: 1200 } });
 await page.goto(baseUrl, { waitUntil: "networkidle" });
-await page.waitForSelector("text=Продажи по ценовым зонам и секторам", { timeout: 120000 });
-const widget = page.locator("h3:has-text('Продажи по ценовым зонам и секторам')").first().locator("xpath=ancestor::div[contains(@class,'rounded-lg')][1]");
+await page.waitForSelector("text=Продажи по ценовым зонам и секторам на арене", { timeout: 120000 });
+const widget = page.locator("h3:has-text('Продажи по ценовым зонам и секторам на арене')").first().locator("xpath=ancestor::div[contains(@class,'rounded-lg')][1]");
 await widget.scrollIntoViewIfNeeded();
 
 const firstMatch = widget.locator("table:visible tbody tr td button").first();
@@ -81,7 +81,7 @@ await page.screenshot({
 
 await page.evaluate(() => {
   const heading = [...document.querySelectorAll("h3")].find((node) =>
-    node.textContent?.includes("Продажи по ценовым зонам и секторам"),
+    node.textContent?.includes("Продажи по ценовым зонам и секторам на арене"),
   );
   heading?.scrollIntoView({ block: "start" });
 });
@@ -116,7 +116,7 @@ if (await reset.count()) await reset.click();
 await page.waitForTimeout(150);
 await page.evaluate(() => {
   const heading = [...document.querySelectorAll("h3")].find((node) =>
-    node.textContent?.includes("Продажи по ценовым зонам и секторам"),
+    node.textContent?.includes("Продажи по ценовым зонам и секторам на арене"),
   );
   heading?.scrollIntoView({ block: "start" });
 });

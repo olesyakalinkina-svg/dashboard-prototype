@@ -100,6 +100,77 @@ export function allocateIntegerShares(
   return result;
 }
 
+/**
+ * Allocate `total` across items while keeping each share in [min, max].
+ * Target is clamped to [sum(min), sum(max)] so the result always fits.
+ */
+export function allocateIntegerSharesWithBounds(
+  total: number,
+  items: ReadonlyArray<{ id: string; weight: number; min: number; max: number }>,
+): Map<string, number> {
+  const result = new Map<string, number>();
+  if (items.length === 0) return result;
+
+  const rows = items.map((item) => {
+    const max = Math.max(0, Math.floor(item.max));
+    const min = Math.min(max, Math.max(0, Math.floor(item.min)));
+    return {
+      id: item.id,
+      weight: item.weight > 0 ? item.weight : 0,
+      min,
+      max,
+      value: min,
+    };
+  });
+
+  const minSum = rows.reduce((sum, row) => sum + row.min, 0);
+  const maxSum = rows.reduce((sum, row) => sum + row.max, 0);
+  const target = Math.min(
+    maxSum,
+    Math.max(minSum, Math.max(0, Math.floor(total))),
+  );
+
+  let leftover = target - minSum;
+  const giveTo = (
+    pool: typeof rows,
+    amount: number,
+    weightOf: (row: (typeof rows)[number]) => number,
+  ): number => {
+    if (amount <= 0 || pool.length === 0) return amount;
+    const extra = allocateIntegerShares(
+      amount,
+      pool.map((row) => ({ id: row.id, weight: Math.max(weightOf(row), 0) })),
+    );
+    let unplaced = 0;
+    for (const row of pool) {
+      const add = extra.get(row.id) ?? 0;
+      const room = row.max - row.value;
+      const take = Math.min(add, room);
+      row.value += take;
+      unplaced += add - take;
+    }
+    return unplaced;
+  };
+
+  leftover = giveTo(
+    rows.filter((row) => row.value < row.max),
+    leftover,
+    (row) => (row.weight > 0 ? row.weight : 1),
+  );
+  let guard = 0;
+  while (leftover > 0 && guard < rows.length + 2) {
+    const receivers = rows.filter((row) => row.value < row.max);
+    if (receivers.length === 0) break;
+    const next = giveTo(receivers, leftover, (row) => row.max - row.value);
+    if (next >= leftover) break;
+    leftover = next;
+    guard += 1;
+  }
+
+  for (const row of rows) result.set(row.id, row.value);
+  return result;
+}
+
 function scaleSectorMap(
   base: SectorCapacityMap,
   target: number,

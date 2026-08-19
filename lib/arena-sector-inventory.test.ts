@@ -3,6 +3,7 @@ import {
   MAIN_ARENA_SECTOR_CAPACITY,
   MHL_ARENA_SECTOR_CAPACITY,
   SECONDARY_ARENA_SECTOR_CAPACITY,
+  allocateIntegerSharesWithBounds,
   getSectorCapacitiesForMatch,
   leftoverSectorCapacity,
   splitSectorCapacity,
@@ -98,5 +99,25 @@ describe("arena sector inventory", () => {
       up_to_1500: 1,
     });
     expect(split).toEqual(planned);
+  });
+
+  it("allocates with floors and caps so no item is left at 0 when total allows it", () => {
+    const items = [
+      { id: "a", weight: 90, min: 1, max: 10 },
+      { id: "b", weight: 9, min: 1, max: 10 },
+      { id: "c", weight: 1, min: 1, max: 10 },
+    ];
+    const allocated = allocateIntegerSharesWithBounds(6, items);
+    expect(allocated.get("a")).toBeGreaterThanOrEqual(1);
+    expect(allocated.get("b")).toBeGreaterThanOrEqual(1);
+    expect(allocated.get("c")).toBeGreaterThanOrEqual(1);
+    expect(
+      [...allocated.values()].reduce((sum, value) => sum + value, 0),
+    ).toBe(6);
+    for (const item of items) {
+      const value = allocated.get(item.id)!;
+      expect(value).toBeGreaterThanOrEqual(item.min);
+      expect(value).toBeLessThanOrEqual(item.max);
+    }
   });
 });

@@ -41,6 +41,16 @@ export function formatPercent(value: number): string {
   return percentFormatter.format(value / 100);
 }
 
+/** Numeric 1-decimal percent as `formatPercent` shows it in the UI. */
+export function percentOneDecimal(value: number): number {
+  const text = formatPercent(value)
+    .replace(/\u00a0/g, " ")
+    .replace("%", "")
+    .replace(/\s/g, "")
+    .replace(",", ".");
+  return Number.parseFloat(text);
+}
+
 export function formatPercentSigned(value: number): string {
   const sign = value > 0 ? "+" : "";
   return `${sign}${value.toFixed(1)}%`;

@@ -13,6 +13,7 @@ import {
 } from "@tanstack/react-table";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
+import clsx from "clsx";
 import { ChevronDown, ChevronUp, Search } from "lucide-react";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { RowsExcelButton, TableExcelButton } from "@/components/ui/ExcelDownloadButton";
@@ -23,6 +24,7 @@ import {
   formatNumber,
   formatPercent,
 } from "@/lib/format";
+import { occupancyMassCapacity } from "@/lib/ticket-plan";
 import { SUBSCRIPTION_CHANNEL_LABELS } from "@/lib/subscription-filter-options";
 import {
   ORDER_SOURCE_LABELS,
@@ -231,21 +233,21 @@ function DataTable<T>({
           <span>
             {table.getFilteredRowModel().rows.length} записей
           </span>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2 leading-none">
             <button
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
-              className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40"
+              className="inline-flex min-h-11 items-center rounded border border-[var(--border)] px-3 py-1.5 leading-none disabled:opacity-40"
             >
               Назад
             </button>
-            <span>
+            <span className="inline-flex min-h-11 items-center leading-none">
               {table.getState().pagination.pageIndex + 1} / {table.getPageCount()}
             </span>
             <button
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
-              className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40"
+              className="inline-flex min-h-11 items-center rounded border border-[var(--border)] px-3 py-1.5 leading-none disabled:opacity-40"
             >
               Вперёд
             </button>
@@ -267,6 +269,8 @@ type MerchSalesTableProps<T> = {
   pageSize?: number;
   titleKey?: string;
   dateKey?: string;
+  /** Stretch to the grid row (taller neighbor). Off = hug the current page of rows. */
+  fillHeight?: boolean;
 };
 
 function MerchSalesTable<T>({
@@ -280,6 +284,7 @@ function MerchSalesTable<T>({
   pageSize = 10,
   titleKey,
   dateKey,
+  fillHeight = true,
 }: MerchSalesTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>(defaultSort);
   const [globalFilter, setGlobalFilter] = useState("");
@@ -306,7 +311,12 @@ function MerchSalesTable<T>({
       : columns[0]?.id) ?? "id";
 
   return (
-    <Card className="flex h-full min-w-0 flex-col">
+    <Card
+      className={clsx(
+        "min-w-0 w-full",
+        fillHeight && "flex h-full flex-col",
+      )}
+    >
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
@@ -322,7 +332,9 @@ function MerchSalesTable<T>({
           </div>
         </div>
       </CardHeader>
-      <CardContent className="flex min-w-0 flex-1 flex-col">
+      <CardContent
+        className={clsx("min-w-0", fillHeight && "flex flex-1 flex-col")}
+      >
         {isMobile ? (
           <MobileTableCards
             table={table}
@@ -374,25 +386,30 @@ function MerchSalesTable<T>({
             </table>
           </StickyScrollTable>
         )}
-        <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-3 text-xs leading-snug text-[var(--muted)]">
+        <div
+          className={clsx(
+            "flex flex-wrap items-center justify-between gap-2 text-xs leading-snug text-[var(--muted)]",
+            fillHeight ? "mt-auto pt-3" : "mt-3",
+          )}
+        >
           <span>
             {filteredRows.length} {countLabel}
           </span>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2 leading-none">
             <button
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
-              className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40"
+              className="inline-flex min-h-11 items-center rounded border border-[var(--border)] px-3 py-1.5 leading-none disabled:opacity-40"
             >
               Назад
             </button>
-            <span>
+            <span className="inline-flex min-h-11 items-center leading-none">
               {table.getState().pagination.pageIndex + 1} / {table.getPageCount()}
             </span>
             <button
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
-              className="min-h-11 rounded border border-[var(--border)] px-3 py-1.5 disabled:opacity-40"
+              className="inline-flex min-h-11 items-center rounded border border-[var(--border)] px-3 py-1.5 leading-none disabled:opacity-40"
             >
               Вперёд
             </button>
@@ -511,12 +528,18 @@ export function CombinedMatchSalesTable({
     const totalRevenue = rows.reduce((sum, row) => sum + row.totalRevenue, 0);
     const ticketsSold = rows.reduce((sum, row) => sum + row.ticketsSold, 0);
     const totalIssued = rows.reduce((sum, row) => sum + row.issuedTickets, 0);
-    const totalCapacity = rows.reduce((sum, row) => sum + row.capacity, 0);
-    const fillRate = totalCapacity > 0 ? (totalIssued / totalCapacity) * 100 : 0;
+    const totalOccupancyMass = rows.reduce(
+      (sum, row) => sum + occupancyMassCapacity(row.capacity),
+      0,
+    );
+    const fillRate =
+      totalOccupancyMass > 0
+        ? Math.min(100, (totalIssued / totalOccupancyMass) * 100)
+        : 0;
     const merchReceipts = rows.reduce((sum, row) => sum + row.merchReceipts, 0);
 
     return (
-      <tr className="border-t-2 border-[var(--border)] bg-[var(--background)] font-medium">
+      <tr className="border-t-2 border-[var(--border)] font-medium">
         <td className="px-3 py-2.5">Итого</td>
         <td className="px-3 py-2.5" />
         <td className="px-3 py-2.5">{formatCurrency(ticketRevenue)}</td>
@@ -660,18 +683,18 @@ function CombinedMatchSalesMobileCards({
           ))
         )}
         {pageCount > 1 && (
-          <div className="flex items-center justify-between pt-1 text-xs">
+          <div className="flex items-center justify-between pt-1 text-xs leading-none">
             <button
               type="button"
               disabled={pageIndex === 0}
               onClick={() => setPage((value) => Math.max(0, value - 1))}
-              className={`min-h-11 rounded-md border border-[var(--border)] px-3 ${
+              className={`inline-flex min-h-11 items-center rounded-md border border-[var(--border)] px-3 leading-none ${
                 pageIndex === 0 ? "opacity-40" : ""
               }`}
             >
               Назад
             </button>
-            <span className="text-[var(--muted)]">
+            <span className="inline-flex min-h-11 items-center leading-none text-[var(--muted)]">
               {pageIndex + 1} / {pageCount}
             </span>
             <button
@@ -680,7 +703,7 @@ function CombinedMatchSalesMobileCards({
               onClick={() =>
                 setPage((value) => Math.min(pageCount - 1, value + 1))
               }
-              className={`min-h-11 rounded-md border border-[var(--border)] px-3 ${
+              className={`inline-flex min-h-11 items-center rounded-md border border-[var(--border)] px-3 leading-none ${
                 pageIndex >= pageCount - 1 ? "opacity-40" : ""
               }`}
             >
@@ -792,6 +815,7 @@ export function MerchSkuSalesTable({ data }: { data: MerchSkuSalesRow[] }) {
       defaultSort={[{ id: "units", desc: true }]}
       pageSize={10}
       titleKey="productName"
+      fillHeight={false}
     />
   );
 }

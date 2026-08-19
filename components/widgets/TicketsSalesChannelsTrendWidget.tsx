@@ -8,10 +8,10 @@ import {
   Line,
   LineChart,
   ResponsiveContainer,
-  Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import { AdaptiveTooltip } from "@/components/charts/AdaptiveTooltip";
 import { ChartScrollContainer } from "@/components/charts/ChartScrollContainer";
 import {
   ChartZoomHint,
@@ -156,7 +156,7 @@ export const TicketsSalesChannelsTrendWidget = memo(
                         : String(value)
                   }
                 />
-                <Tooltip content={<ChannelTrendTooltip />} />
+                <AdaptiveTooltip content={<ChannelTrendTooltip />} />
                 <Legend wrapperStyle={{ fontSize: 11 }} iconSize={10} />
                 <ChartZoomReferenceArea selectionArea={selectionArea} />
                 {activeSources.map((source) => (

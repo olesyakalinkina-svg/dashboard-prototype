@@ -503,42 +503,6 @@ function getShareBreakdownChartHeight(itemCount: number, compact = true): number
   return Math.max(compact ? 160 : 180, itemCount * rowHeight + 24);
 }
 
-function ShareSortControls({
-  sortKey,
-  onChange,
-}: {
-  sortKey: "value" | "name";
-  onChange: (key: "value" | "name") => void;
-}) {
-  return (
-    <div className="flex shrink-0 items-center gap-1 text-xs leading-snug text-[var(--muted)]">
-      <span className="sr-only">Сортировка</span>
-      <button
-        type="button"
-        className={clsx(
-          "min-h-11 rounded-md px-2 xl:min-h-8",
-          sortKey === "value" && "font-medium text-[var(--foreground)]",
-        )}
-        onClick={() => onChange("value")}
-        aria-pressed={sortKey === "value"}
-      >
-        Сумма
-      </button>
-      <button
-        type="button"
-        className={clsx(
-          "min-h-11 rounded-md px-2 xl:min-h-8",
-          sortKey === "name" && "font-medium text-[var(--foreground)]",
-        )}
-        onClick={() => onChange("name")}
-        aria-pressed={sortKey === "name"}
-      >
-        Имя
-      </button>
-    </div>
-  );
-}
-
 export function MerchSalesChannelsChart({
   data,
   className,
@@ -548,16 +512,10 @@ export function MerchSalesChannelsChart({
   className?: string;
   compact?: boolean;
 }) {
-  const [sortKey, setSortKey] = useState<"value" | "name">("value");
-  const sorted = useMemo(() => {
-    const next = [...data];
-    if (sortKey === "name") {
-      next.sort((a, b) => a.channel.localeCompare(b.channel, "ru"));
-    } else {
-      next.sort((a, b) => b.value - a.value);
-    }
-    return next;
-  }, [data, sortKey]);
+  const sorted = useMemo(
+    () => [...data].sort((a, b) => b.value - a.value),
+    [data],
+  );
   const chartHeight = getShareBreakdownChartHeight(sorted.length, compact);
   const rows = useMemo<ShareInlineRow[]>(
     () =>
@@ -571,10 +529,6 @@ export function MerchSalesChannelsChart({
     [sorted],
   );
 
-  const headerExtra = (
-    <ShareSortControls sortKey={sortKey} onChange={setSortKey} />
-  );
-
   if (rows.length === 0) {
     return (
       <ChartWidget
@@ -582,7 +536,6 @@ export function MerchSalesChannelsChart({
         height={chartHeight}
         className={className}
         compact={compact}
-        headerExtra={headerExtra}
       >
         <div className="flex h-full items-center justify-center text-sm text-[var(--muted)]">
           Нет данных по выбранным каналам
@@ -597,7 +550,6 @@ export function MerchSalesChannelsChart({
       height={chartHeight}
       className={className}
       compact={compact}
-      headerExtra={headerExtra}
     >
       <ShareBreakdownInlineRows rows={rows} labelClassName="w-auto sm:w-36" />
     </ChartWidget>

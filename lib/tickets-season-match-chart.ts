@@ -1,4 +1,4 @@
-import { addDays, format, startOfDay, startOfMonth, startOfWeek } from "date-fns";
+import { addMonths, format, startOfDay, startOfMonth, startOfWeek } from "date-fns";
 import { ru } from "date-fns/locale";
 import { formatShortMonthYear } from "@/lib/format";
 import type {
@@ -18,6 +18,10 @@ export const SEASON_MATCH_CHART_DAY_WIDTH = 44;
 /** Y-axis width (52) + chart left margin (4). */
 export const SEASON_MATCH_CHART_LEFT_GUTTER = 56;
 export const SEASON_MATCH_CHART_RIGHT_GUTTER = 20;
+/** Enough for «03.02.26» at 11px plus a small gutter between labels. */
+export const SEASON_MATCH_AXIS_MIN_TICK_GAP_PX = 64;
+export const SEASON_MATCH_AXIS_STAGGER_DY = 14;
+export const SEASON_MATCH_AXIS_TICK_HEIGHT = 48;
 export const SEASON_MATCH_MAX_BRIGHT_LINES = 10;
 /** Completed matches shown when nothing is currently on sale. */
 export const SEASON_MATCH_LAST_COMPLETED_FALLBACK_COUNT = 3;
@@ -422,6 +426,11 @@ export function aggregateSeasonMatchChartRowsByGrouping(
     });
 }
 
+function isSeasonMatchMonthStart(dateKey: number): boolean {
+  const date = new Date(dateKey);
+  return startOfMonth(date).getTime() === startOfDay(date).getTime();
+}
+
 export function formatSeasonMatchAxisLabel(
   dateKey: number,
   rows: TicketsSeasonMatchChartRow[],
@@ -433,6 +442,9 @@ export function formatSeasonMatchAxisLabel(
       : new Set(matchDateKeys ?? []);
   if (matchDates.has(dateKey)) {
     return formatSeasonMatchDateLabel(dateKey);
+  }
+  if (isSeasonMatchMonthStart(dateKey)) {
+    return formatShortMonthYear(new Date(dateKey));
   }
   const row = rows.find((entry) => entry.dateKey === dateKey);
   return row?.periodLabel ?? formatSeasonMatchDateLabel(dateKey);
@@ -512,61 +524,101 @@ export function getSeasonMatchYDomainKeys(
   return keys;
 }
 
+function collectSeasonMatchMonthTicks(minKey: number, maxKey: number): number[] {
+  const ticks: number[] = [];
+  let current = startOfMonth(new Date(minKey));
+  if (current.getTime() < startOfDay(new Date(minKey)).getTime()) {
+    current = addMonths(current, 1);
+  }
+  const end = startOfDay(new Date(maxKey));
+  while (current.getTime() <= end.getTime()) {
+    ticks.push(current.getTime());
+    current = addMonths(current, 1);
+  }
+  return ticks;
+}
+
+function seasonMatchAxisTicksCollide(
+  left: number,
+  right: number,
+  rows: TicketsSeasonMatchChartRow[],
+  chartWidth: number,
+  minGapPx: number,
+): boolean {
+  const gap = Math.abs(
+    getSeasonMatchDateXPosition(left, rows, chartWidth) -
+      getSeasonMatchDateXPosition(right, rows, chartWidth),
+  );
+  return gap < minGapPx;
+}
+
 export function buildSeasonMatchXAxisTicks(
   rows: TicketsSeasonMatchChartRow[],
   options?: {
     stepDays?: number;
     grouping?: TimeGrouping;
     matchDateKeys?: Iterable<number>;
+    chartWidth?: number;
+    minTickGapPx?: number;
   },
 ): number[] {
   if (rows.length === 0) return [];
 
-  const grouping = options?.grouping ?? "day";
-  let ticks: number[];
-
-  if (grouping !== "day") {
-    if (rows.length <= 14) {
-      ticks = rows.map((row) => row.dateKey);
-    } else {
-      const step = grouping === "month" ? 1 : 2;
-      ticks = rows
-        .filter((_, index) => index % step === 0 || index === rows.length - 1)
-        .map((row) => row.dateKey);
-    }
-  } else {
-    const stepDays = options?.stepDays ?? 2;
-    const minKey = rows[0].dateKey;
-    const maxKey = rows[rows.length - 1].dateKey;
-    ticks = [];
-    let current = startOfDay(new Date(minKey));
-    const end = startOfDay(new Date(maxKey));
-
-    while (current.getTime() <= end.getTime()) {
-      ticks.push(current.getTime());
-      current = addDays(current, stepDays);
-    }
-
-    if (ticks[ticks.length - 1] !== end.getTime()) {
-      ticks.push(end.getTime());
-    }
-  }
-
   const minKey = rows[0].dateKey;
   const maxKey = rows[rows.length - 1].dateKey;
-  const present = new Set(ticks);
-  for (const matchDateKey of options?.matchDateKeys ?? []) {
+  const chartWidth = options?.chartWidth ?? SEASON_MATCH_CHART_MIN_WIDTH;
+  const minGapPx = options?.minTickGapPx ?? SEASON_MATCH_AXIS_MIN_TICK_GAP_PX;
+
+  const matchDates = [...new Set(options?.matchDateKeys ?? [])]
+    .filter((key) => key >= minKey && key <= maxKey)
+    .sort((left, right) => left - right);
+
+  const kept = [...matchDates];
+  for (const tick of collectSeasonMatchMonthTicks(minKey, maxKey)) {
+    if (kept.includes(tick)) continue;
+    const collides = kept.some((other) =>
+      seasonMatchAxisTicksCollide(tick, other, rows, chartWidth, minGapPx),
+    );
+    if (!collides) kept.push(tick);
+  }
+
+  if (kept.length === 0) {
+    kept.push(minKey);
     if (
-      matchDateKey >= minKey &&
-      matchDateKey <= maxKey &&
-      !present.has(matchDateKey)
+      maxKey !== minKey &&
+      !seasonMatchAxisTicksCollide(minKey, maxKey, rows, chartWidth, minGapPx)
     ) {
-      ticks.push(matchDateKey);
-      present.add(matchDateKey);
+      kept.push(maxKey);
     }
   }
 
-  return ticks.sort((left, right) => left - right);
+  return kept.sort((left, right) => left - right);
+}
+
+export function getSeasonMatchAxisTickOffsets(
+  ticks: number[],
+  rows: TicketsSeasonMatchChartRow[],
+  chartWidth: number,
+  minGapPx = SEASON_MATCH_AXIS_MIN_TICK_GAP_PX,
+): Map<number, number> {
+  const offsets = new Map<number, number>();
+  let prevKey: number | null = null;
+  let prevOffset = 0;
+
+  for (const tick of ticks) {
+    let offset = 0;
+    if (
+      prevKey != null &&
+      seasonMatchAxisTicksCollide(tick, prevKey, rows, chartWidth, minGapPx)
+    ) {
+      offset = prevOffset === 0 ? SEASON_MATCH_AXIS_STAGGER_DY : 0;
+    }
+    offsets.set(tick, offset);
+    prevKey = tick;
+    prevOffset = offset;
+  }
+
+  return offsets;
 }
 
 export function getSeasonMatchLineOpacity(

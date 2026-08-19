@@ -8,7 +8,9 @@ import {
   buildDefaultMerchFixtureTree,
   FIXTURE_DASHBOARD_FILTERS,
   FIXTURE_MERCH_FILTERS,
+  MERCH_FIXTURE_ARENA_EXCLUDED_SKU,
   MERCH_FIXTURE_ARENA_MATCH_ID,
+  MERCH_FIXTURE_ARENA_TOP_PRODUCTS,
   MERCH_FIXTURE_NORTH_MATCH_ID,
 } from "@/lib/merch-sales-tree.fixture";
 import {
@@ -104,11 +106,22 @@ describe("MerchMatchSalesTable drill-down", () => {
     expect(screen.getByText("Итого")).toBeTruthy();
     expect(screen.queryByText(MERCH_SALES_SECTION_LABELS.salesChannel)).toBeNull();
     expect(screen.queryByText(MERCH_SALES_SECTION_LABELS.productCategory)).toBeNull();
+    expect(screen.queryByText(MERCH_SALES_SECTION_LABELS.topProducts)).toBeNull();
     expect(screen.queryByText(MERCH_SALES_POINT_LABELS.flagship)).toBeNull();
     expect(screen.queryByText(MERCH_PRODUCT_CATEGORY_LABELS.jerseys)).toBeNull();
+    expect(screen.queryByText(MERCH_FIXTURE_ARENA_TOP_PRODUCTS[0])).toBeNull();
   });
 
-  it("expanding a match shows two parallel sections", async () => {
+  it("keeps «Конверсия в покупку» as a compact percent column", () => {
+    renderMerch();
+    const header = screen.getByRole("columnheader", {
+      name: "Конверсия в покупку",
+    });
+    expect(header.className).toContain("w-[6.5rem]");
+    expect(header.className).toContain("max-w-[6.5rem]");
+  });
+
+  it("expanding a match shows three parallel sections", async () => {
     const user = userEvent.setup();
     const pipeline = buildDefaultMerchFixtureTree();
     const match = pipeline.tree.find(
@@ -121,8 +134,10 @@ describe("MerchMatchSalesTable drill-down", () => {
     );
     expect(screen.getByText(MERCH_SALES_SECTION_LABELS.salesChannel)).toBeTruthy();
     expect(screen.getByText(MERCH_SALES_SECTION_LABELS.productCategory)).toBeTruthy();
+    expect(screen.getByText(MERCH_SALES_SECTION_LABELS.topProducts)).toBeTruthy();
     expect(screen.queryByText(MERCH_SALES_POINT_LABELS.flagship)).toBeNull();
     expect(screen.queryByText(MERCH_PRODUCT_CATEGORY_LABELS.jerseys)).toBeNull();
+    expect(screen.queryByText(MERCH_FIXTURE_ARENA_TOP_PRODUCTS[0])).toBeNull();
     expect(screen.getAllByRole("columnheader").map((el) => el.textContent)).toEqual(
       ORIGINAL_COLUMNS,
     );
@@ -145,9 +160,15 @@ describe("MerchMatchSalesTable drill-down", () => {
     expect(screen.getByText(MERCH_SALES_POINT_LABELS.arena_north)).toBeTruthy();
     expect(screen.queryByText(MERCH_PRODUCT_CATEGORY_LABELS.jerseys)).toBeNull();
     expect(screen.queryByText(MERCH_PRODUCT_CATEGORY_LABELS.souvenirs)).toBeNull();
+    expect(screen.queryByText(MERCH_FIXTURE_ARENA_TOP_PRODUCTS[0])).toBeNull();
     expect(
       screen.getByRole("button", {
         name: `Развернуть: ${MERCH_SALES_SECTION_LABELS.productCategory}`,
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: `Развернуть: ${MERCH_SALES_SECTION_LABELS.topProducts}`,
       }),
     ).toBeTruthy();
   });
@@ -169,7 +190,9 @@ describe("MerchMatchSalesTable drill-down", () => {
     );
     expect(screen.queryByText(MERCH_SALES_SECTION_LABELS.salesChannel)).toBeNull();
     expect(screen.queryByText(MERCH_SALES_SECTION_LABELS.productCategory)).toBeNull();
+    expect(screen.queryByText(MERCH_SALES_SECTION_LABELS.topProducts)).toBeNull();
     expect(screen.queryByText(MERCH_SALES_POINT_LABELS.flagship)).toBeNull();
+    expect(screen.queryByText(MERCH_FIXTURE_ARENA_TOP_PRODUCTS[0])).toBeNull();
     expect(screen.getByText("vs СКА")).toBeTruthy();
     expect(screen.getByText("vs ЦСКА")).toBeTruthy();
     expect(screen.getAllByRole("columnheader").map((el) => el.textContent)).toEqual(
@@ -312,5 +335,43 @@ describe("MerchMatchSalesTable drill-down", () => {
     expect(
       cellText(revenueCellForLabel(MERCH_SALES_POINT_LABELS.flagship)),
     ).not.toContain(formatPercent(0).replace(/\s/g, " "));
+  });
+
+  it("expanding «Топ-5 товаров» lists ranked SKUs as siblings, not under category", async () => {
+    const user = userEvent.setup();
+    const pipeline = buildDefaultMerchFixtureTree();
+    const match = pipeline.tree.find(
+      (node) => node.matchId === MERCH_FIXTURE_ARENA_MATCH_ID,
+    )!;
+    renderMerch(pipeline, [match.id]);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: `Развернуть: ${MERCH_SALES_SECTION_LABELS.topProducts}`,
+      }),
+    );
+
+    for (const label of MERCH_FIXTURE_ARENA_TOP_PRODUCTS) {
+      expect(screen.getByText(label)).toBeTruthy();
+    }
+    expect(screen.queryByText(MERCH_FIXTURE_ARENA_EXCLUDED_SKU)).toBeNull();
+    expect(screen.queryByText(MERCH_PRODUCT_CATEGORY_LABELS.jerseys)).toBeNull();
+    expect(
+      screen.getByRole("button", {
+        name: `Развернуть: ${MERCH_SALES_SECTION_LABELS.productCategory}`,
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", {
+        name: `Развернуть: ${MERCH_FIXTURE_ARENA_TOP_PRODUCTS[0]}`,
+      }),
+    ).toBeNull();
+
+    const conversionCell = screen
+      .getByText(MERCH_FIXTURE_ARENA_TOP_PRODUCTS[0])
+      .closest("tr");
+    expect(conversionCell).toBeTruthy();
+    const cells = within(conversionCell!).getAllByRole("cell");
+    expect(cells[cells.length - 1]!.textContent).toBe("—");
   });
 });

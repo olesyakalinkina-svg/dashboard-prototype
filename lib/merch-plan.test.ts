@@ -4,6 +4,13 @@ import {
   getMatchMerchPlanCrowd,
   getMatchMerchPlanRevenue,
   merchPlanScale,
+  applyExplicitMatchMerchPlan,
+  applyMatchMerchPlanFulfillmentBand,
+  applyMatchMerchPlanFloorWhenTicketsMet,
+  merchPlanRevenueForTarget,
+  MAX_MERCH_PLAN_FULFILLMENT,
+  MAX_MERCH_PLAN_WHEN_TICKETS_MET,
+  MIN_MERCH_PLAN_WHEN_TICKETS_MET,
 } from "@/lib/merch-plan";
 import type { Match } from "@/types/dashboard";
 
@@ -68,5 +75,54 @@ describe("merch match sales plan", () => {
         productCategories: ["jerseys"],
       }),
     ).toBeCloseTo(1 / 5, 8);
+  });
+
+  it("uses a stored merchPlanRevenue override when present", () => {
+    const base = getMatchMerchPlanRevenue(match());
+    expect(
+      getMatchMerchPlanRevenue(match({ merchPlanRevenue: base * 2 })),
+    ).toBe(base * 2);
+  });
+
+  it("raises stored plan so over-cap merch lands on 103%", () => {
+    const row = match();
+    const formula = getMatchMerchPlanRevenue(row);
+    applyMatchMerchPlanFulfillmentBand(row, formula * 1.457, false);
+    const plan = getMatchMerchPlanRevenue(row);
+    expect(plan).toBe(Math.ceil((formula * 1.457) / MAX_MERCH_PLAN_FULFILLMENT));
+    expect((formula * 1.457) / plan).toBeLessThanOrEqual(
+      MAX_MERCH_PLAN_FULFILLMENT + 1e-9,
+    );
+  });
+
+  it("caps at 100% when the ticket revenue plan is already met", () => {
+    const row = match();
+    const formula = getMatchMerchPlanRevenue(row);
+    applyMatchMerchPlanFulfillmentBand(row, formula * 1.457, true);
+    const plan = getMatchMerchPlanRevenue(row);
+    expect((formula * 1.457) / plan).toBeLessThanOrEqual(
+      MAX_MERCH_PLAN_WHEN_TICKETS_MET + 1e-9,
+    );
+  });
+
+  it("lowers stored plan to 75% when tickets are met and merch is short", () => {
+    const row = match();
+    const formula = getMatchMerchPlanRevenue(row);
+    applyMatchMerchPlanFloorWhenTicketsMet(row, formula * 0.5);
+    const plan = getMatchMerchPlanRevenue(row);
+    expect((formula * 0.5) / plan).toBeGreaterThanOrEqual(
+      MIN_MERCH_PLAN_WHEN_TICKETS_MET - 1e-9,
+    );
+  });
+
+  it("sets stored plan so actual/plan matches an explicit target", () => {
+    const row = match({ id: "match-14" });
+    const actual = 229_940;
+    expect(applyExplicitMatchMerchPlan(row, actual)).toBe(true);
+    expect(row.merchPlanRevenue).toBe(merchPlanRevenueForTarget(actual, 0.61));
+    expect(actual / row.merchPlanRevenue!).toBeCloseTo(0.61, 5);
+    applyMatchMerchPlanFloorWhenTicketsMet(row, actual);
+    applyMatchMerchPlanFulfillmentBand(row, actual, true);
+    expect(row.merchPlanRevenue).toBe(merchPlanRevenueForTarget(actual, 0.61));
   });
 });
