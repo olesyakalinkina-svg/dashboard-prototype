@@ -1876,12 +1876,14 @@ function generateTransactions(allMatches: Match[]): Transaction[] {
         priceZone: combo.zone,
         orderSource,
       });
-      const row = comboStats.get(comboId(combo.sector, combo.zone)) ?? {
+      const key = comboId(combo.sector, combo.zone);
+      const row: ArenaComboStat = comboStats.get(key) ?? {
         paid: 0,
         issued: 0,
+        revenue: 0,
       };
       row.issued += qty;
-      comboStats.set(comboId(combo.sector, combo.zone), row);
+      comboStats.set(key, row);
     }
 
     const merchSales = generateMatchMerchSales(match, id);
@@ -2023,7 +2025,11 @@ function ensureTicketPriceZoneCoverage(
 
     for (const combo of combos) {
       const key = comboId(combo.sector, combo.zone);
-      const row = stats.get(key) ?? { paid: 0, issued: 0 };
+      const row: ArenaComboStat = stats.get(key) ?? {
+        paid: 0,
+        issued: 0,
+        revenue: 0,
+      };
       if (row.paid > 0) continue;
       const remainCombo = combo.mass - row.issued;
       const remainSector =
@@ -2045,8 +2051,10 @@ function ensureTicketPriceZoneCoverage(
         combo.zone,
         qty,
       );
+      const coverageTx = txs[txs.length - 1];
       row.paid += qty;
       row.issued += qty;
+      row.revenue += coverageTx.amount;
       stats.set(key, row);
       matchIssued += qty;
       sectorIssued[combo.sector] = (sectorIssued[combo.sector] ?? 0) + qty;

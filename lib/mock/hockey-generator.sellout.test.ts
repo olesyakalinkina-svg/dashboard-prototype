@@ -62,6 +62,30 @@ function issuedByCombo(
   return issued;
 }
 
+type ArenaComboStat = { paid: number; issued: number; revenue: number };
+
+function comboStatsFromTransactions(
+  matchId: string,
+  transactions: Transaction[],
+): Map<string, ArenaComboStat> {
+  const stats = new Map<string, ArenaComboStat>();
+  for (const tx of transactions) {
+    if (tx.stream !== "tickets" || tx.ticketType !== "arena") continue;
+    if (tx.matchId !== matchId || !tx.sector || !tx.priceZone) continue;
+    const key = `${tx.sector}|${tx.priceZone}`;
+    const row: ArenaComboStat = stats.get(key) ?? {
+      paid: 0,
+      issued: 0,
+      revenue: 0,
+    };
+    if (tx.amount > 0) row.paid += tx.quantity;
+    row.issued += getTicketIssuedQuantity(tx);
+    row.revenue += tx.amount;
+    stats.set(key, row);
+  }
+  return stats;
+}
+
 function inventoryCombos(match: Match): { sector: Sector; zone: PriceZone; mass: number }[] {
   const sectors = getSectorCapacitiesForMatch(match);
   if (!sectors) return [];
@@ -153,6 +177,38 @@ describe("hockey generator sold-out occupancy", () => {
         match.capacity,
       );
     }
+  });
+
+  it("keeps ArenaComboStat rows with paid, issued, and revenue; free tickets do not add revenue", () => {
+    let comboRows = 0;
+    let freeIssued = 0;
+
+    for (const match of matches) {
+      const stats = comboStatsFromTransactions(match.id, transactions);
+      for (const row of stats.values()) {
+        comboRows += 1;
+        expect(Object.keys(row).sort()).toEqual(["issued", "paid", "revenue"]);
+        expect(row.paid).toEqual(expect.any(Number));
+        expect(row.issued).toEqual(expect.any(Number));
+        expect(row.revenue).toEqual(expect.any(Number));
+        expect(row.issued).toBeGreaterThanOrEqual(row.paid);
+        expect(row.revenue).toBeGreaterThanOrEqual(0);
+      }
+    }
+    expect(comboRows).toBeGreaterThan(0);
+
+    const freeArenaTickets = transactions.filter(
+      (tx) =>
+        tx.stream === "tickets" &&
+        tx.ticketType === "arena" &&
+        ((tx.freeQuantity ?? 0) > 0 || tx.description === "Бесплатный билет"),
+    );
+    expect(freeArenaTickets.length).toBeGreaterThan(0);
+    for (const tx of freeArenaTickets) {
+      expect(tx.amount).toBe(0);
+      freeIssued += getTicketIssuedQuantity(tx);
+    }
+    expect(freeIssued).toBeGreaterThan(0);
   });
 
   it("sells paid parking tickets for every match that has arena ticket sales", () => {
