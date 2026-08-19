@@ -16,7 +16,10 @@ import {
 } from "@/lib/filters";
 import { DEFAULT_MATCH_SALES_FILTERS } from "@/lib/match-sales-filter-options";
 import { DEFAULT_MERCH_FILTERS } from "@/lib/merch-filter-options";
-import { DEFAULT_SUBSCRIPTION_FILTERS } from "@/lib/subscription-filter-options";
+import {
+  applySubscriptionFilterPatch,
+  DEFAULT_SUBSCRIPTION_FILTERS,
+} from "@/lib/subscription-filter-options";
 import {
   buildMatchFilterOptions,
   DEFAULT_TICKET_FILTERS,
@@ -117,7 +120,10 @@ export function MobileFilterDraftProvider({
     (patch: Partial<SubscriptionFilters>) => {
       setDraft((prev) => ({
         ...prev,
-        subscriptionFilters: { ...prev.subscriptionFilters, ...patch },
+        subscriptionFilters: applySubscriptionFilterPatch(
+          prev.subscriptionFilters,
+          patch,
+        ),
       }));
     },
     [],

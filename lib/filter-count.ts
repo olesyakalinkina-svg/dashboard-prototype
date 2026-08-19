@@ -143,9 +143,8 @@ export function countActiveSubscriptionFilters(
 ): number {
   let count = countDiffs(filters, DEFAULT_SUBSCRIPTION_FILTERS, [
     "league",
-    "tournamentStage",
     "arena",
-    "ticketType",
+    "priceCategory",
     "timeGrouping",
   ]);
 

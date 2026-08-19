@@ -5,7 +5,11 @@ import {
   MERCH_PRODUCT_CATEGORY_LABELS,
 } from "@/lib/merch-filter-options";
 import { DEFAULT_MATCH_SALES_FILTERS } from "@/lib/match-sales-filter-options";
-import { DEFAULT_SUBSCRIPTION_FILTERS } from "@/lib/subscription-filter-options";
+import {
+  DEFAULT_SUBSCRIPTION_FILTERS,
+  SUBSCRIPTION_PRICE_CATEGORY_OPTIONS,
+  sanitizeSubscriptionArena,
+} from "@/lib/subscription-filter-options";
 import {
   ARENA_OPTIONS,
   DEFAULT_TICKET_FILTERS,
@@ -389,39 +393,31 @@ export function buildSubscriptionsFilterCases(): FilterCoverageCase[] {
       subscriptionCase("league", opt.label, {
         ...DEFAULT_SUBSCRIPTION_FILTERS,
         league: opt.value,
-      }),
-    );
-  }
-
-  for (const opt of TOURNAMENT_STAGE_OPTIONS) {
-    cases.push(
-      subscriptionCase("tournamentStage", opt.label, {
-        ...DEFAULT_SUBSCRIPTION_FILTERS,
-        tournamentStage: opt.value,
+        arena: sanitizeSubscriptionArena(
+          opt.value,
+          DEFAULT_SUBSCRIPTION_FILTERS.arena,
+        ),
       }),
     );
   }
 
   for (const opt of ARENA_OPTIONS) {
-    const testCase = subscriptionCase("arena", opt.label, {
-      ...DEFAULT_SUBSCRIPTION_FILTERS,
-      arena: opt.value,
-    });
-    if (
-      opt.value === "secondary" &&
-      DEFAULT_SUBSCRIPTION_FILTERS.league === "KHL"
-    ) {
-      testCase.excluded =
-        "Secondary arena has no KHL subscriptions in mock data (VHL only)";
-    }
-    cases.push(testCase);
+    const league =
+      opt.value === "main" ? DEFAULT_SUBSCRIPTION_FILTERS.league : "all";
+    cases.push(
+      subscriptionCase("arena", opt.label, {
+        ...DEFAULT_SUBSCRIPTION_FILTERS,
+        league,
+        arena: opt.value,
+      }),
+    );
   }
 
-  for (const opt of TICKET_TYPE_OPTIONS) {
+  for (const opt of SUBSCRIPTION_PRICE_CATEGORY_OPTIONS) {
     cases.push(
-      subscriptionCase("ticketType", opt.label, {
+      subscriptionCase("priceCategory", opt.label, {
         ...DEFAULT_SUBSCRIPTION_FILTERS,
-        ticketType: opt.value,
+        priceCategory: opt.value,
       }),
     );
   }
@@ -614,24 +610,24 @@ export function buildCriticalComboCases(): CriticalComboCase[] {
         }).revenue > 0,
     },
     {
-      name: "Subscriptions: 2024/25 + VHL + parking",
+      name: "Subscriptions: 2024/25 + VHL + weekend",
       tab: "subscriptions",
       check: () =>
         filterSubscriptions(DEFAULT_DASHBOARD_FILTERS, {
           ...DEFAULT_SUBSCRIPTION_FILTERS,
           season: "2024/25",
           league: "VHL",
-          ticketType: "parking",
+          arena: "secondary",
+          priceCategory: "weekend",
         }).length > 0,
     },
     {
-      name: "Subscriptions: playoff + arena",
+      name: "Subscriptions: playoff",
       tab: "subscriptions",
       check: () =>
         filterSubscriptions(DEFAULT_DASHBOARD_FILTERS, {
           ...DEFAULT_SUBSCRIPTION_FILTERS,
           tournamentStage: "playoff",
-          ticketType: "arena",
         }).length > 0,
     },
     {

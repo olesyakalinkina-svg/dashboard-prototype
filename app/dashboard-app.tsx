@@ -97,17 +97,6 @@ const TicketsZoneSectorWidget = dynamic(
   },
 );
 
-const SubscriptionsSalesWidget = dynamic(
-  () =>
-    import("@/components/widgets/SubscriptionsSalesWidget").then((mod) => ({
-      default: mod.SubscriptionsSalesWidget,
-    })),
-  {
-    ssr: false,
-    loading: () => <ChartSkeleton height={360} />,
-  },
-);
-
 const SubscriptionCampaignPaceWidget = dynamic(
   () =>
     import("@/components/widgets/SubscriptionCampaignPaceWidget").then(
@@ -248,7 +237,6 @@ function DashboardPanels() {
     merchKpis,
     subscriptionsKpis,
     ticketsPlanFactTrend,
-    subscriptionsPlanFactTrend,
     topProducts,
     subscriptionPriceCategoryShares,
     matchSales,
@@ -283,14 +271,11 @@ function DashboardPanels() {
 
         {activeTab === "subscriptions" && (
           <>
-            <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 min-[1024px]:grid-cols-[1.6fr_1fr] xl:grid-cols-[1.6fr_1fr]">
-              <SubscriptionsSalesWidget data={subscriptionsPlanFactTrend} />
-              <SubscriptionPriceCategoryShareChart
-                data={subscriptionPriceCategoryShares}
-                season={appliedSubscriptionFilters.season}
-              />
-            </div>
             <SubscriptionCampaignPaceWidget />
+            <SubscriptionPriceCategoryShareChart
+              data={subscriptionPriceCategoryShares}
+              season={appliedSubscriptionFilters.season}
+            />
           </>
         )}
 

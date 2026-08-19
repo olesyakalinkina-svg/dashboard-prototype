@@ -82,9 +82,7 @@ describe("subscriptions tab", () => {
 
   it("documents intentional exclusions", () => {
     const excluded = excludedCases(cases);
-    expect(excluded).toHaveLength(1);
-    expect(excluded[0]?.filter).toBe("arena");
-    expect(excluded[0]?.option).toBe("Второстепенная");
+    expect(excluded).toHaveLength(0);
   });
 });
 

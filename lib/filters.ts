@@ -82,6 +82,7 @@ import {
   getSubscriptionPriceCategory,
   SUBSCRIPTION_CHANNEL_LABELS,
   SUBSCRIPTION_PRICE_CATEGORY_LABELS,
+  subscriptionMatchesPriceCategory,
 } from "@/lib/subscription-filter-options";
 import {
   applyTicketSalesTransaction,
@@ -1151,8 +1152,7 @@ export function filterSubscriptions(
       return false;
     }
     if (
-      subscriptionFilters.ticketType !== "all" &&
-      sub.ticketType !== subscriptionFilters.ticketType
+      !subscriptionMatchesPriceCategory(sub, subscriptionFilters.priceCategory)
     ) {
       return false;
     }
@@ -1321,8 +1321,7 @@ function previousPeriodSubscriptions(
       return false;
     }
     if (
-      subscriptionFilters.ticketType !== "all" &&
-      sub.ticketType !== subscriptionFilters.ticketType
+      !subscriptionMatchesPriceCategory(sub, subscriptionFilters.priceCategory)
     ) {
       return false;
     }

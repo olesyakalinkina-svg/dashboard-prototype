@@ -1,4 +1,5 @@
 import type { Subscription, SubscriptionFilters } from "@/types/dashboard";
+import { subscriptionMatchesPriceCategory } from "@/lib/subscription-filter-options";
 import {
   buildShortBenchmarkWarning,
   getCampaignAvailableDays,
@@ -24,7 +25,7 @@ import type {
 
 export type SubscriptionCampaignAttributeFilters = Pick<
   SubscriptionFilters,
-  "league" | "tournamentStage" | "arena" | "ticketType"
+  "league" | "tournamentStage" | "arena" | "priceCategory"
 >;
 
 export function isValidSoldSubscription(sub: Subscription): boolean {
@@ -43,7 +44,7 @@ export function subscriptionMatchesCampaignFilters(
     return false;
   }
   if (filters.arena !== "all" && sub.arena !== filters.arena) return false;
-  if (filters.ticketType !== "all" && sub.ticketType !== filters.ticketType) {
+  if (!subscriptionMatchesPriceCategory(sub, filters.priceCategory)) {
     return false;
   }
   return true;
@@ -339,7 +340,7 @@ export function computeCampaignBenchmark(
     league: input.filters.league,
     tournamentStage: input.filters.tournamentStage,
     arena: input.filters.arena,
-    ticketType: input.filters.ticketType,
+    priceCategory: input.filters.priceCategory,
   };
 
   const mainChartDays = mainAvailableDays;

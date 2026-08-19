@@ -50,7 +50,10 @@ import {
   getEffectiveMerchTimeGrouping,
 } from "@/lib/merch-filter-options";
 import { DEFAULT_MATCH_SALES_FILTERS } from "@/lib/match-sales-filter-options";
-import { DEFAULT_SUBSCRIPTION_FILTERS } from "@/lib/subscription-filter-options";
+import {
+  applySubscriptionFilterPatch,
+  DEFAULT_SUBSCRIPTION_FILTERS,
+} from "@/lib/subscription-filter-options";
 import { loadMockData } from "@/lib/mock/data-store";
 import { DashboardLoading } from "@/components/layout/DashboardLoading";
 import type {
@@ -499,7 +502,9 @@ export function FilterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setSubscriptionFilters = useCallback((patch: Partial<SubscriptionFilters>) => {
-    setSubscriptionFiltersState((prev) => ({ ...prev, ...patch }));
+    setSubscriptionFiltersState((prev) =>
+      applySubscriptionFilterPatch(prev, patch),
+    );
   }, []);
 
   const resetFilters = useCallback(() => {
@@ -832,7 +837,7 @@ function TabCompute({
       subscriptionFilters.league,
       subscriptionFilters.tournamentStage,
       subscriptionFilters.arena,
-      subscriptionFilters.ticketType,
+      subscriptionFilters.priceCategory,
     ],
   );
 

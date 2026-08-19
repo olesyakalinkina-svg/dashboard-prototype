@@ -7,9 +7,10 @@ import {
   ARENA_OPTIONS,
   LEAGUE_OPTIONS,
   SEASON_OPTIONS,
-  TICKET_TYPE_OPTIONS,
+  SUBSCRIPTION_PRICE_CATEGORY_OPTIONS,
   TREND_TIME_GROUPING_OPTIONS,
-  TOURNAMENT_STAGE_OPTIONS,
+  isSubscriptionArenaLocked,
+  sanitizeSubscriptionArena,
 } from "@/lib/subscription-filter-options";
 import { ResponsiveFilterBar } from "@/components/layout/ResponsiveFilterBar";
 import { countActiveSubscriptionFilters } from "@/lib/filter-count";
@@ -17,9 +18,8 @@ import type {
   ArenaId,
   League,
   SubscriptionFilters,
-  TicketType,
+  SubscriptionPriceCategory,
   TimeGrouping,
-  TournamentStage,
 } from "@/types/dashboard";
 
 export function SubscriptionsFilterBar() {
@@ -32,6 +32,11 @@ export function SubscriptionsFilterBar() {
   const activeFilterCount = useMemo(
     () => countActiveSubscriptionFilters(subscriptionFilters),
     [subscriptionFilters],
+  );
+  const arenaLocked = isSubscriptionArenaLocked(subscriptionFilters.league);
+  const arenaValue = sanitizeSubscriptionArena(
+    subscriptionFilters.league,
+    subscriptionFilters.arena,
   );
 
   function update<K extends keyof SubscriptionFilters>(
@@ -62,7 +67,13 @@ export function SubscriptionsFilterBar() {
         <Select
           label="Лига"
           value={subscriptionFilters.league}
-          onChange={(e) => update("league", e.target.value as League | "all")}
+          onChange={(e) => {
+            const league = e.target.value as League | "all";
+            setSubscriptionFilters({
+              league,
+              arena: sanitizeSubscriptionArena(league, subscriptionFilters.arena),
+            });
+          }}
         >
           {LEAGUE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -72,25 +83,11 @@ export function SubscriptionsFilterBar() {
         </Select>
 
         <Select
-          label="Этап турнира"
-          value={subscriptionFilters.tournamentStage}
-          onChange={(e) =>
-            update("tournamentStage", e.target.value as TournamentStage | "all")
-          }
-          className="sm:min-w-[160px]"
-        >
-          {TOURNAMENT_STAGE_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </Select>
-
-        <Select
           label="Арена"
-          value={subscriptionFilters.arena}
+          value={arenaValue}
           onChange={(e) => update("arena", e.target.value as ArenaId | "all")}
-          className="sm:min-w-[180px]"
+          disabled={arenaLocked}
+          className="sm:min-w-[180px] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {ARENA_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -100,13 +97,16 @@ export function SubscriptionsFilterBar() {
         </Select>
 
         <Select
-          label="Тип билета"
-          value={subscriptionFilters.ticketType}
+          label="Тип продукта"
+          value={subscriptionFilters.priceCategory}
           onChange={(e) =>
-            update("ticketType", e.target.value as TicketType | "all")
+            update(
+              "priceCategory",
+              e.target.value as SubscriptionPriceCategory | "all",
+            )
           }
         >
-          {TICKET_TYPE_OPTIONS.map((opt) => (
+          {SUBSCRIPTION_PRICE_CATEGORY_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
             </option>

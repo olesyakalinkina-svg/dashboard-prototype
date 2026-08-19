@@ -3,17 +3,59 @@ import { DEFAULT_DASHBOARD_FILTERS } from "@/lib/filter-coverage";
 import {
   computeSubscriptionPriceCategoryShares,
   computeSubscriptionsKpis,
+  computeSubscriptionTariffStats,
 } from "@/lib/filters";
-import { DEFAULT_SUBSCRIPTION_FILTERS } from "@/lib/subscription-filter-options";
+import {
+  applySubscriptionFilterPatch,
+  DEFAULT_SUBSCRIPTION_FILTERS,
+} from "@/lib/subscription-filter-options";
+import type { League, SubscriptionFilters } from "@/types/dashboard";
 
 describe("subscriptions KPIs", () => {
+  it("locks default 2025/26 KHL sold counts at 4500 = 3500 regular + 1000 playoff", () => {
+    const kpis = computeSubscriptionsKpis(
+      DEFAULT_DASHBOARD_FILTERS,
+      DEFAULT_SUBSCRIPTION_FILTERS,
+    );
+    const regular = computeSubscriptionsKpis(DEFAULT_DASHBOARD_FILTERS, {
+      ...DEFAULT_SUBSCRIPTION_FILTERS,
+      tournamentStage: "regular",
+    });
+    const playoff = computeSubscriptionsKpis(DEFAULT_DASHBOARD_FILTERS, {
+      ...DEFAULT_SUBSCRIPTION_FILTERS,
+      tournamentStage: "playoff",
+    });
+    const stats = computeSubscriptionTariffStats(
+      DEFAULT_DASHBOARD_FILTERS,
+      DEFAULT_SUBSCRIPTION_FILTERS,
+    );
+
+    expect(kpis.sold).toBe(4500);
+    expect(regular.sold).toBe(3500);
+    expect(playoff.sold).toBe(1000);
+    expect(regular.sold + playoff.sold).toBe(kpis.sold);
+
+    expect(stats).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          plan: "Регулярный чемпионат",
+          sold: 3500,
+        }),
+        expect.objectContaining({
+          plan: "Плей-офф",
+          sold: 1000,
+        }),
+      ]),
+    );
+  });
+
   it("computes revenue, sold count, unique customers, and average check", () => {
     const kpis = computeSubscriptionsKpis(
       DEFAULT_DASHBOARD_FILTERS,
       DEFAULT_SUBSCRIPTION_FILTERS,
     );
 
-    expect(kpis.sold).toBeGreaterThan(0);
+    expect(kpis.sold).toBe(4500);
     expect(kpis.revenue).toBeGreaterThan(0);
     expect(kpis.uniqueCustomers).toBeGreaterThan(0);
     expect(kpis.uniqueCustomers).toBeLessThanOrEqual(kpis.sold);
@@ -34,11 +76,15 @@ describe("subscriptions KPIs", () => {
       }),
     );
 
-    expect(Math.abs(kpis.seasonComparison?.soldChange ?? 999)).toBeLessThan(80);
-    expect(Math.abs(kpis.seasonComparison?.revenueChange ?? 999)).toBeLessThan(80);
-    expect(
-      Math.abs(kpis.seasonComparison?.uniqueCustomersChange ?? 999),
-    ).toBeLessThan(80);
+    const sc = kpis.seasonComparison!;
+    const yoyMin = 0.5;
+    const yoyMax = 10;
+    expect(sc.revenueChange).toBeGreaterThanOrEqual(yoyMin);
+    expect(sc.revenueChange).toBeLessThanOrEqual(yoyMax);
+    expect(sc.soldChange).toBeGreaterThanOrEqual(yoyMin);
+    expect(sc.soldChange).toBeLessThanOrEqual(yoyMax);
+    expect(sc.uniqueCustomersChange).toBeGreaterThanOrEqual(yoyMin);
+    expect(sc.uniqueCustomersChange).toBeLessThanOrEqual(yoyMax);
   });
 
   it("computes sold shares for all three price categories", () => {
@@ -72,7 +118,7 @@ describe("subscriptions KPIs", () => {
   it("keeps all price categories when a filter leaves some empty", () => {
     const shares = computeSubscriptionPriceCategoryShares(
       DEFAULT_DASHBOARD_FILTERS,
-      { ...DEFAULT_SUBSCRIPTION_FILTERS, ticketType: "parking" },
+      { ...DEFAULT_SUBSCRIPTION_FILTERS, priceCategory: "weekend" },
     );
 
     expect(shares).toHaveLength(3);
@@ -80,5 +126,117 @@ describe("subscriptions KPIs", () => {
     expect(shares.reduce((sum, row) => sum + row.sold, 0)).toBeGreaterThanOrEqual(
       0,
     );
+  });
+
+  it("filters sold counts by product type without changing the unfiltered total", () => {
+    const all = computeSubscriptionsKpis(
+      DEFAULT_DASHBOARD_FILTERS,
+      DEFAULT_SUBSCRIPTION_FILTERS,
+    );
+    const weekend = computeSubscriptionsKpis(DEFAULT_DASHBOARD_FILTERS, {
+      ...DEFAULT_SUBSCRIPTION_FILTERS,
+      priceCategory: "weekend",
+    });
+    const seasonal = computeSubscriptionsKpis(DEFAULT_DASHBOARD_FILTERS, {
+      ...DEFAULT_SUBSCRIPTION_FILTERS,
+      priceCategory: "seasonal",
+    });
+    const allInclusive = computeSubscriptionsKpis(DEFAULT_DASHBOARD_FILTERS, {
+      ...DEFAULT_SUBSCRIPTION_FILTERS,
+      priceCategory: "all_inclusive",
+    });
+
+    expect(all.sold).toBe(4500);
+    expect(weekend.sold + seasonal.sold + allInclusive.sold).toBe(all.sold);
+    expect(weekend.sold).toBeGreaterThan(0);
+    expect(seasonal.sold).toBeGreaterThan(0);
+    expect(allInclusive.sold).toBeGreaterThan(0);
+  });
+
+  function leagueFilters(league: League): SubscriptionFilters {
+    return applySubscriptionFilterPatch(DEFAULT_SUBSCRIPTION_FILTERS, {
+      league,
+    });
+  }
+
+  function expectYoyInBand(
+    kpis: ReturnType<typeof computeSubscriptionsKpis>,
+  ) {
+    const sc = kpis.seasonComparison;
+    expect(sc).toBeDefined();
+    expect(sc!.soldChange).toBeGreaterThanOrEqual(0.5);
+    expect(sc!.soldChange).toBeLessThanOrEqual(10);
+    expect(sc!.revenueChange).toBeGreaterThanOrEqual(0.5);
+    expect(sc!.revenueChange).toBeLessThanOrEqual(10);
+    expect(sc!.uniqueCustomersChange).toBeGreaterThanOrEqual(0.5);
+    expect(sc!.uniqueCustomersChange).toBeLessThanOrEqual(10);
+  }
+
+  it("locks VHL at 1500 and MHL at 1000 with only two tariffs", () => {
+    const vhlFilters = leagueFilters("VHL");
+    const mhlFilters = leagueFilters("MHL");
+    expect(vhlFilters.arena).toBe("secondary");
+    expect(mhlFilters.arena).toBe("main");
+
+    const vhl = computeSubscriptionsKpis(
+      DEFAULT_DASHBOARD_FILTERS,
+      vhlFilters,
+    );
+    const mhl = computeSubscriptionsKpis(
+      DEFAULT_DASHBOARD_FILTERS,
+      mhlFilters,
+    );
+    const khl = computeSubscriptionsKpis(
+      DEFAULT_DASHBOARD_FILTERS,
+      DEFAULT_SUBSCRIPTION_FILTERS,
+    );
+
+    expect(khl.sold).toBe(4500);
+    expect(vhl.sold).toBe(1500);
+    expect(mhl.sold).toBe(1000);
+
+    const vhlShares = computeSubscriptionPriceCategoryShares(
+      DEFAULT_DASHBOARD_FILTERS,
+      vhlFilters,
+    );
+    const mhlShares = computeSubscriptionPriceCategoryShares(
+      DEFAULT_DASHBOARD_FILTERS,
+      mhlFilters,
+    );
+
+    for (const shares of [vhlShares, mhlShares]) {
+      const byKey = Object.fromEntries(
+        shares.map((row) => [row.categoryKey, row.sold]),
+      );
+      expect(byKey.seasonal).toBe(0);
+      expect(byKey.all_inclusive).toBeGreaterThan(0);
+      expect(byKey.weekend).toBeGreaterThan(0);
+    }
+
+    expect(vhlShares.reduce((sum, row) => sum + row.sold, 0)).toBe(1500);
+    expect(mhlShares.reduce((sum, row) => sum + row.sold, 0)).toBe(1000);
+
+    expect(
+      computeSubscriptionsKpis(
+        DEFAULT_DASHBOARD_FILTERS,
+        applySubscriptionFilterPatch(DEFAULT_SUBSCRIPTION_FILTERS, {
+          league: "VHL",
+          priceCategory: "seasonal",
+        }),
+      ).sold,
+    ).toBe(0);
+    expect(
+      computeSubscriptionsKpis(
+        DEFAULT_DASHBOARD_FILTERS,
+        applySubscriptionFilterPatch(DEFAULT_SUBSCRIPTION_FILTERS, {
+          league: "MHL",
+          priceCategory: "seasonal",
+        }),
+      ).sold,
+    ).toBe(0);
+
+    expectYoyInBand(vhl);
+    expectYoyInBand(mhl);
+    expectYoyInBand(khl);
   });
 });

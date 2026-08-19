@@ -36,7 +36,7 @@ const DEFAULT_FILTERS: SubscriptionFilters = {
   league: "all",
   tournamentStage: "all",
   arena: "all",
-  ticketType: "all",
+  priceCategory: "all",
   timeGrouping: "week",
 };
 

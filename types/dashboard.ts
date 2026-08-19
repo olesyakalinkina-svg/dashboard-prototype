@@ -227,7 +227,7 @@ export type SubscriptionFilters = {
   league: League | "all";
   tournamentStage: TournamentStage | "all";
   arena: ArenaId | "all";
-  ticketType: TicketType | "all";
+  priceCategory: SubscriptionPriceCategory | "all";
   timeGrouping: TimeGrouping;
 };
 

@@ -2945,6 +2945,7 @@ function generateSubscriptions(allMatches: Match[]): Subscription[] {
   realignPreviousSeasonSubscriptionPurchases(subs, allMatches);
   rebalancePreviousSeasonKhlRevenue(subs, allMatches);
   rebalanceDefaultSeasonAverageCheck(subs, allMatches);
+  expandSeasonSubscriptionSoldTargets(subs, allMatches);
 
   return subs.sort((a, b) => b.purchasedAt.getTime() - a.purchasedAt.getTime());
 }
@@ -3053,8 +3054,51 @@ function rebalanceDefaultSeasonAverageCheck(
   }
 }
 
-/** Default 2025/26 filter view should show this many sold subscriptions. */
+/** Seed mix size before cloning up to TARGET_DEFAULT_SEASON_*_SOLD. */
 const TARGET_DEFAULT_SEASON_SOLD = 85;
+
+/** Default 2025/26 KHL KPI view: sold season tickets by tournament stage. */
+export const TARGET_DEFAULT_SEASON_REGULAR_SOLD = 3500;
+export const TARGET_DEFAULT_SEASON_PLAYOFF_SOLD = 1000;
+export const TARGET_DEFAULT_SEASON_TOTAL_SOLD =
+  TARGET_DEFAULT_SEASON_REGULAR_SOLD + TARGET_DEFAULT_SEASON_PLAYOFF_SOLD;
+
+/**
+ * 2024/25 KHL analog after cloning. Scaled up toward 2025/26 so default KPI
+ * YoY for revenue, sold qty, and unique buyers stays in +0.5%…+10%.
+ */
+export const TARGET_PREV_SEASON_REGULAR_SOLD = 3430;
+export const TARGET_PREV_SEASON_PLAYOFF_SOLD = 1000;
+export const TARGET_PREV_SEASON_TOTAL_SOLD =
+  TARGET_PREV_SEASON_REGULAR_SOLD + TARGET_PREV_SEASON_PLAYOFF_SOLD;
+
+/** VHL/MHL season tickets are regular-only; two tariffs, no playoff campaign. */
+export const TARGET_VHL_SEASON_SOLD = 1500;
+export const TARGET_MHL_SEASON_SOLD = 1000;
+/** Same ~2.04% YoY as KHL 3500 vs 3430, keeping league YoY in +0.5%…+10%. */
+export const TARGET_PREV_VHL_SEASON_SOLD = 1470;
+export const TARGET_PREV_MHL_SEASON_SOLD = 980;
+
+const MINOR_LEAGUE_ARENA: Record<"VHL" | "MHL", ArenaId> = {
+  VHL: "secondary",
+  MHL: "main",
+};
+
+const MINOR_LEAGUE_ALL_INCLUSIVE_SHARE = 0.55;
+
+const MINOR_LEAGUE_ALL_INCLUSIVE_PLAN = {
+  id: "plan-5",
+  name: "Все включено",
+  price: 162500,
+  matchCount: 30,
+} as const;
+
+const MINOR_LEAGUE_WEEKEND_PLAN = {
+  id: "plan-1",
+  name: "Выходного дня",
+  price: 6500,
+  matchCount: 5,
+} as const;
 
 /**
  * Top up 2025/26 default-window sales to TARGET_DEFAULT_SEASON_SOLD.
@@ -3131,6 +3175,260 @@ function subscriptionPassesPrevSeasonDefaultFilter(
     );
   }
   return isInRegularSubscriptionSalesWindow(sub.purchasedAt, sub.season);
+}
+
+function cloneSoldSubscription(source: Subscription, id: number): Subscription {
+  return {
+    ...source,
+    id: `sub-${id}`,
+    customerId: customerIdForSubscription(id),
+    matchesUsed: 0,
+    status: source.status === "cancelled" ? "active" : source.status,
+  };
+}
+
+function expandStageToTarget(
+  subs: Subscription[],
+  templates: Subscription[],
+  target: number,
+): void {
+  const usable = templates.filter((sub) => sub.status !== "cancelled");
+  if (usable.length === 0 || templates.length >= target) return;
+
+  let id = nextSubscriptionNumericId(subs);
+  const needed = target - templates.length;
+  for (let extraIndex = 0; extraIndex < needed; extraIndex += 1) {
+    subs.push(cloneSoldSubscription(usable[extraIndex % usable.length], id++));
+  }
+}
+
+function isMinorLeagueSeasonalPlan(
+  sub: Pick<Subscription, "planId" | "planName">,
+): boolean {
+  if (sub.planId === "plan-4" || sub.planId === "plan-6") return true;
+  if (
+    sub.planId === "plan-1" ||
+    sub.planId === "plan-2" ||
+    sub.planId === "plan-3" ||
+    sub.planId === "plan-5"
+  ) {
+    return false;
+  }
+  const name = sub.planName.toLowerCase();
+  if (
+    name.includes("все включено") ||
+    name.includes("vip") ||
+    name.includes("выходн")
+  ) {
+    return false;
+  }
+  return name.includes("сезон");
+}
+
+function applyMinorLeagueTariff(
+  sub: Subscription,
+  tariff: "all_inclusive" | "weekend",
+): void {
+  const plan =
+    tariff === "all_inclusive"
+      ? MINOR_LEAGUE_ALL_INCLUSIVE_PLAN
+      : MINOR_LEAGUE_WEEKEND_PLAN;
+  sub.planId = plan.id;
+  sub.planName = plan.name;
+  sub.price = plan.price;
+  sub.matchesTotal = plan.matchCount;
+  sub.matchesUsed = Math.min(sub.matchesUsed, plan.matchCount);
+}
+
+function rebalanceMinorLeagueTariffs(rows: Subscription[]): void {
+  if (rows.length === 0) return;
+  const allInclusiveCount = Math.round(
+    rows.length * MINOR_LEAGUE_ALL_INCLUSIVE_SHARE,
+  );
+  rows.forEach((sub, index) => {
+    applyMinorLeagueTariff(
+      sub,
+      index < allInclusiveCount ? "all_inclusive" : "weekend",
+    );
+  });
+}
+
+function normalizeMinorLeagueSubscriptions(subs: Subscription[]): void {
+  for (const sub of subs) {
+    if (sub.league !== "VHL" && sub.league !== "MHL") continue;
+    sub.arena = MINOR_LEAGUE_ARENA[sub.league];
+    if (sub.tournamentStage === "playoff") {
+      sub.tournamentStage = "regular";
+    }
+    if (isMinorLeagueSeasonalPlan(sub)) {
+      applyMinorLeagueTariff(sub, "weekend");
+    }
+  }
+}
+
+function subscriptionPassesMinorLeagueRegularWindow(
+  sub: Subscription,
+  league: "VHL" | "MHL",
+  season: string,
+): boolean {
+  return (
+    sub.league === league &&
+    sub.season === season &&
+    sub.tournamentStage === "regular" &&
+    isInRegularSubscriptionSalesWindow(sub.purchasedAt, season)
+  );
+}
+
+function ensureMinorLeagueRegularTemplates(
+  subs: Subscription[],
+  league: "VHL" | "MHL",
+  season: string,
+  arena: ArenaId,
+): Subscription[] {
+  const inWindow = subs.filter((sub) =>
+    subscriptionPassesMinorLeagueRegularWindow(sub, league, season),
+  );
+  if (inWindow.length > 0) return inWindow;
+
+  const sameSeason = subs.find(
+    (sub) => sub.league === league && sub.season === season,
+  );
+  const fallback = sameSeason ?? subs.find((sub) => sub.league === league);
+  if (!fallback) return [];
+
+  const window = getRegularSubscriptionSalesWindow(season);
+  if (sameSeason) {
+    sameSeason.purchasedAt = window.start;
+    sameSeason.validTo = addDays(window.start, 90);
+    sameSeason.season = season;
+    sameSeason.tournamentStage = "regular";
+    sameSeason.arena = arena;
+    return [sameSeason];
+  }
+
+  const clone = cloneSoldSubscription(fallback, nextSubscriptionNumericId(subs));
+  clone.league = league;
+  clone.season = season;
+  clone.arena = arena;
+  clone.tournamentStage = "regular";
+  clone.purchasedAt = window.start;
+  clone.validTo = addDays(window.start, 90);
+  subs.push(clone);
+  return [clone];
+}
+
+function expandMinorLeagueRegularSold(
+  subs: Subscription[],
+  league: "VHL" | "MHL",
+  season: string,
+  target: number,
+): void {
+  const arena = MINOR_LEAGUE_ARENA[league];
+  const templates = ensureMinorLeagueRegularTemplates(
+    subs,
+    league,
+    season,
+    arena,
+  );
+  const usable = templates.filter((sub) => sub.status !== "cancelled");
+  if (templates.length < target && usable.length > 0) {
+    const window = getRegularSubscriptionSalesWindow(season);
+    const span = Math.max(
+      0,
+      differenceInCalendarDays(window.end, window.start),
+    );
+    let id = nextSubscriptionNumericId(subs);
+    const needed = target - templates.length;
+    for (let extraIndex = 0; extraIndex < needed; extraIndex += 1) {
+      const source = usable[extraIndex % usable.length];
+      const purchasedAt = addDays(
+        window.start,
+        span === 0 ? 0 : extraIndex % (span + 1),
+      );
+      const clone = cloneSoldSubscription(source, id++);
+      clone.league = league;
+      clone.season = season;
+      clone.arena = arena;
+      clone.tournamentStage = "regular";
+      clone.purchasedAt = purchasedAt;
+      clone.validTo = addDays(purchasedAt, 90);
+      subs.push(clone);
+    }
+  }
+
+  rebalanceMinorLeagueTariffs(
+    subs.filter((sub) =>
+      subscriptionPassesMinorLeagueRegularWindow(sub, league, season),
+    ),
+  );
+}
+
+/**
+ * Scale default-filter KHL sold counts without extra RNG, so ticket/merch
+ * generation stays stable. Clones copy the existing plan mix (matchesUsed=0
+ * so occupancy redemptions do not explode). VHL/MHL are regular-only with
+ * two tariffs (Все включено / Выходного дня) and league-locked arenas.
+ */
+export function expandSeasonSubscriptionSoldTargets(
+  subs: Subscription[],
+  allMatches: Match[],
+): void {
+  expandStageToTarget(
+    subs,
+    subs.filter(
+      (sub) =>
+        sub.league === "KHL" &&
+        sub.tournamentStage === "regular" &&
+        subscriptionPassesDefaultSeasonFilter(sub, allMatches),
+    ),
+    TARGET_DEFAULT_SEASON_REGULAR_SOLD,
+  );
+  expandStageToTarget(
+    subs,
+    subs.filter(
+      (sub) =>
+        sub.league === "KHL" &&
+        sub.tournamentStage === "playoff" &&
+        subscriptionPassesDefaultSeasonFilter(sub, allMatches),
+    ),
+    TARGET_DEFAULT_SEASON_PLAYOFF_SOLD,
+  );
+  expandStageToTarget(
+    subs,
+    subs.filter(
+      (sub) =>
+        sub.league === "KHL" &&
+        sub.tournamentStage === "regular" &&
+        subscriptionPassesPrevSeasonDefaultFilter(sub, allMatches),
+    ),
+    TARGET_PREV_SEASON_REGULAR_SOLD,
+  );
+  expandStageToTarget(
+    subs,
+    subs.filter(
+      (sub) =>
+        sub.league === "KHL" &&
+        sub.tournamentStage === "playoff" &&
+        subscriptionPassesPrevSeasonDefaultFilter(sub, allMatches),
+    ),
+    TARGET_PREV_SEASON_PLAYOFF_SOLD,
+  );
+
+  normalizeMinorLeagueSubscriptions(subs);
+  expandMinorLeagueRegularSold(subs, "VHL", "2025/26", TARGET_VHL_SEASON_SOLD);
+  expandMinorLeagueRegularSold(subs, "MHL", "2025/26", TARGET_MHL_SEASON_SOLD);
+  expandMinorLeagueRegularSold(
+    subs,
+    "VHL",
+    "2024/25",
+    TARGET_PREV_VHL_SEASON_SOLD,
+  );
+  expandMinorLeagueRegularSold(
+    subs,
+    "MHL",
+    "2024/25",
+    TARGET_PREV_MHL_SEASON_SOLD,
+  );
 }
 
 /** Keep ~45 KHL 2024/25 sales in the analogous window so YoY vs 2025/26 stays modest. */
@@ -3282,7 +3580,8 @@ function ensureCriticalSubscriptionCombos(
       subs.push(
         buildSubscription(
           id++,
-          SEED_SUBSCRIPTION_PLAN,
+          subscriptionPlans.find((plan) => plan.id === "plan-1") ??
+            SEED_SUBSCRIPTION_PLAN,
           vhlMatch,
           PREV_SUBSCRIPTIONS_PERIOD_START,
           "regular",
