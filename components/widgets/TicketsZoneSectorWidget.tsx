@@ -17,7 +17,9 @@ import { TreeExpandButton } from "@/components/ui/TreeExpandButton";
 import { TableExcelButton } from "@/components/ui/ExcelDownloadButton";
 import { InlineBarCell } from "@/components/ui/InlineBarCell";
 import { MultiSelect } from "@/components/ui/MultiSelect";
+import { TicketsZoneSectorMobileCards } from "@/components/widgets/TicketsZoneSectorMobileCards";
 import { useFilterData, useTicketsViewResetEpoch } from "@/context/FilterContext";
+import { useIsMobileLayout } from "@/hooks/useLayoutMode";
 import {
   ALL_SECTORS,
   hasAllowedFilterIntersection,
@@ -297,6 +299,7 @@ export function TicketsZoneSectorWidget() {
 }
 
 function TicketsZoneSectorTable() {
+  const isMobile = useIsMobileLayout();
   const { appliedFilters, appliedTicketFilters } = useFilterData();
   const queryKey = ticketsQueryKey(appliedFilters, appliedTicketFilters);
   const transactions = useMemo(
@@ -555,8 +558,16 @@ function TicketsZoneSectorTable() {
 
         {filterComboValid && (
           <>
-            <div className="min-w-0">
-              <StickyScrollTable>
+            {isMobile ? (
+              <TicketsZoneSectorMobileCards
+                rows={pageTree}
+                expandedSet={expandedKeys}
+                toggleExpanded={toggleExpanded}
+                revenueMax={barMax.revenue}
+              />
+            ) : (
+              <div className="min-w-0">
+                <StickyScrollTable>
               <table className="w-full min-w-[37rem] table-fixed text-sm leading-snug">
                 <colgroup>
                   <col className={COLUMN_WIDTH_CLASS.eventLabel} />
@@ -626,6 +637,7 @@ function TicketsZoneSectorTable() {
               </table>
               </StickyScrollTable>
             </div>
+            )}
             <div className="mt-3 text-xs text-[var(--muted)]">
               <span>{filteredTree.length} мероприятий</span>
             </div>

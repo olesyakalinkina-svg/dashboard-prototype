@@ -5,9 +5,15 @@ import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TicketsZoneSectorWidget } from "@/components/widgets/TicketsZoneSectorWidget";
-import { formatCurrency, formatPercent } from "@/lib/format";
+import { formatCurrency, formatDate, formatPercent } from "@/lib/format";
 import { getMatchPlanArenaRevenue } from "@/lib/ticket-plan";
 import type { PriceZone } from "@/types/dashboard";
+
+const layoutState = vi.hoisted(() => ({ isMobile: false }));
+
+vi.mock("@/hooks/useLayoutMode", () => ({
+  useIsMobileLayout: () => layoutState.isMobile,
+}));
 
 function matchEventLabel(day: number) {
   return `Оппонент ${day} ${format(new Date(2026, 4, day), "dd-MM-yy", { locale: ru })}`;
@@ -136,6 +142,7 @@ vi.mock("@/lib/filters", () => ({
 afterEach(() => {
   ticketFilterState.priceZone = "all";
   ticketFilterState.ticketsViewResetEpoch = 0;
+  layoutState.isMobile = false;
   cleanup();
 });
 
@@ -182,6 +189,38 @@ describe("TicketsZoneSectorWidget integration", () => {
     for (let day = 1; day <= 10; day += 1) {
       expect(screen.getByText(matchEventLabel(day))).toBeTruthy();
     }
+  });
+
+  it("stacks event name, date, revenue and occupancy on mobile cards", async () => {
+    layoutState.isMobile = true;
+    const user = userEvent.setup();
+    render(<TicketsZoneSectorWidget />);
+
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByTestId("sticky-scroll-table")).toBeNull();
+    expect(screen.getByTestId("zone-sector-mobile-cards")).toBeTruthy();
+
+    const card = screen.getAllByTestId("zone-sector-mobile-card")[0]!;
+    const title = card.querySelector('[data-testid="zone-sector-mobile-title"]');
+    const date = card.querySelector('[data-testid="zone-sector-mobile-date"]');
+    expect(title?.textContent).toBe(matchEventLabel(10));
+    expect(title?.textContent).not.toMatch(/₽/);
+    expect(date?.textContent).toBe(formatDate(new Date(2026, 4, 10)));
+    expect(card.textContent).toContain("Выручка");
+    expect(card.textContent).toContain("Заполняемость");
+    const matchRevenue = 3_000 + 9 * 50 + 900 + 3_200 + 5_000;
+    expect(card.textContent).toContain(formatCurrency(matchRevenue));
+    expect(card.textContent).toMatch(/%/);
+
+    expect(document.querySelector("[data-parent-zone]")).toBeNull();
+    await user.click(
+      screen.getByRole("button", { name: `Развернуть: ${matchEventLabel(10)}` }),
+    );
+    expect(document.querySelector("[data-parent-zone]")).toBeTruthy();
+
+    await user.click(screen.getByText("По секторам"));
+    await expandMatch(user);
+    expect(document.querySelector("[data-parent-sector]")).toBeTruthy();
   });
 
   it("revenue bar keeps plan % on match rows and omits it on zone and sector rows", async () => {
