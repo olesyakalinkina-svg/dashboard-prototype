@@ -12,7 +12,7 @@ import {
 } from "react";
 import {
   computeMatchSalesTable,
-  computeMerchMatchSalesTable,
+  computeMerchSalesTableWithOffMatch,
   computeMerchPlanFactTrend,
   computeMerchProductCategoryRevenue,
   computeMerchProductCategoryTrend,
@@ -317,7 +317,7 @@ function computeMerchTabDataCached(
         combinedMatchSales: [],
         matchSalesKpis: EMPTY_MATCH_SALES_KPIS,
         matchRevenueChart: [],
-        merchMatchSales: computeMerchMatchSalesTable(filters, merchFilters),
+        merchMatchSales: computeMerchSalesTableWithOffMatch(filters, merchFilters),
         merchSalesChannelRevenue: computeMerchSalesChannelRevenue(
           filters,
           merchFilters,

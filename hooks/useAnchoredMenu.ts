@@ -2,12 +2,28 @@
 
 import { useLayoutEffect, type RefObject } from "react";
 
-/** Position a menu with `position: fixed` so it stays inside the viewport. */
+const VIEWPORT_PAD = 8;
+
+/**
+ * Position a menu with `position: fixed` against the trigger.
+ *
+ * Coordinates are converted from viewport space to the menu's fixed containing
+ * block. Ancestors with `transform`, `filter`, `backdrop-filter`, `contain`,
+ * or `overflow: clip` (e.g. the sticky filter bar's `backdrop-blur-sm`) make
+ * `top`/`left` relative to that ancestor instead of the viewport — using
+ * `getBoundingClientRect()` alone then leaves a giant gap under the trigger.
+ *
+ * Callers should portal the menu to `document.body` so overflow/clipping on the
+ * filter bar cannot hide it, and so `position: fixed` is viewport-relative.
+ */
 export function useAnchoredMenu(
   open: boolean,
   triggerRef: RefObject<HTMLElement | null>,
   menuRef: RefObject<HTMLElement | null>,
-  gap = 4,
+  {
+    gap = 4,
+    matchTriggerWidth = true,
+  }: { gap?: number; matchTriggerWidth?: boolean } = {},
 ) {
   useLayoutEffect(() => {
     if (!open) return;
@@ -20,34 +36,57 @@ export function useAnchoredMenu(
       const rect = trigger.getBoundingClientRect();
       const vw = window.innerWidth;
       const vh = window.innerHeight;
+
+      menu.style.position = "fixed";
+      menu.style.right = "auto";
+      menu.style.zIndex = "80";
+      menu.style.minWidth = `${rect.width}px`;
+      if (matchTriggerWidth) {
+        menu.style.width = `${rect.width}px`;
+      }
+      menu.style.maxWidth = `${vw - 16}px`;
+
+      const currentTop = Number.parseFloat(menu.style.top) || 0;
+      const currentLeft = Number.parseFloat(menu.style.left) || 0;
+      const menuBox = menu.getBoundingClientRect();
+      const originTop = menuBox.top - currentTop;
+      const originLeft = menuBox.left - currentLeft;
+
       const menuH = menu.offsetHeight;
       const menuW = Math.min(menu.offsetWidth || rect.width, vw - 16);
 
-      let top = rect.bottom + gap;
-      if (top + menuH > vh - 8 && rect.top - gap - menuH >= 8) {
-        top = rect.top - gap - menuH;
+      let viewportTop = rect.bottom + gap;
+      if (
+        viewportTop + menuH > vh - VIEWPORT_PAD &&
+        rect.top - gap - menuH >= VIEWPORT_PAD
+      ) {
+        viewportTop = rect.top - gap - menuH;
       }
-      top = Math.max(8, Math.min(top, Math.max(8, vh - menuH - 8)));
+      viewportTop = Math.max(
+        VIEWPORT_PAD,
+        Math.min(viewportTop, Math.max(VIEWPORT_PAD, vh - menuH - VIEWPORT_PAD)),
+      );
 
-      let left = rect.left;
-      left = Math.max(8, Math.min(left, vw - menuW - 8));
+      const viewportLeft = Math.max(
+        VIEWPORT_PAD,
+        Math.min(rect.left, vw - menuW - VIEWPORT_PAD),
+      );
 
-      menu.style.position = "fixed";
-      menu.style.top = `${top}px`;
-      menu.style.left = `${left}px`;
-      menu.style.right = "auto";
-      menu.style.width = `${Math.max(rect.width, Math.min(menuW, vw - 16))}px`;
-      menu.style.maxWidth = `${vw - 16}px`;
-      menu.style.maxHeight = `${Math.min(menuH || 320, vh - 16)}px`;
-      menu.style.zIndex = "80";
+      menu.style.top = `${viewportTop - originTop}px`;
+      menu.style.left = `${viewportLeft - originLeft}px`;
+      if (menuH > vh - 16) {
+        menu.style.maxHeight = `${vh - 16}px`;
+      }
     }
 
     place();
+    const raf = window.requestAnimationFrame(place);
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
     return () => {
+      window.cancelAnimationFrame(raf);
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [open, triggerRef, menuRef, gap]);
+  }, [open, triggerRef, menuRef, gap, matchTriggerWidth]);
 }

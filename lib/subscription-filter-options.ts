@@ -46,6 +46,9 @@ const PLAN_ID_TO_PRICE_CATEGORY: Record<string, SubscriptionPriceCategory> = {
   "plan-4": "seasonal",
   "plan-5": "all_inclusive",
   "plan-6": "seasonal",
+  "plan-7": "all_inclusive",
+  "plan-8": "all_inclusive",
+  "plan-9": "seasonal",
 };
 
 export function getSubscriptionPriceCategory(

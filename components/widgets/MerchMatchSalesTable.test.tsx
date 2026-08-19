@@ -1,4 +1,6 @@
 /** @vitest-environment jsdom */
+import { readFileSync } from "fs";
+import { join } from "path";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useMemo, useState } from "react";
@@ -12,6 +14,9 @@ import {
   MERCH_FIXTURE_ARENA_MATCH_ID,
   MERCH_FIXTURE_ARENA_TOP_PRODUCTS,
   MERCH_FIXTURE_NORTH_MATCH_ID,
+  MERCH_FIXTURE_OFF_MATCH_RECEIPTS,
+  MERCH_FIXTURE_OFF_MATCH_REVENUE,
+  MERCH_FIXTURE_OFF_MATCH_UNITS,
 } from "@/lib/merch-sales-tree.fixture";
 import {
   getMerchSalesBarMaxima,
@@ -20,12 +25,13 @@ import {
   type MerchSalesTreeNode,
 } from "@/lib/merch-sales-tree";
 import {
+  MERCH_OFF_MATCH_LABEL,
   MERCH_PRODUCT_CATEGORY_LABELS,
   MERCH_SALES_POINT_LABELS,
 } from "@/lib/merch-filter-options";
 import type { MerchMatchSalesRow } from "@/types/dashboard";
 import type { MerchSalesTreeState } from "@/hooks/useMerchSalesTree";
-import { formatPercent } from "@/lib/format";
+import { formatCurrency, formatNumber, formatPercent } from "@/lib/format";
 
 afterEach(() => {
   cleanup();
@@ -103,6 +109,7 @@ describe("MerchMatchSalesTable drill-down", () => {
     expect(screen.getByText("Продажи")).toBeTruthy();
     expect(screen.getByText("vs СКА")).toBeTruthy();
     expect(screen.getByText("vs ЦСКА")).toBeTruthy();
+    expect(screen.getByText(MERCH_OFF_MATCH_LABEL)).toBeTruthy();
     expect(screen.getByText("Итого")).toBeTruthy();
     expect(screen.queryByText(MERCH_SALES_SECTION_LABELS.salesChannel)).toBeNull();
     expect(screen.queryByText(MERCH_SALES_SECTION_LABELS.productCategory)).toBeNull();
@@ -112,13 +119,96 @@ describe("MerchMatchSalesTable drill-down", () => {
     expect(screen.queryByText(MERCH_FIXTURE_ARENA_TOP_PRODUCTS[0])).toBeNull();
   });
 
-  it("keeps «Конверсия в покупку» as a compact percent column", () => {
+  it("gives «Конверсия в покупку» enough width for the full header", () => {
     renderMerch();
     const header = screen.getByRole("columnheader", {
       name: "Конверсия в покупку",
     });
-    expect(header.className).toContain("w-[6.5rem]");
-    expect(header.className).toContain("max-w-[6.5rem]");
+    expect(header.className).toContain("w-[10.5rem]");
+    expect(header.className).not.toContain("max-w-[6.5rem]");
+    expect(header.className).toContain("overflow-hidden");
+  });
+
+  it("keeps a wide table inside a horizontal scroller as a mid-width fallback", () => {
+    renderMerch();
+    const card = screen.getByTestId("merch-sales-table");
+    const scroller = within(card).getByTestId("sticky-scroll-table");
+    const table = scroller.querySelector("table");
+    expect(table?.className).toContain("min-w-[72rem]");
+    expect(table?.className).toContain("table-fixed");
+    expect(scroller.className).toContain("overflow-x-auto");
+    expect(scroller.className).toContain("sticky-scroll-table-row-hover");
+    const matchRow = screen.getByText("vs СКА").closest("tr");
+    expect(matchRow?.className).not.toMatch(/hover:bg-/);
+  });
+
+  it("shows off-match sales as a root row and includes them in Итого", () => {
+    renderMerch();
+    expect(screen.getByText(MERCH_OFF_MATCH_LABEL)).toBeTruthy();
+    const offMatchRow = screen.getByText(MERCH_OFF_MATCH_LABEL).closest("tr");
+    expect(offMatchRow).toBeTruthy();
+    const offCells = within(offMatchRow!).getAllByRole("cell");
+    expect(cellText(offCells[2]!)).toContain(
+      formatCurrency(MERCH_FIXTURE_OFF_MATCH_REVENUE).replace(/\s/g, " ").trim(),
+    );
+    expect(offCells[offCells.length - 1]!.textContent).toBe("—");
+
+    const totalRow = screen.getByText("Итого").closest("tr");
+    expect(totalRow).toBeTruthy();
+    const totalCells = within(totalRow!).getAllByRole("cell");
+    expect(cellText(totalCells[2]!)).toContain(
+      formatCurrency(500_000 + 400_000 + MERCH_FIXTURE_OFF_MATCH_REVENUE)
+        .replace(/\s/g, " ")
+        .trim(),
+    );
+    expect(cellText(totalCells[4]!)).toContain(
+      formatNumber(2 + 2 + MERCH_FIXTURE_OFF_MATCH_RECEIPTS),
+    );
+    expect(cellText(totalCells[5]!)).toContain(
+      formatNumber(60 + 40 + MERCH_FIXTURE_OFF_MATCH_UNITS),
+    );
+  });
+
+  it("keeps off-match as the last data row before Итого, including after sort", async () => {
+    const user = userEvent.setup();
+    renderMerch();
+
+    const lastDataBeforeTotal = () => {
+      const rows = [...screen.getByRole("table").querySelectorAll("tbody > tr")];
+      const dataRows = rows.filter(
+        (row) => !within(row as HTMLElement).queryByText("Итого"),
+      );
+      return dataRows.at(-1) as HTMLElement;
+    };
+
+    expect(lastDataBeforeTotal().textContent).toContain(MERCH_OFF_MATCH_LABEL);
+    const tbodyRows = [...screen.getByRole("table").querySelectorAll("tbody > tr")];
+    expect(within(tbodyRows.at(-1) as HTMLElement).getByText("Итого")).toBeTruthy();
+
+    await user.click(screen.getByRole("columnheader", { name: "Дата" }));
+    expect(lastDataBeforeTotal().textContent).toContain(MERCH_OFF_MATCH_LABEL);
+
+    await user.click(screen.getByRole("columnheader", { name: "Выручка" }));
+    expect(lastDataBeforeTotal().textContent).toContain(MERCH_OFF_MATCH_LABEL);
+  });
+
+  it("expands the off-match row to the three retail/online channels", async () => {
+    const user = userEvent.setup();
+    const pipeline = buildDefaultMerchFixtureTree();
+    const offMatch = pipeline.tree.find(
+      (node) => node.label === MERCH_OFF_MATCH_LABEL,
+    )!;
+    renderMerch(pipeline, [offMatch.id]);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: `Развернуть: ${MERCH_SALES_SECTION_LABELS.salesChannel}`,
+      }),
+    );
+    expect(screen.getByText(MERCH_SALES_POINT_LABELS.mall_raduga)).toBeTruthy();
+    expect(screen.getByText(MERCH_SALES_POINT_LABELS.mall_continent)).toBeTruthy();
+    expect(screen.getByText(MERCH_SALES_POINT_LABELS.online_store)).toBeTruthy();
+    expect(screen.queryByText(MERCH_SALES_POINT_LABELS.flagship)).toBeNull();
   });
 
   it("expanding a match shows three parallel sections", async () => {
@@ -373,5 +463,29 @@ describe("MerchMatchSalesTable drill-down", () => {
     expect(conversionCell).toBeTruthy();
     const cells = within(conversionCell!).getAllByRole("cell");
     expect(cells[cells.length - 1]!.textContent).toBe("—");
+  });
+});
+
+describe("merch sales page layout", () => {
+  it("places merch Продажи full-bleed, then channels/SKU/categories below", () => {
+    const dashboard = readFileSync(
+      join(process.cwd(), "app/dashboard-app.tsx"),
+      "utf8",
+    );
+    const merchStart = dashboard.indexOf('{activeTab === "merch" && (');
+    const matchesStart = dashboard.indexOf('{activeTab === "matches" && (');
+    expect(merchStart).toBeGreaterThan(-1);
+    expect(matchesStart).toBeGreaterThan(merchStart);
+    const merchBlock = dashboard.slice(merchStart, matchesStart);
+
+    expect(merchBlock).toMatch(
+      /MerchKpiCards[\s\S]*MerchSalesWidget[\s\S]*TopProductsChart[\s\S]*MerchMatchSalesTable[\s\S]*MerchSalesChannelsChart[\s\S]*MerchSkuSalesTable[\s\S]*MerchProductCategoriesChart/,
+    );
+    expect(merchBlock).toMatch(
+      /<MerchMatchSalesTable data=\{merchMatchSales\} \/>\s*<div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-2">/,
+    );
+    expect(merchBlock).not.toMatch(
+      /<div className="flex min-w-0 flex-col gap-4">\s*<MerchMatchSalesTable/,
+    );
   });
 });

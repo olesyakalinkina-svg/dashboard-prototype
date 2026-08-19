@@ -40,6 +40,11 @@ import {
   getMatchTicketSalesWindowDays,
 } from "@/lib/ticket-sales-window";
 import { getMerchListAmount } from "@/lib/merch-catalog";
+import {
+  applyLeagueSubscriptionCatalogPrices,
+  getSubscriptionListPrice,
+  subscriptionPlans,
+} from "@/lib/mock/subscription-catalog";
 import { isMerchMatchTablePoint } from "@/lib/merch-filter-options";
 import {
   applyExplicitMatchMerchPlan,
@@ -2682,16 +2687,6 @@ function ensureOverPlanArenaOccupancy(
   return { txs, nextId: id };
 }
 
-/** Catalog prices are 35% below the previous mock so average check drops by 35%. */
-const subscriptionPlans: SubscriptionPlan[] = [
-  { id: "plan-1", code: "SUB-5-A", name: "Абонемент на 5 матчей (сектор A)", matchCount: 5, price: 6500 },
-  { id: "plan-2", code: "SUB-5-B", name: "Абонемент на 5 матчей (сектор B)", matchCount: 5, price: 4875 },
-  { id: "plan-3", code: "SUB-10-A", name: "Абонемент на 10 матчей", matchCount: 10, price: 11700 },
-  { id: "plan-4", code: "SUB-SEASON", name: "Сезонный абонемент", matchCount: 30, price: 55250 },
-  { id: "plan-5", code: "SUB-VIP", name: "VIP-сезонный абонемент", matchCount: 30, price: 162500 },
-  { id: "plan-6", code: "SUB-STUD", name: "Студенческий абонемент", matchCount: 10, price: 3900 },
-];
-
 type SeasonSubscriptionQuota = {
   season: string;
   seasonStart: Date;
@@ -2859,7 +2854,7 @@ function buildSubscription(
     customerId: customerIdForSubscription(id),
     purchasedAt,
     validTo,
-    price: plan.price,
+    price: getSubscriptionListPrice(match.league, plan.id),
     matchesTotal: plan.matchCount,
     matchesUsed: usedCount,
     channel,
@@ -2943,115 +2938,10 @@ function generateSubscriptions(allMatches: Match[]): Subscription[] {
   ensureDefaultSeasonSoldCount(subs, allMatches, id);
   id = seedCampaignPaceSubscriptions(subs, allMatches, id);
   realignPreviousSeasonSubscriptionPurchases(subs, allMatches);
-  rebalancePreviousSeasonKhlRevenue(subs, allMatches);
-  rebalanceDefaultSeasonAverageCheck(subs, allMatches);
   expandSeasonSubscriptionSoldTargets(subs, allMatches);
+  applyLeagueSubscriptionCatalogPrices(subs);
 
   return subs.sort((a, b) => b.purchasedAt.getTime() - a.purchasedAt.getTime());
-}
-
-/** Analogous 2024/25 KHL window: keep sold~45 and revenue near 1.90M for modest YoY. */
-const TARGET_PREV_SEASON_KHL_REVENUE = 1_900_000;
-
-function rebalancePreviousSeasonKhlRevenue(
-  subs: Subscription[],
-  allMatches: Match[],
-): void {
-  const prev = subs.filter((sub) =>
-    subscriptionPassesPrevSeasonDefaultFilter(sub, allMatches),
-  );
-  if (prev.length === 0) return;
-
-  const minRevenue = TARGET_PREV_SEASON_KHL_REVENUE * 0.9;
-  const maxRevenue = TARGET_PREV_SEASON_KHL_REVENUE * 1.08;
-  const sumPrices = () => prev.reduce((sum, sub) => sum + sub.price, 0);
-  let revenue = sumPrices();
-  if (revenue >= minRevenue && revenue <= maxRevenue) return;
-
-  const seasonPlan = SEED_SUBSCRIPTION_PLAN;
-  const cheapPlan =
-    subscriptionPlans.find((plan) => plan.code === "SUB-STUD") ??
-    subscriptionPlans[5] ??
-    seasonPlan;
-
-  if (revenue < minRevenue) {
-    const cheapest = [...prev].sort((left, right) => left.price - right.price);
-    for (const sub of cheapest) {
-      revenue = sumPrices();
-      if (revenue >= minRevenue) return;
-      if (sub.planId === seasonPlan.id || sub.planId === "plan-5") continue;
-      sub.price = seasonPlan.price;
-      sub.planId = seasonPlan.id;
-      sub.planName = seasonPlan.name;
-    }
-    return;
-  }
-
-  const expensive = [...prev].sort((left, right) => right.price - left.price);
-  for (const sub of expensive) {
-    revenue = sumPrices();
-    if (revenue <= maxRevenue) return;
-    if (sub.planId === cheapPlan.id) continue;
-    sub.price = cheapPlan.price;
-    sub.planId = cheapPlan.id;
-    sub.planName = cheapPlan.name;
-  }
-}
-
-/** Catalog-scale target: ~65% of the pre-cut 3.451M / 60 average check. */
-const TARGET_DEFAULT_AVG_CHECK = 0.65 * (3_451_000 / 60);
-
-/**
- * Upgrade the cheapest 2025/26 default-window rows to the season plan so
- * average check stays in the catalog 0.65× band after RNG reshuffles.
- */
-function rebalanceDefaultSeasonAverageCheck(
-  subs: Subscription[],
-  allMatches: Match[],
-): void {
-  const defaultSubs = subs.filter(
-    (sub) =>
-      sub.league === "KHL" &&
-      subscriptionPassesDefaultSeasonFilter(sub, allMatches),
-  );
-  if (defaultSubs.length === 0) return;
-
-  const minAvg = TARGET_DEFAULT_AVG_CHECK * 0.97;
-  const maxAvg = TARGET_DEFAULT_AVG_CHECK * 1.12;
-  const sumPrices = () => defaultSubs.reduce((sum, sub) => sum + sub.price, 0);
-  let avg = sumPrices() / defaultSubs.length;
-  if (avg >= minAvg && avg <= maxAvg) return;
-
-  const seasonPlan = SEED_SUBSCRIPTION_PLAN;
-  const cheapPlan =
-    subscriptionPlans.find((plan) => plan.code === "SUB-STUD") ??
-    subscriptionPlans[5] ??
-    seasonPlan;
-  const ordered = [...defaultSubs].sort((left, right) => left.price - right.price);
-  for (const sub of ordered) {
-    avg = sumPrices() / defaultSubs.length;
-    if (avg >= minAvg && avg <= maxAvg) return;
-    if (avg < minAvg) {
-      if (sub.planId === seasonPlan.id || sub.planId === "plan-5") continue;
-      sub.price = seasonPlan.price;
-      sub.planId = seasonPlan.id;
-      sub.planName = seasonPlan.name;
-    }
-  }
-
-  const expensiveFirst = [...defaultSubs].sort(
-    (left, right) => right.price - left.price,
-  );
-  for (const sub of expensiveFirst) {
-    avg = sumPrices() / defaultSubs.length;
-    if (avg >= minAvg && avg <= maxAvg) return;
-    if (avg <= maxAvg) return;
-    if (sub.tournamentStage === "playoff" && sub.sector === "VIP") continue;
-    if (sub.planId === cheapPlan.id) continue;
-    sub.price = cheapPlan.price;
-    sub.planId = cheapPlan.id;
-    sub.planName = cheapPlan.name;
-  }
 }
 
 /** Seed mix size before cloning up to TARGET_DEFAULT_SEASON_*_SOLD. */
@@ -3089,21 +2979,19 @@ const MINOR_LEAGUE_ALL_INCLUSIVE_SHARE = 0.55;
 const MINOR_LEAGUE_ALL_INCLUSIVE_PLAN = {
   id: "plan-5",
   name: "Все включено",
-  price: 162500,
   matchCount: 30,
 } as const;
 
 const MINOR_LEAGUE_WEEKEND_PLAN = {
   id: "plan-1",
   name: "Выходного дня",
-  price: 6500,
   matchCount: 5,
 } as const;
 
 /**
  * Top up 2025/26 default-window sales to TARGET_DEFAULT_SEASON_SOLD.
- * Extra rows reuse the existing default-filter plan mix so average check
- * stays at catalog scale (0.65× previous prices) rather than drifting.
+ * Extra rows reuse the existing default-filter plan mix; league list prices
+ * are applied after cloning.
  */
 function ensureDefaultSeasonSoldCount(
   subs: Subscription[],
@@ -3205,12 +3093,20 @@ function expandStageToTarget(
 function isMinorLeagueSeasonalPlan(
   sub: Pick<Subscription, "planId" | "planName">,
 ): boolean {
-  if (sub.planId === "plan-4" || sub.planId === "plan-6") return true;
+  if (
+    sub.planId === "plan-4" ||
+    sub.planId === "plan-6" ||
+    sub.planId === "plan-9"
+  ) {
+    return true;
+  }
   if (
     sub.planId === "plan-1" ||
     sub.planId === "plan-2" ||
     sub.planId === "plan-3" ||
-    sub.planId === "plan-5"
+    sub.planId === "plan-5" ||
+    sub.planId === "plan-7" ||
+    sub.planId === "plan-8"
   ) {
     return false;
   }
@@ -3235,7 +3131,7 @@ function applyMinorLeagueTariff(
       : MINOR_LEAGUE_WEEKEND_PLAN;
   sub.planId = plan.id;
   sub.planName = plan.name;
-  sub.price = plan.price;
+  sub.price = getSubscriptionListPrice(sub.league, plan.id);
   sub.matchesTotal = plan.matchCount;
   sub.matchesUsed = Math.min(sub.matchesUsed, plan.matchCount);
 }

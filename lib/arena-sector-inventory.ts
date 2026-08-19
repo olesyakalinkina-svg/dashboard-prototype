@@ -42,22 +42,22 @@ export const MAIN_ARENA_SECTOR_CAPACITY: SectorCapacityMap = {
   D4: 930,
 };
 
-/** Secondary arena. Sum = 3_000 = SECONDARY_ARENA_CAPACITY. */
+/** Secondary arena. Sum = 4_000 = SECONDARY_ARENA_CAPACITY. */
 export const SECONDARY_ARENA_SECTOR_CAPACITY: SectorCapacityMap = {
-  VIP: 80,
-  A: 220,
-  B1: 240,
-  B2: 230,
-  B3: 225,
-  B4: 225,
-  C1: 230,
-  C2: 220,
-  C3: 215,
-  C4: 215,
-  D1: 240,
-  D2: 230,
-  D3: 220,
-  D4: 210,
+  VIP: 106,
+  A: 293,
+  B1: 320,
+  B2: 307,
+  B3: 300,
+  B4: 300,
+  C1: 307,
+  C2: 293,
+  C3: 287,
+  C4: 287,
+  D1: 320,
+  D2: 307,
+  D3: 293,
+  D4: 280,
 };
 
 export function sumSectorCapacities(map: SectorCapacityMap): number {

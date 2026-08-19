@@ -3,6 +3,7 @@
 import clsx from "clsx";
 import { ChevronDown, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useAnchoredMenu } from "@/hooks/useAnchoredMenu";
 
 type MultiSelectOption = {
@@ -202,9 +203,11 @@ export function MultiSelect({
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        closeDropdown();
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) {
+        return;
       }
+      closeDropdown();
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -213,7 +216,14 @@ export function MultiSelect({
   useEffect(() => {
     if (!open) return;
 
+    // Ignore scroll caused by the opening click (scrollIntoView / sticky bar).
+    let armed = false;
+    const armId = window.requestAnimationFrame(() => {
+      armed = true;
+    });
+
     function handleScroll(event: Event) {
+      if (!armed) return;
       const menu = menuRef.current;
       if (menu && event.target instanceof Node && menu.contains(event.target)) {
         return;
@@ -222,7 +232,10 @@ export function MultiSelect({
     }
 
     window.addEventListener("scroll", handleScroll, true);
-    return () => window.removeEventListener("scroll", handleScroll, true);
+    return () => {
+      window.cancelAnimationFrame(armId);
+      window.removeEventListener("scroll", handleScroll, true);
+    };
   }, [open, closeDropdown]);
 
   function commitValue(nextValue: string[]) {
@@ -312,11 +325,13 @@ export function MultiSelect({
           )}
         />
       </button>
-      {open && (
+      {open &&
+        typeof document !== "undefined" &&
+        createPortal(
         <div
           ref={menuRef}
           data-testid="multi-select-menu"
-          className="z-50 max-h-64 w-full max-w-[min(100vw-2rem,320px)] isolate overflow-auto rounded-md border border-[var(--border)] bg-white py-1 shadow-lg"
+          className="fixed left-0 top-0 z-50 max-h-64 overflow-auto rounded-md border border-[var(--border)] bg-white py-1 shadow-lg"
         >
           {searchable && (
             <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-white px-2 py-1.5">
@@ -368,8 +383,9 @@ export function MultiSelect({
               <span className="truncate">{opt.label}</span>
             </label>
           ))}
-        </div>
-      )}
+        </div>,
+          document.body,
+        )}
     </div>
   );
 }

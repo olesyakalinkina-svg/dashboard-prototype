@@ -12,6 +12,7 @@ import {
 import {
   flattenExpandedMerchSalesTree,
   paginateTopLevel,
+  sortMerchSalesNodes,
   type MerchSalesFlatRow,
   type MerchSalesTreeNode,
 } from "@/lib/merch-sales-tree";
@@ -67,7 +68,7 @@ function DetailKpis({ row }: { row: MerchSalesTreeNode | MerchSalesFlatRow }) {
       ? (row.revenue / row.planRevenue) * 100
       : null;
   const showConversion =
-    row.level === "match" || row.level === "section";
+    (row.level === "match" || row.level === "section") && row.attendance > 0;
 
   return (
     <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs leading-snug">
@@ -260,8 +261,7 @@ export const MerchMobileSalesCards = memo(function MerchMobileSalesCards({
   const pageSize = 8;
 
   const sorted = useMemo(
-    () =>
-      [...tree].sort((a, b) => (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0)),
+    () => sortMerchSalesNodes(tree, { id: "date", desc: true }),
     [tree],
   );
 

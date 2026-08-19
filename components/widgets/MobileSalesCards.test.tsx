@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { useMemo, useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { MobileSalesCards } from "@/components/widgets/MobileSalesCards";
+import { formatCurrency, formatDate, formatPercent } from "@/lib/format";
 import {
   FIXTURE_CURRENT_MATCH_ID,
   FIXTURE_DASHBOARD_FILTERS,
@@ -122,5 +123,40 @@ describe("MobileSalesCards parallel structure", () => {
     );
     expect(screen.getByText("Арена")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Развернуть: Арена" })).toBeNull();
+  });
+
+  it("shows opponent name without the match date on the card title", () => {
+    const pipeline = buildDefaultFixtureTree();
+    const match = pipeline.tree.find((n) => n.matchId === FIXTURE_CURRENT_MATCH_ID)!;
+    expect(match.label).toBe("СКА");
+    render(<Harness tree={pipeline.tree} matchRows={pipeline.rows} />);
+    expect(screen.getByText("СКА")).toBeTruthy();
+    expect(screen.getByText(formatDate(match.date!))).toBeTruthy();
+    expect(screen.queryByText(/СКА \d{2}-\d{2}-\d{2}/)).toBeNull();
+  });
+
+  it("shows plan % as its own field after Выручка, not on the revenue value", () => {
+    const pipeline = buildDefaultFixtureTree();
+    const match = pipeline.tree.find((n) => n.matchId === FIXTURE_CURRENT_MATCH_ID)!;
+    render(<Harness tree={pipeline.tree} matchRows={pipeline.rows} />);
+
+    const card = screen.getByText(match.label).closest("article");
+    expect(card).toBeTruthy();
+    const pct = formatPercent((match.revenue / match.planRevenue!) * 100);
+    expect(card!.textContent).toContain("% выполнения плана");
+    expect(card!.textContent).toContain(pct);
+
+    const revenueDt = [...card!.querySelectorAll("dt")].find(
+      (el) => el.textContent === "Выручка",
+    );
+    expect(revenueDt?.nextElementSibling?.textContent).toBe(
+      formatCurrency(match.revenue),
+    );
+    expect(revenueDt?.nextElementSibling?.textContent).not.toContain(pct);
+
+    const planDt = [...card!.querySelectorAll("dt")].find(
+      (el) => el.textContent === "% выполнения плана",
+    );
+    expect(planDt?.nextElementSibling?.textContent).toContain(pct);
   });
 });

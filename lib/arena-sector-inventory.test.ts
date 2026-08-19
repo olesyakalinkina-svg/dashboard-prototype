@@ -67,6 +67,18 @@ describe("arena sector inventory", () => {
     expect(getSectorCapacitiesForMatch(MAIN_MATCH)).toEqual(MAIN_ARENA_SECTOR_CAPACITY);
   });
 
+  it("uses the 4000-seat secondary map for VHL matches", () => {
+    const vhl: Pick<Match, "arena" | "league" | "capacity"> = {
+      arena: "secondary",
+      league: "VHL",
+      capacity: SECONDARY_ARENA_CAPACITY,
+    };
+    expect(SECONDARY_ARENA_CAPACITY).toBe(4000);
+    expect(getSectorCapacitiesForMatch(vhl)).toEqual(SECONDARY_ARENA_SECTOR_CAPACITY);
+    expect(sumSectorCapacities(SECONDARY_ARENA_SECTOR_CAPACITY)).toBe(4000);
+    expect(leftoverSectorCapacity(vhl)).toBe(0);
+  });
+
   it("enlarges an oversold zone from unused zones in the same sector", () => {
     const planned = splitSectorCapacity("A", 800);
     expect(planned.from_1500_to_2500).toBe(320);

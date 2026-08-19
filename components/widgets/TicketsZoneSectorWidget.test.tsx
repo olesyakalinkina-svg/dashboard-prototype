@@ -1,10 +1,9 @@
 /** @vitest-environment jsdom */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { format } from "date-fns";
-import { ru } from "date-fns/locale";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TicketsZoneSectorWidget } from "@/components/widgets/TicketsZoneSectorWidget";
+import { STICKY_TABLE_ROW_HOVER_CLASS } from "@/components/ui/sales-table-layout";
 import { formatCurrency, formatDate, formatPercent } from "@/lib/format";
 import { getMatchPlanArenaRevenue } from "@/lib/ticket-plan";
 import type { PriceZone } from "@/types/dashboard";
@@ -16,7 +15,7 @@ vi.mock("@/hooks/useLayoutMode", () => ({
 }));
 
 function matchEventLabel(day: number) {
-  return `Оппонент ${day} ${format(new Date(2026, 4, day), "dd-MM-yy", { locale: ru })}`;
+  return `Оппонент ${day}`;
 }
 
 const { ticketFilterState } = vi.hoisted(() => ({
@@ -175,6 +174,10 @@ describe("TicketsZoneSectorWidget integration", () => {
     const table = screen.getByRole("table");
     expect(table.className).toMatch(/min-w-\[37rem\]/);
     expect(table.className).not.toMatch(/xl:min-w-0/);
+    const scroller = screen.getByTestId("sticky-scroll-table");
+    expect(scroller.className).toContain(STICKY_TABLE_ROW_HOVER_CLASS);
+    const row = screen.getAllByRole("row")[1];
+    expect(row?.className).not.toMatch(/hover:bg-/);
     expect(screen.queryByRole("columnheader", { name: "Продано" })).toBeNull();
     expect(screen.queryByRole("columnheader", { name: "Бесплатно" })).toBeNull();
     expect(screen.queryByRole("columnheader", { name: "Оформлено" })).toBeNull();
@@ -188,7 +191,9 @@ describe("TicketsZoneSectorWidget integration", () => {
     expect(screen.queryByText("Вперёд")).toBeNull();
     for (let day = 1; day <= 10; day += 1) {
       expect(screen.getByText(matchEventLabel(day))).toBeTruthy();
+      expect(screen.getByText(formatDate(new Date(2026, 4, day)))).toBeTruthy();
     }
+    expect(screen.queryByText(/\d{2}-\d{2}-\d{2}/)).toBeNull();
   });
 
   it("stacks event name, date, revenue and occupancy on mobile cards", async () => {
@@ -204,6 +209,7 @@ describe("TicketsZoneSectorWidget integration", () => {
     const title = card.querySelector('[data-testid="zone-sector-mobile-title"]');
     const date = card.querySelector('[data-testid="zone-sector-mobile-date"]');
     expect(title?.textContent).toBe(matchEventLabel(10));
+    expect(title?.textContent).not.toMatch(/\d{2}-\d{2}-\d{2}/);
     expect(title?.textContent).not.toMatch(/₽/);
     expect(date?.textContent).toBe(formatDate(new Date(2026, 4, 10)));
     expect(card.textContent).toContain("Выручка");
@@ -302,6 +308,9 @@ describe("TicketsZoneSectorWidget integration", () => {
     await user.click(screen.getByRole("button", { name: "Все секторы" }));
     expect(screen.getByTestId("multi-select-menu")).toBeTruthy();
 
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
     fireEvent.scroll(window);
 
     expect(screen.queryByTestId("multi-select-menu")).toBeNull();

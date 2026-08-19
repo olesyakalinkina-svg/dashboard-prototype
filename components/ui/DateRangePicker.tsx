@@ -19,6 +19,7 @@ import {
 import { ru } from "date-fns/locale";
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { MerchOrderDateRange } from "@/types/dashboard";
 import { useAnchoredMenu } from "@/hooks/useAnchoredMenu";
 
@@ -75,19 +76,21 @@ export function DateRangePicker({
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  useAnchoredMenu(open, triggerRef, menuRef);
+  useAnchoredMenu(open, triggerRef, menuRef, { matchTriggerWidth: false });
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        setPendingFrom((pending) => {
-          if (pending) {
-            onChange({ from: pending, to: pending });
-          }
-          return null;
-        });
-        setOpen(false);
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) {
+        return;
       }
+      setPendingFrom((pending) => {
+        if (pending) {
+          onChange({ from: pending, to: pending });
+        }
+        return null;
+      });
+      setOpen(false);
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -243,10 +246,13 @@ export function DateRangePicker({
         />
       </button>
 
-      {open && (
+      {open &&
+        typeof document !== "undefined" &&
+        createPortal(
         <div
           ref={menuRef}
-          className="z-50 w-full max-w-[min(100vw-2rem,320px)] rounded-md border border-[var(--border)] bg-white p-3 shadow-lg"
+          className="fixed left-0 top-0 z-50 w-[min(100vw-2rem,320px)] rounded-md border border-[var(--border)] bg-white p-3 shadow-lg"
+          data-testid="date-range-menu"
         >
           {!hideRangeFields && (
             <div className="mb-3 grid grid-cols-2 gap-2 text-xs">
@@ -365,8 +371,9 @@ export function DateRangePicker({
               Сбросить
             </button>
           </div>
-        </div>
-      )}
+        </div>,
+          document.body,
+        )}
     </div>
   );
 }

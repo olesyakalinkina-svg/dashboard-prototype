@@ -1,6 +1,5 @@
-import { format } from "date-fns";
-import { ru } from "date-fns/locale";
 import { DEFAULT_DASHBOARD_FILTERS } from "@/lib/filter-coverage";
+import { formatTicketEventTitle } from "@/lib/format";
 import {
   applyTicketSalesTransaction,
   createTicketSalesAgg,
@@ -427,10 +426,6 @@ export function snapshotTransactions(txs: Transaction[]): string {
   );
 }
 
-function eventLabel(match: Match): string {
-  return `${match.opponent} ${format(match.date, "dd-MM-yy", { locale: ru })}`;
-}
-
 export function metricsFromTransactions(txs: Transaction[]): FrozenMatchMetrics & {
   loyaltyDiscountPct: number;
 } {
@@ -484,7 +479,7 @@ export function buildFixtureMatchRows(
 
     rows.push({
       matchId: match.id,
-      eventLabel: eventLabel(match),
+      eventLabel: formatTicketEventTitle(match),
       date: match.date,
       revenue: metrics.revenue,
       planRevenue: getMatchPlanRevenue(match),

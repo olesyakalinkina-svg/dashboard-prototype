@@ -183,7 +183,7 @@ const DashboardShell = memo(function DashboardShell() {
   );
 });
 
-/** Same 2-col template for Продажи and zone-sector so left-column cards share width. */
+/** Zone-sector keeps the previous 1.2fr / 1fr template (spacer column) so it does not stretch full-bleed. */
 const TICKETS_TWO_COL_GRID_CLASS =
   "grid min-w-0 grid-cols-1 items-start gap-4 min-[1024px]:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]";
 
@@ -281,20 +281,16 @@ function DashboardPanels() {
 
         {activeTab === "tickets" && (
           <>
-            <div className={TICKETS_TWO_COL_GRID_CLASS}>
-              <TicketsSalesSection
-                matchSales={matchSales}
-                filters={appliedFilters}
-                ticketFilters={appliedTicketFilters}
-              />
-              <div className="flex min-w-0 flex-col gap-4">
-                <TicketsMatchDynamicsSection />
-                <TicketsPlanFactWidget
-                  data={ticketsPlanFactTrend}
-                  timeGrouping={ticketChartTimeGrouping}
-                />
-              </div>
-            </div>
+            <TicketsSalesSection
+              matchSales={matchSales}
+              filters={appliedFilters}
+              ticketFilters={appliedTicketFilters}
+            />
+            <TicketsMatchDynamicsSection />
+            <TicketsPlanFactWidget
+              data={ticketsPlanFactTrend}
+              timeGrouping={ticketChartTimeGrouping}
+            />
             <div className={TICKETS_TWO_COL_GRID_CLASS}>
               <TicketsZoneSectorWidget />
               <div aria-hidden="true" className="hidden min-[1024px]:block" />
@@ -309,9 +305,9 @@ function DashboardPanels() {
               <MerchSalesWidget data={merchPlanFactTrend} />
               <TopProductsChart data={topProducts} />
             </div>
+            <MerchMatchSalesTable data={merchMatchSales} />
             <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-2">
               <div className="flex min-w-0 flex-col gap-4">
-                <MerchMatchSalesTable data={merchMatchSales} />
                 <MerchSalesChannelsChart data={merchSalesChannelRevenue} />
               </div>
               <div className="flex min-w-0 flex-col gap-4">

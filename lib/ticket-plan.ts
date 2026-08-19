@@ -1,7 +1,7 @@
 import type { ArenaId, League, MatchClass, TournamentStage } from "@/types/dashboard";
 
 export const MAIN_ARENA_CAPACITY = 12000;
-export const SECONDARY_ARENA_CAPACITY = 3000;
+export const SECONDARY_ARENA_CAPACITY = 4000;
 /** MHL home games use a partial bowl on the main arena (~52% of seats). */
 export const MHL_ARENA_CAPACITY = 6300;
 
@@ -61,10 +61,10 @@ export const MIN_OVER_PLAN_OCCUPANCY = 1;
 
 /**
  * Fixed parking inventory per bowl (not 12% of tickets sold).
- * Main KHL: 1440. Secondary VHL: 360. MHL partial bowl: 756.
+ * Main KHL: 1440. Secondary VHL: 800. MHL partial bowl: 756.
  */
 export const PARKING_CAPACITY_MAIN = 1440;
-export const PARKING_CAPACITY_SECONDARY = 360;
+export const PARKING_CAPACITY_SECONDARY = 800;
 export const PARKING_CAPACITY_MHL = 756;
 /** Filter-share when a ticket-type cut is applied to match plan (arena vs parking). */
 export const TICKET_PLAN_PARKING_SHARE = 0.12;

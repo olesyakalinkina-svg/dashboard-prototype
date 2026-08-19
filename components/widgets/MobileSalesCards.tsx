@@ -12,6 +12,7 @@ import {
 import {
   flattenExpandedMatchSalesTree,
   paginateTopLevel,
+  matchSalesPlanFulfillmentPct,
   type MatchSalesFlatRow,
   type MatchSalesTreeNode,
 } from "@/lib/match-sales-tree";
@@ -28,6 +29,7 @@ const MATCH_SALES_EXCEL_HEADERS = [
   "Мероприятие",
   "Дата",
   "Выручка",
+  "% выполнения плана",
   "Средняя цена",
   "Продано",
   "Бесплатно",
@@ -61,16 +63,20 @@ function matchSalesTreeNodeMatchesQuery(
 }
 
 function getTreeExcelRows(rows: MatchSalesFlatRow[]): ExcelValue[][] {
-  return rows.map((row) => [
-    row.label,
-    row.date ? formatDate(row.date) : "",
-    row.revenue,
-    row.avgPrice,
-    row.ticketsSold,
-    row.freeTickets,
-    row.issuedTickets,
-    Math.round(row.loyaltyDiscountPct * 10) / 10,
-  ]);
+  return rows.map((row) => {
+    const pct = matchSalesPlanFulfillmentPct(row.revenue, row.planRevenue);
+    return [
+      row.label,
+      row.date ? formatDate(row.date) : "",
+      row.revenue,
+      pct !== null ? Math.round(pct * 10) / 10 : "—",
+      row.avgPrice,
+      row.ticketsSold,
+      row.freeTickets,
+      row.issuedTickets,
+      Math.round(row.loyaltyDiscountPct * 10) / 10,
+    ];
+  });
 }
 
 function MetricsGrid({
@@ -81,10 +87,14 @@ function MetricsGrid({
   compact?: boolean;
 }) {
   const fillPct = issuedOccupancyPercent(row.occupancyIssuedTickets, row.capacity);
-  const revenueFulfillmentPct =
-    row.planRevenue != null && row.planRevenue > 0
-      ? (row.revenue / row.planRevenue) * 100
-      : null;
+  const revenueFulfillmentPct = matchSalesPlanFulfillmentPct(
+    row.revenue,
+    row.planRevenue,
+  );
+  const planPctLabel =
+    revenueFulfillmentPct !== null
+      ? formatPercent(revenueFulfillmentPct)
+      : "—";
 
   if (compact) {
     return (
@@ -94,6 +104,10 @@ function MetricsGrid({
           <dd className="font-medium text-[var(--foreground)]">
             {formatCurrency(row.revenue)}
           </dd>
+        </div>
+        <div className="col-span-2">
+          <dt className="text-[var(--muted)]">% выполнения плана</dt>
+          <dd className="text-[var(--foreground)]">{planPctLabel}</dd>
         </div>
         <div>
           <dt className="text-[var(--muted)]">Продано</dt>
@@ -123,14 +137,11 @@ function MetricsGrid({
         <dt className="text-[var(--muted)]">Выручка</dt>
         <dd className="font-medium text-[var(--foreground)]">
           {formatCurrency(row.revenue)}
-          <span className="ml-1.5 font-normal text-[var(--muted)]">
-            (
-            {revenueFulfillmentPct !== null
-              ? formatPercent(revenueFulfillmentPct)
-              : "—"}
-            )
-          </span>
         </dd>
+      </div>
+      <div className="col-span-2">
+        <dt className="text-[var(--muted)]">% выполнения плана</dt>
+        <dd className="text-[var(--foreground)]">{planPctLabel}</dd>
       </div>
       <div>
         <dt className="text-[var(--muted)]">Средняя цена</dt>
@@ -169,21 +180,9 @@ function MetricsGrid({
 
 function DetailMetrics({ row }: { row: MatchSalesTreeNode | MatchSalesFlatRow }) {
   const fillPct = issuedOccupancyPercent(row.occupancyIssuedTickets, row.capacity);
-  const revenueFulfillmentPct =
-    row.planRevenue != null && row.planRevenue > 0
-      ? (row.revenue / row.planRevenue) * 100
-      : null;
 
   return (
     <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs leading-snug">
-      <div>
-        <dt className="text-[var(--muted)]">К плану</dt>
-        <dd className="text-[var(--foreground)]">
-          {revenueFulfillmentPct !== null
-            ? formatPercent(revenueFulfillmentPct)
-            : "—"}
-        </dd>
-      </div>
       <div>
         <dt className="text-[var(--muted)]">Бесплатно</dt>
         <dd className="text-[var(--foreground)]">

@@ -4,6 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { useMemo, useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { MatchSalesTable } from "@/components/widgets/MatchSalesTable";
+import { STICKY_TABLE_ROW_HOVER_CLASS } from "@/components/ui/sales-table-layout";
+import { formatDate, formatPercent } from "@/lib/format";
 import {
   CONFIRM_SCENARIO,
   FIXTURE_CURRENT_MATCH_ID,
@@ -27,6 +29,18 @@ import type { MatchSalesTreeState } from "@/hooks/useMatchSalesTree";
 afterEach(() => {
   cleanup();
 });
+
+const SALES_COLUMNS = [
+  "Мероприятие",
+  "Дата",
+  "Выручка",
+  "% выполнения плана",
+  "Средняя цена",
+  "Продано",
+  "Бесплатно",
+  "Оформлено",
+  "Скидка ПЛ",
+];
 
 function Harness({
   tree,
@@ -70,6 +84,16 @@ function renderSales(
       initialExpanded={initialExpanded}
     />,
   );
+}
+
+function cellsForLabel(label: string) {
+  const row = screen.getByText(label).closest("tr");
+  expect(row).toBeTruthy();
+  return within(row!).getAllByRole("cell");
+}
+
+function cellText(el: HTMLElement): string {
+  return (el.textContent ?? "").replace(/\s/g, " ");
 }
 
 describe("MatchSalesTable integration (E2E stand-in)", () => {
@@ -307,6 +331,36 @@ describe("MatchSalesTable integration (E2E stand-in)", () => {
     expect(dashes.length).toBeGreaterThan(0);
   });
 
+  it("shows opponent name without the match date in the event title", () => {
+    const pipeline = buildDefaultFixtureTree();
+    const match = pipeline.tree.find((n) => n.matchId === FIXTURE_CURRENT_MATCH_ID)!;
+    expect(match.label).toBe("СКА");
+    expect(match.label).not.toMatch(/\d{2}-\d{2}-\d{2}/);
+    renderSales(pipeline);
+    expect(screen.getByText("СКА")).toBeTruthy();
+    expect(screen.getByText(formatDate(match.date!))).toBeTruthy();
+    expect(screen.queryByText(/СКА \d{2}-\d{2}-\d{2}/)).toBeNull();
+  });
+
+  it("puts % выполнения плана in its own column after Выручка, not on the revenue bar", () => {
+    const pipeline = buildDefaultFixtureTree();
+    const match = pipeline.tree.find((n) => n.matchId === FIXTURE_CURRENT_MATCH_ID)!;
+    const incomplete = pipeline.tree.find((n) => n.matchId === "fx-mhl-incomplete")!;
+    renderSales(pipeline);
+
+    const headers = screen.getAllByRole("columnheader").map((el) => el.textContent);
+    expect(headers).toEqual(SALES_COLUMNS);
+
+    const pct = formatPercent((match.revenue / match.planRevenue!) * 100);
+    const cells = cellsForLabel(match.label);
+    expect(cellText(cells[2]!)).not.toContain(pct.replace(/\s/g, " "));
+    expect(cellText(cells[3]!)).toContain(pct.replace(/\s/g, " "));
+
+    const incompleteCells = cellsForLabel(incomplete.label);
+    expect(within(incompleteCells[3]!).getByText("—")).toBeTruthy();
+    expect(within(incompleteCells[3]!).queryByText(formatPercent(0))).toBeNull();
+  });
+
   it("keeps metric bars inside a fixed-layout grid table", () => {
     const { container } = renderSales();
     const table = container.querySelector('[data-testid="desktop-sales-table"]');
@@ -317,5 +371,38 @@ describe("MatchSalesTable integration (E2E stand-in)", () => {
     expect(bar?.className).toContain("w-full");
     expect(bar?.className).toContain("min-w-0");
     expect(bar?.className).not.toContain("min-w-[120px]");
+  });
+
+  it("uses the same column-width rhythm as Продажи по матчам", () => {
+    renderSales();
+    const widthClass = (name: string) =>
+      [...screen.getByRole("columnheader", { name }).classList]
+        .filter(
+          (cls) =>
+            cls.startsWith("w-[") ||
+            cls.startsWith("min-w-") ||
+            cls.startsWith("max-w-") ||
+            cls === "w-auto",
+        )
+        .sort()
+        .join(" ");
+
+    expect(widthClass("Мероприятие")).toBe("min-w-0 w-auto");
+    expect(widthClass("Дата")).toBe("max-w-[7rem] w-[7rem]");
+    expect(widthClass("Выручка")).toBe("max-w-[10.5rem] w-[10.5rem]");
+    expect(widthClass("% выполнения плана")).toBe("max-w-[10.5rem] w-[10.5rem]");
+    expect(widthClass("Средняя цена")).toBe("max-w-[9rem] w-[9rem]");
+    expect(widthClass("Продано")).toBe("max-w-[9rem] w-[9rem]");
+    expect(widthClass("Бесплатно")).toBe("max-w-[6.5rem] w-[6.5rem]");
+    expect(widthClass("Оформлено")).toBe("max-w-[10.5rem] w-[10.5rem]");
+    expect(widthClass("Скидка ПЛ")).toBe("max-w-[7rem] w-[7rem]");
+
+    const table = screen.getByTestId("desktop-sales-table");
+    expect(table.className).toContain("min-w-[80rem]");
+    expect(table.className).toContain("table-fixed");
+    const scroller = screen.getByTestId("sticky-scroll-table");
+    expect(scroller.className).toContain(STICKY_TABLE_ROW_HOVER_CLASS);
+    const row = screen.getAllByRole("row")[1];
+    expect(row?.className).not.toMatch(/hover:bg-/);
   });
 });

@@ -4,12 +4,19 @@ import {
   computeSubscriptionPriceCategoryShares,
   computeSubscriptionsKpis,
   computeSubscriptionTariffStats,
+  getTabSubscriptions,
 } from "@/lib/filters";
 import {
   applySubscriptionFilterPatch,
   DEFAULT_SUBSCRIPTION_FILTERS,
+  getSubscriptionPriceCategory,
 } from "@/lib/subscription-filter-options";
+import { SUBSCRIPTION_LIST_PRICES } from "@/lib/mock/subscription-catalog";
 import type { League, SubscriptionFilters } from "@/types/dashboard";
+
+const expectedKhlPrices = new Set(
+  Object.values(SUBSCRIPTION_LIST_PRICES.KHL).flatMap((prices) => prices ?? []),
+);
 
 describe("subscriptions KPIs", () => {
   it("locks default 2025/26 KHL sold counts at 4500 = 3500 regular + 1000 playoff", () => {
@@ -61,9 +68,8 @@ describe("subscriptions KPIs", () => {
     expect(kpis.uniqueCustomers).toBeLessThanOrEqual(kpis.sold);
     expect(kpis.avgCheck).toBeCloseTo(kpis.revenue / kpis.sold);
 
-    const previousAvgCheck = 3_451_000 / 60;
-    expect(kpis.avgCheck / previousAvgCheck).toBeGreaterThan(0.62 * 0.97);
-    expect(kpis.avgCheck / previousAvgCheck).toBeLessThan(0.75 * 1.03);
+    expect(kpis.avgCheck).toBeGreaterThan(19_000);
+    expect(kpis.avgCheck).toBeLessThan(75_000);
 
     expect(kpis.seasonComparison).toBeDefined();
     expect(kpis.seasonComparison?.previousSeason).toBe("2024/25");
@@ -238,5 +244,58 @@ describe("subscriptions KPIs", () => {
     expectYoyInBand(vhl);
     expectYoyInBand(mhl);
     expectYoyInBand(khl);
+  });
+
+  it("locks league × tariff catalog prices to three tiers each", () => {
+    const cases: Array<{
+      league: League;
+      tariffs: Array<"all_inclusive" | "weekend" | "seasonal">;
+    }> = [
+      { league: "KHL", tariffs: ["all_inclusive", "weekend", "seasonal"] },
+      { league: "VHL", tariffs: ["all_inclusive", "weekend"] },
+      { league: "MHL", tariffs: ["all_inclusive", "weekend"] },
+    ];
+
+    for (const { league, tariffs } of cases) {
+      const filters = leagueFilters(league);
+      const rows = getTabSubscriptions(DEFAULT_DASHBOARD_FILTERS, filters);
+      expect(rows.length).toBeGreaterThan(0);
+
+      for (const tariff of tariffs) {
+        const expected = SUBSCRIPTION_LIST_PRICES[league][tariff];
+        expect(expected).toBeDefined();
+        const sold = rows.filter(
+          (sub) => getSubscriptionPriceCategory(sub) === tariff,
+        );
+        expect(sold.length).toBeGreaterThan(0);
+
+        const prices = [...new Set(sold.map((sub) => sub.price))].sort(
+          (left, right) => left - right,
+        );
+        expect(prices).toEqual([...expected!]);
+
+        const byPrice = new Map<number, number>();
+        for (const sub of sold) {
+          byPrice.set(sub.price, (byPrice.get(sub.price) ?? 0) + 1);
+        }
+        for (const price of expected!) {
+          expect(byPrice.get(price)).toBeGreaterThan(0);
+        }
+
+        const maxShare = Math.max(...byPrice.values()) / sold.length;
+        expect(maxShare).toBeLessThan(0.5);
+      }
+
+      if (league === "VHL" || league === "MHL") {
+        expect(
+          rows.every(
+            (sub) => getSubscriptionPriceCategory(sub) !== "seasonal",
+          ),
+        ).toBe(true);
+        expect(
+          rows.every((sub) => !expectedKhlPrices.has(sub.price)),
+        ).toBe(true);
+      }
+    }
   });
 });

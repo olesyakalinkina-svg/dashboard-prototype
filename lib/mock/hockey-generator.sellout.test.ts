@@ -8,7 +8,7 @@ import { ALL_SECTORS, allowedPriceZonesForSector } from "@/lib/ticket-filter-opt
 import {
   buildZoneSectorTree,
 } from "@/lib/tickets-zone-sector-analytics";
-import { isSoldOutOccupancyMatch, getMatchParkingCapacity, getMatchPlanRevenue, getMatchPlanTickets, HIGH_REVENUE_PLAN_THRESHOLD, MAX_MID_REVENUE_OCCUPANCY, MAX_REGULAR_TICKET_PLAN_FULFILLMENT, MAX_TICKET_PLAN_FULFILLMENT, MID_REVENUE_PLAN_MIN, MIN_HIGH_REVENUE_OCCUPANCY, MIN_OVER_PLAN_OCCUPANCY, MIN_SOLD_OUT_TICKET_PLAN_FULFILLMENT, OVER_PLAN_REVENUE_THRESHOLD, occupancyMassCapacity } from "@/lib/ticket-plan";
+import { isSoldOutOccupancyMatch, getMatchParkingCapacity, getMatchPlanRevenue, getMatchPlanTickets, HIGH_REVENUE_PLAN_THRESHOLD, MAX_MID_REVENUE_OCCUPANCY, MAX_REGULAR_TICKET_PLAN_FULFILLMENT, MAX_TICKET_PLAN_FULFILLMENT, MID_REVENUE_PLAN_MIN, MIN_HIGH_REVENUE_OCCUPANCY, MIN_OVER_PLAN_OCCUPANCY, MIN_SOLD_OUT_TICKET_PLAN_FULFILLMENT, OVER_PLAN_REVENUE_THRESHOLD, occupancyMassCapacity, PARKING_CAPACITY_SECONDARY, SECONDARY_ARENA_CAPACITY } from "@/lib/ticket-plan";
 import { getTicketIssuedQuantity } from "@/lib/ticket-sales-metrics";
 import { formatPercent } from "@/lib/format";
 import type { Match, PriceZone, Sector, Transaction } from "@/types/dashboard";
@@ -133,6 +133,15 @@ describe("hockey generator sold-out occupancy", () => {
 
     for (const match of soldOut) {
       expect(arenaIssuedForMatch(match, transactions)).toBe(match.capacity);
+    }
+
+    const vhl = matches.filter((match) => match.league === "VHL");
+    expect(vhl.length).toBeGreaterThan(0);
+    for (const match of vhl) {
+      expect(match.arena).toBe("secondary");
+      expect(match.capacity).toBe(SECONDARY_ARENA_CAPACITY);
+      expect(getMatchParkingCapacity(match)).toBe(PARKING_CAPACITY_SECONDARY);
+      expect(occupancyMassCapacity(match.capacity)).toBe(4800);
     }
 
     const underCapacity = partial.filter(

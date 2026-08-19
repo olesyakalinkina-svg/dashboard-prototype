@@ -43,14 +43,14 @@ const PAGE_SIZE = 15;
 
 const BAR_COLUMN_WIDTH_CLASS = "w-[10.5rem]";
 const COLUMN_WIDTH_CLASS: Record<string, string> = {
-  eventLabel: "w-auto min-w-0",
+  eventLabel: "w-auto min-w-[14rem]",
   date: "w-[7rem]",
   revenue: BAR_COLUMN_WIDTH_CLASS,
   avgCheck: "w-[9rem]",
   receipts: "w-[8rem]",
   units: "w-[9rem]",
   upt: "w-[4.5rem]",
-  purchaseConversionPct: "w-[6.5rem] max-w-[6.5rem]",
+  purchaseConversionPct: BAR_COLUMN_WIDTH_CLASS,
 };
 
 type MerchSalesTableMeta = {
@@ -262,6 +262,9 @@ const MERCH_SALES_COLUMNS: ColumnDef<MerchSalesFlatRow, unknown>[] = [
       if (row.original.level !== "match" && row.original.level !== "section") {
         return "—";
       }
+      if (row.original.attendance <= 0) {
+        return "—";
+      }
       const { barMax } = table.options.meta as MerchSalesTableMeta;
       return (
         <InlineBarCell
@@ -425,7 +428,7 @@ export const MerchSalesTableView = memo(function MerchSalesTableView({
       </CardHeader>
       <CardContent className="flex min-w-0 flex-1 flex-col">
         <StickyScrollTable>
-        <table className="w-full min-w-[52rem] table-fixed text-sm leading-snug">
+        <table className="w-full min-w-[72rem] table-fixed text-sm leading-snug">
           <colgroup>
             {table.getAllLeafColumns().map((column) => (
               <col key={column.id} className={COLUMN_WIDTH_CLASS[column.id]} />
@@ -438,12 +441,12 @@ export const MerchSalesTableView = memo(function MerchSalesTableView({
                   <th
                     key={header.id}
                     className={clsx(
-                      "cursor-pointer px-3 py-2 text-left text-xs font-medium leading-tight text-[var(--muted)]",
+                      "cursor-pointer overflow-hidden px-3 py-2 text-left text-xs font-medium leading-tight text-[var(--muted)]",
                       COLUMN_WIDTH_CLASS[header.column.id],
                     )}
                     onClick={header.column.getToggleSortingHandler()}
                   >
-                    <span className="inline-flex items-center gap-1">
+                    <span className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap">
                       {flexRender(
                         header.column.columnDef.header,
                         header.getContext(),

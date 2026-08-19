@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { format } from "date-fns";
+import { format, startOfDay } from "date-fns";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_DASHBOARD_FILTERS } from "@/lib/filter-coverage";
 import { computeTicketsMatchCumulativeSeries } from "@/lib/filters";
@@ -470,6 +470,71 @@ describe("tickets season match chart — helpers", () => {
     ]);
   });
 
+  it("does not week-collapse an upcoming match onto today as if it already played", () => {
+    const todayKey = new Date(2026, 4, 15).getTime();
+    const upcomingKey = new Date(2026, 4, 17).getTime();
+    const series = [
+      makeSeries({
+        matchId: "today-match",
+        matchDateKey: todayKey,
+        eventCompleted: false,
+        currentDaysBeforeMatch: 0,
+        label: "Динамо Мск · 15.05.26",
+        points: [
+          makePoint(4, todayKey, 100_000),
+          makePoint(0, todayKey, 500_000),
+        ],
+      }),
+      makeSeries({
+        matchId: "upcoming-match",
+        matchDateKey: upcomingKey,
+        eventCompleted: false,
+        currentDaysBeforeMatch: 2,
+        label: "Динамо Мск · 17.05.26",
+        points: [
+          makePoint(4, upcomingKey, 120_000),
+          makePoint(2, upcomingKey, 480_000),
+          makePoint(0, upcomingKey, null),
+        ],
+      }),
+    ];
+    const views = selectSeasonMatchChartViews(
+      buildSeasonMatchSeriesViews(series),
+    );
+    expect(viewIds(views)).toEqual(["today-match", "upcoming-match"]);
+    expect(views.map((view) => view.matchDate)).toEqual([
+      "15.05.26",
+      "17.05.26",
+    ]);
+
+    const daily = buildSeasonMatchChartRows(views, series);
+    const weekly = aggregateSeasonMatchChartRowsByGrouping(
+      daily,
+      views,
+      "week",
+    );
+    const factUpcoming = seasonMatchFactKey("upcoming-match");
+    const planToday = seasonMatchPlanKey("today-match");
+    const planUpcoming = seasonMatchPlanKey("upcoming-match");
+
+    for (const rows of [daily, weekly]) {
+      const planTodayRow = rows.find((row) => row[planToday] != null);
+      const planUpcomingRow = rows.find((row) => row[planUpcoming] != null);
+      expect(planTodayRow?.dateKey).toBe(todayKey);
+      expect(planUpcomingRow?.dateKey).toBe(upcomingKey);
+      expect(planTodayRow?.dateKey).not.toBe(planUpcomingRow?.dateKey);
+
+      const lastFactUpcoming = [...rows]
+        .reverse()
+        .find((row) => row[factUpcoming] != null);
+      expect(lastFactUpcoming?.dateKey).toBe(todayKey);
+      expect(lastFactUpcoming?.[planUpcoming]).toBeNull();
+      expect(
+        rows.find((row) => row.dateKey === upcomingKey)?.[factUpcoming],
+      ).toBeNull();
+    }
+  });
+
   it("aggregates daily rows by month using the period-end cumulative snapshot", () => {
     const matchDateKey = new Date(2026, 4, 20).getTime();
     const series = [
@@ -528,6 +593,28 @@ describe("tickets season match chart — helpers", () => {
       /TicketsSeasonMatchDynamicsWidget[\s\S]*timeGrouping=\{ticketChartTimeGrouping\}/,
     );
     expect(filterContext).toContain("timeGrouping: grouping");
+  });
+
+  it("places tickets sales full-bleed with charts stacked below, not in a side column", () => {
+    const dashboard = readFileSync(
+      join(process.cwd(), "app/dashboard-app.tsx"),
+      "utf8",
+    );
+    const ticketsStart = dashboard.indexOf('{activeTab === "tickets" && (');
+    const merchStart = dashboard.indexOf('{activeTab === "merch" && (');
+    expect(ticketsStart).toBeGreaterThan(-1);
+    expect(merchStart).toBeGreaterThan(ticketsStart);
+    const ticketsBlock = dashboard.slice(ticketsStart, merchStart);
+
+    expect(ticketsBlock).toMatch(
+      /TicketsSalesSection[\s\S]*TicketsMatchDynamicsSection[\s\S]*TicketsPlanFactWidget[\s\S]*TicketsZoneSectorWidget/,
+    );
+    expect(ticketsBlock).not.toMatch(
+      /TICKETS_TWO_COL_GRID_CLASS[\s\S]*TicketsSalesSection[\s\S]*TicketsMatchDynamicsSection/,
+    );
+    expect(ticketsBlock).toMatch(
+      /TICKETS_TWO_COL_GRID_CLASS[\s\S]*TicketsZoneSectorWidget/,
+    );
   });
 
   it("keeps the hover tooltip from being clipped by the chart scroll box", () => {
@@ -628,6 +715,83 @@ describe("tickets season match chart — mock series", () => {
 
     expect(weeklyLabels).toContain("17.05.26");
     expect(dailyLabels).toContain("17.05.26");
+  });
+
+  it("keeps Dynamo 15.05 and 17.05 on distinct dates in current-sales, including week grouping", () => {
+    expect(format(MOCK_TODAY, "dd.MM.yyyy")).toBe("15.05.2026");
+
+    const series = computeTicketsMatchCumulativeSeries(
+      DEFAULT_DASHBOARD_FILTERS,
+      DEFAULT_TICKET_FILTERS,
+    );
+    const selected = selectSeasonMatchChartViews(
+      buildSeasonMatchSeriesViews(series),
+    );
+    const dynamo15 = selected.find(
+      (view) =>
+        view.matchId === "match-15" ||
+        (view.opponent.includes("Динамо Мск") &&
+          view.matchDate.includes("15.05")),
+    );
+    const dynamo17 = selected.find(
+      (view) =>
+        view.matchId === "match-16" ||
+        (view.opponent.includes("Динамо Мск") &&
+          view.matchDate.includes("17.05")),
+    );
+
+    expect(dynamo15).toBeDefined();
+    expect(dynamo17).toBeDefined();
+    expect(dynamo15?.isOnSale).toBe(true);
+    expect(dynamo17?.isOnSale).toBe(true);
+    expect(dynamo15?.eventCompleted).toBe(false);
+    expect(dynamo17?.eventCompleted).toBe(false);
+    expect(dynamo15?.matchDate).toBe("15.05.26");
+    expect(dynamo17?.matchDate).toBe("17.05.26");
+    expect(dynamo15?.matchDateKey).not.toBe(dynamo17?.matchDateKey);
+
+    const todayKey = startOfDay(MOCK_TODAY).getTime();
+    expect(formatSeasonMatchDateLabel(dynamo15!.matchDateKey)).toBe("15.05.26");
+    expect(formatSeasonMatchDateLabel(dynamo17!.matchDateKey)).toBe("17.05.26");
+    expect(dynamo17!.matchDateKey).toBeGreaterThan(todayKey);
+
+    const daily = buildSeasonMatchChartRows(selected, series);
+    const weekly = aggregateSeasonMatchChartRowsByGrouping(
+      daily,
+      selected,
+      "week",
+    );
+
+    for (const rows of [daily, weekly]) {
+      const plan15Rows = rows.filter(
+        (row) => row[seasonMatchPlanKey(dynamo15!.matchId)] != null,
+      );
+      const plan16Rows = rows.filter(
+        (row) => row[seasonMatchPlanKey(dynamo17!.matchId)] != null,
+      );
+      expect(plan15Rows).toHaveLength(1);
+      expect(plan16Rows).toHaveLength(1);
+      expect(plan15Rows[0].dateKey).toBe(dynamo15!.matchDateKey);
+      expect(plan16Rows[0].dateKey).toBe(dynamo17!.matchDateKey);
+      expect(plan15Rows[0].dateKey).not.toBe(plan16Rows[0].dateKey);
+
+      const fact16 = seasonMatchFactKey(dynamo17!.matchId);
+      const lastFact16 = [...rows]
+        .reverse()
+        .find((row) => row[fact16] != null);
+      expect(lastFact16).toBeDefined();
+      expect(formatSeasonMatchDateLabel(lastFact16!.dateKey)).toBe("15.05.26");
+      expect(lastFact16!.dateKey).toBeLessThan(dynamo17!.matchDateKey);
+      expect(lastFact16![seasonMatchPlanKey(dynamo17!.matchId)]).toBeNull();
+
+      const matchDateKeys = selected.map((view) => view.matchDateKey);
+      const labels = buildSeasonMatchXAxisTicks(rows, {
+        grouping: rows === weekly ? "week" : "day",
+        matchDateKeys,
+      }).map((tick) => formatSeasonMatchAxisLabel(tick, rows, matchDateKeys));
+      expect(labels).toContain("15.05.26");
+      expect(labels).toContain("17.05.26");
+    }
   });
 
   it("keeps independent Dynamo current-sales series rather than a shared copy", () => {

@@ -18,6 +18,8 @@ import {
   PARKING_CAPACITY_MHL,
   PARKING_CAPACITY_SECONDARY,
   parkingCapacityForArenaSeats,
+  getMatchParkingCapacity,
+  SECONDARY_ARENA_CAPACITY,
   raiseMatchTicketPlanToFulfillmentCap,
   TICKET_PLAN_FILL_RATE,
   TICKET_PLAN_PARKING_UNIT_PRICE,
@@ -236,12 +238,21 @@ describe("ticket match sales plan", () => {
 
   it("uses fixed parking inventory, not 12% of sold tickets", () => {
     expect(PARKING_CAPACITY_MAIN).toBe(1440);
-    expect(PARKING_CAPACITY_SECONDARY).toBe(360);
+    expect(PARKING_CAPACITY_SECONDARY).toBe(800);
     expect(PARKING_CAPACITY_MHL).toBe(756);
+    expect(SECONDARY_ARENA_CAPACITY).toBe(4000);
     expect(parkingCapacityForArenaSeats(12_000)).toBe(1440);
-    expect(parkingCapacityForArenaSeats(3_000)).toBe(360);
+    expect(parkingCapacityForArenaSeats(4_000)).toBe(800);
     expect(parkingCapacityForArenaSeats(6_300)).toBe(756);
     expect(occupancyMassCapacity(12_000)).toBe(13_440);
+    expect(occupancyMassCapacity(SECONDARY_ARENA_CAPACITY)).toBe(4800);
+    expect(
+      getMatchParkingCapacity({
+        capacity: SECONDARY_ARENA_CAPACITY,
+        arena: "secondary",
+        league: "VHL",
+      }),
+    ).toBe(800);
   });
 
   it("computes occupancy from arena+parking issued vs fixed parking capacity", () => {
@@ -251,6 +262,7 @@ describe("ticket match sales plan", () => {
       10,
     );
     expect(issuedOccupancyPercent(15_000, 12_000)).toBe(100);
+    expect(issuedOccupancyPercent(4_800, 4_000)).toBe(100);
     expect(issuedOccupancyPercent(12_000, 0)).toBeNull();
   });
 });

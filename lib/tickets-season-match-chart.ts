@@ -315,10 +315,11 @@ export function buildSeasonMatchChartRows(
       if (point.revenue != null) {
         dateKeys.add(point.dateKey);
       }
-      if (point.daysBeforeMatch === 0) {
-        dateKeys.add(point.dateKey);
-      }
     }
+  }
+
+  for (const view of views) {
+    dateKeys.add(view.matchDateKey);
   }
 
   return [...dateKeys]
@@ -343,7 +344,7 @@ export function buildSeasonMatchChartRows(
             : null;
 
         row[planKey] =
-          point?.daysBeforeMatch === 0 ? view.planRevenue : null;
+          dateKey === view.matchDateKey ? view.planRevenue : null;
       }
 
       return row;
@@ -378,7 +379,36 @@ function getSeasonMatchPeriodLabel(
   return formatSeasonMatchDateLabel(periodSortKey);
 }
 
-/** Buckets daily chart rows by week/month; cumulative values use period-end snapshot. */
+function snapshotSeasonMatchBucket(
+  bucketRows: TicketsSeasonMatchChartRow[],
+  dateKey: number,
+  periodLabel: string,
+  seriesKeys: string[],
+): TicketsSeasonMatchChartRow {
+  const aggregated: TicketsSeasonMatchChartRow = {
+    dateKey,
+    periodLabel,
+  };
+
+  for (const key of seriesKeys) {
+    let value: number | null = null;
+    for (const row of bucketRows) {
+      const pointValue = row[key];
+      if (pointValue != null) {
+        value = pointValue as number;
+      }
+    }
+    aggregated[key] = value;
+  }
+
+  return aggregated;
+}
+
+/**
+ * Buckets daily chart rows by week/month; cumulative values use period-end
+ * snapshot. Upcoming match-day markers stay on the real match date instead of
+ * collapsing onto the last fact day (MOCK_TODAY) in the same period.
+ */
 export function aggregateSeasonMatchChartRowsByGrouping(
   dailyRows: TicketsSeasonMatchChartRow[],
   views: TicketsSeasonMatchSeriesView[],
@@ -392,6 +422,8 @@ export function aggregateSeasonMatchChartRowsByGrouping(
     seasonMatchFactKey(view.matchId),
     seasonMatchPlanKey(view.matchId),
   ]);
+  const factKeys = views.map((view) => seasonMatchFactKey(view.matchId));
+  const matchDateKeySet = new Set(views.map((view) => view.matchDateKey));
 
   const buckets = new Map<number, TicketsSeasonMatchChartRow[]>();
 
@@ -404,25 +436,59 @@ export function aggregateSeasonMatchChartRowsByGrouping(
 
   return [...buckets.entries()]
     .sort(([left], [right]) => left - right)
-    .map(([periodSortKey, bucketRows]) => {
-      const lastRow = bucketRows[bucketRows.length - 1];
-      const aggregated: TicketsSeasonMatchChartRow = {
-        dateKey: lastRow.dateKey,
-        periodLabel: getSeasonMatchPeriodLabel(periodSortKey, grouping),
-      };
+    .flatMap(([periodSortKey, bucketRows]) => {
+      const sortedBucket = [...bucketRows].sort(
+        (left, right) => left.dateKey - right.dateKey,
+      );
+      const periodLabel = getSeasonMatchPeriodLabel(periodSortKey, grouping);
 
-      for (const key of seriesKeys) {
-        let value: number | null = null;
-        for (const row of bucketRows) {
-          const pointValue = row[key];
-          if (pointValue != null) {
-            value = pointValue as number;
-          }
+      let lastFactRow: TicketsSeasonMatchChartRow | null = null;
+      for (const row of sortedBucket) {
+        if (factKeys.some((key) => row[key] != null)) {
+          lastFactRow = row;
         }
-        aggregated[key] = value;
       }
 
-      return aggregated;
+      const laterMatchRows = lastFactRow
+        ? sortedBucket.filter(
+            (row) =>
+              matchDateKeySet.has(row.dateKey) &&
+              row.dateKey > lastFactRow.dateKey,
+          )
+        : sortedBucket.filter((row) => matchDateKeySet.has(row.dateKey));
+
+      if (!lastFactRow) {
+        return laterMatchRows;
+      }
+
+      if (laterMatchRows.length === 0) {
+        const lastRow = sortedBucket[sortedBucket.length - 1];
+        return [
+          snapshotSeasonMatchBucket(
+            sortedBucket,
+            lastRow.dateKey,
+            periodLabel,
+            seriesKeys,
+          ),
+        ];
+      }
+
+      const snapshotRows = sortedBucket.filter(
+        (row) => row.dateKey <= lastFactRow.dateKey,
+      );
+      const snapshot = snapshotSeasonMatchBucket(
+        snapshotRows,
+        lastFactRow.dateKey,
+        periodLabel,
+        seriesKeys,
+      );
+      for (const view of views) {
+        if (view.matchDateKey > lastFactRow.dateKey) {
+          snapshot[seasonMatchPlanKey(view.matchId)] = null;
+        }
+      }
+
+      return [snapshot, ...laterMatchRows];
     });
 }
 

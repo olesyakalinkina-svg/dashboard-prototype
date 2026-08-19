@@ -49,6 +49,10 @@ import {
   ALL_MERCH_SALES_POINTS,
   getMerchProductCategory,
   isMerchMatchTablePoint,
+  isMerchOffMatchTablePoint,
+  pinMerchOffMatchLast,
+  MERCH_OFF_MATCH_ID,
+  MERCH_OFF_MATCH_LABEL,
   MERCH_PRODUCT_CATEGORY_LABELS,
   MERCH_SALES_POINT_LABELS,
   getEffectiveMerchTimeGrouping,
@@ -62,6 +66,7 @@ import {
   LEGACY_TICKET_PLAN_AVG_PRICE,
   TICKET_PLAN_AVG_PRICE,
 } from "@/lib/ticket-plan";
+import { formatTicketEventTitle } from "@/lib/format";
 import {
   explicitMerchPlanFulfillment,
   getMatchMerchPlanRevenue,
@@ -3233,7 +3238,7 @@ export function computeMatchSalesTable(
 
     rows.push({
       matchId: match.id,
-      eventLabel: `${match.opponent} ${format(match.date, "dd-MM-yy", { locale: ru })}`,
+      eventLabel: formatTicketEventTitle(match),
       date: match.date,
       revenue: agg.revenue,
       planRevenue,
@@ -3318,6 +3323,50 @@ export function computeMerchMatchSalesTable(
   }
 
   return rows.sort((a, b) => b.date.getTime() - a.date.getTime());
+}
+
+export function computeMerchOffMatchSalesRow(
+  filters: DashboardFilters,
+  merchFilters: MerchFilters,
+): MerchMatchSalesRow | null {
+  if (merchFilters.matchId.length > 0) return null;
+
+  const txs = getFilteredMerchTransactions(filters, merchFilters);
+  const agg = createMerchMetrics();
+  let latestDate: Date | null = null;
+
+  for (const tx of txs) {
+    if (!isMerchOffMatchTablePoint(tx.merchSalesPoint)) continue;
+    applyMerchTransaction(agg, tx);
+    if (!latestDate || tx.date > latestDate) {
+      latestDate = tx.date;
+    }
+  }
+
+  if (agg.receipts <= 0 || agg.revenue <= 0 || !latestDate) return null;
+
+  return {
+    matchId: MERCH_OFF_MATCH_ID,
+    eventLabel: MERCH_OFF_MATCH_LABEL,
+    date: latestDate,
+    revenue: agg.revenue,
+    planRevenue: 0,
+    avgCheck: agg.receipts > 0 ? agg.revenue / agg.receipts : 0,
+    receipts: agg.receipts,
+    units: agg.units,
+    upt: agg.receipts > 0 ? agg.units / agg.receipts : 0,
+    attendance: 0,
+    purchaseConversionPct: 0,
+  };
+}
+
+export function computeMerchSalesTableWithOffMatch(
+  filters: DashboardFilters,
+  merchFilters: MerchFilters,
+): MerchMatchSalesRow[] {
+  const rows = computeMerchMatchSalesTable(filters, merchFilters);
+  const offMatch = computeMerchOffMatchSalesRow(filters, merchFilters);
+  return offMatch ? pinMerchOffMatchLast([...rows, offMatch]) : rows;
 }
 
 export function computeMerchSkuSalesTable(
@@ -3449,7 +3498,7 @@ export function computeCombinedMatchSalesTable(
 
     rows.push({
       matchId,
-      eventLabel: `${match.opponent} ${format(match.date, "dd-MM-yy", { locale: ru })}`,
+      eventLabel: formatTicketEventTitle(match),
       date: match.date,
       ticketRevenue,
       merchRevenue,
@@ -3563,7 +3612,7 @@ export function computeMatchRevenueChart(
     .slice()
     .sort((a, b) => a.date.getTime() - b.date.getTime())
     .map((row) => ({
-      match: row.eventLabel,
+      match: `${row.eventLabel} ${format(row.date, "dd-MM-yy", { locale: ru })}`,
       tickets: row.ticketRevenue,
       merch: row.merchRevenue,
     }));

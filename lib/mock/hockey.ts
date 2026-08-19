@@ -1,5 +1,5 @@
 import { addDays, subDays } from "date-fns";
-import type { Promotion, SubscriptionPlan } from "@/types/dashboard";
+import type { Promotion } from "@/types/dashboard";
 import {
   getPromotionMatchDate,
   MOCK_TODAY,
@@ -126,11 +126,4 @@ export function getMatchLabel(matchId: string): string {
   return `vs ${match.opponent}`;
 }
 
-export const subscriptionPlans: SubscriptionPlan[] = [
-  { id: "plan-1", code: "SUB-5-A", name: "Абонемент на 5 матчей (сектор A)", matchCount: 5, price: 6500 },
-  { id: "plan-2", code: "SUB-5-B", name: "Абонемент на 5 матчей (сектор B)", matchCount: 5, price: 4875 },
-  { id: "plan-3", code: "SUB-10-A", name: "Абонемент на 10 матчей", matchCount: 10, price: 11700 },
-  { id: "plan-4", code: "SUB-SEASON", name: "Сезонный абонемент", matchCount: 30, price: 55250 },
-  { id: "plan-5", code: "SUB-VIP", name: "VIP-сезонный абонемент", matchCount: 30, price: 162500 },
-  { id: "plan-6", code: "SUB-STUD", name: "Студенческий абонемент", matchCount: 10, price: 3900 },
-];
+export { subscriptionPlans } from "@/lib/mock/subscription-catalog";

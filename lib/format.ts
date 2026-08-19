@@ -64,6 +64,14 @@ export function formatDate(date: Date): string {
   }).format(date);
 }
 
+/**
+ * Tickets «Продажи» / zone-sector / Matches tab table event title: opponent only.
+ * Match date stays in the separate Дата column (and chart labels keep their own format).
+ */
+export function formatTicketEventTitle(match: { opponent: string }): string {
+  return match.opponent;
+}
+
 export function formatDateTime(date: Date): string {
   return new Intl.DateTimeFormat("ru-RU", {
     day: "2-digit",

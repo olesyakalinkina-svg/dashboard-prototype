@@ -1,5 +1,5 @@
-import { endOfDay, format, isAfter } from "date-fns";
-import { ru } from "date-fns/locale";
+import { endOfDay, isAfter } from "date-fns";
+import { formatTicketEventTitle } from "@/lib/format";
 import {
   allocateIntegerShares,
   getSectorCapacitiesForMatch,
@@ -1073,7 +1073,7 @@ export function buildZoneSectorMatchTree(
         level: "match" as const,
         matchId: match.id,
         date: match.date,
-        label: `${match.opponent} ${format(match.date, "dd-MM-yy", { locale: ru })}`,
+        label: formatTicketEventTitle(match),
         ...metrics,
         hasChildren,
         children: [] as ZoneSectorTreeNode[],

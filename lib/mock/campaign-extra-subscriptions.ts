@@ -9,14 +9,30 @@ import {
   parseCalendarDate,
 } from "@/lib/subscription-campaign/dates";
 import { MOCK_TODAY } from "@/lib/mock/constants";
+import {
+  getSubscriptionListPrice,
+  subscriptionPlans,
+} from "@/lib/mock/subscription-catalog";
 
-const PLANS = [
-  { id: "plan-1", name: "Абонемент на 5 матчей (сектор A)", matchCount: 5, price: 6500, zone: "A" as Sector },
-  { id: "plan-2", name: "Абонемент на 5 матчей (сектор B)", matchCount: 5, price: 4875, zone: "B1" as Sector },
-  { id: "plan-4", name: "Сезонный абонемент", matchCount: 30, price: 55250, zone: "A" as Sector },
-  { id: "plan-5", name: "VIP-сезонный абонемент", matchCount: 30, price: 162500, zone: "VIP" as Sector },
-  { id: "plan-6", name: "Студенческий абонемент", matchCount: 10, price: 3900, zone: "B1" as Sector },
-] as const;
+const PLAN_ZONES: Record<string, Sector> = {
+  "plan-1": "A",
+  "plan-2": "B1",
+  "plan-3": "A",
+  "plan-4": "A",
+  "plan-5": "VIP",
+  "plan-6": "B1",
+  "plan-7": "B1",
+  "plan-8": "A",
+  "plan-9": "A",
+};
+
+const PLANS = subscriptionPlans.map((plan) => ({
+  id: plan.id,
+  name: plan.name,
+  matchCount: plan.matchCount,
+  price: getSubscriptionListPrice("KHL", plan.id),
+  zone: PLAN_ZONES[plan.id] ?? ("A" as Sector),
+}));
 
 /**
  * Demo sales for the active spring campaign. Kept out of hockey-mock.json so

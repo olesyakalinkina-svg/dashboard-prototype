@@ -43,6 +43,35 @@ export const MERCH_SALES_POINT_OPTIONS = ALL_MERCH_SALES_POINTS.map((value) => (
 export const MERCH_MATCH_TABLE_EXCLUDED_POINTS: ReadonlySet<MerchSalesPoint> =
   new Set(["online_store", "mall_raduga", "mall_continent"]);
 
+export const MERCH_OFF_MATCH_SALES_POINTS: MerchSalesPoint[] =
+  ALL_MERCH_SALES_POINTS.filter((point) =>
+    MERCH_MATCH_TABLE_EXCLUDED_POINTS.has(point),
+  );
+
+export const MERCH_OFF_MATCH_ID = "off-match";
+export const MERCH_OFF_MATCH_LABEL = "Продажи вне матча";
+
+export function isMerchOffMatchId(matchId: string): boolean {
+  return matchId === MERCH_OFF_MATCH_ID;
+}
+
+/** Keep «Продажи вне матча» after match rows; Итого stays a separate footer. */
+export function pinMerchOffMatchLast<T extends { matchId: string }>(
+  items: T[],
+): T[] {
+  const rest: T[] = [];
+  const offMatch: T[] = [];
+  for (const item of items) {
+    if (isMerchOffMatchId(item.matchId)) offMatch.push(item);
+    else rest.push(item);
+  }
+  return offMatch.length === 0 ? items : [...rest, ...offMatch];
+}
+
+export function isMerchOffMatchTablePoint(point?: MerchSalesPoint): boolean {
+  return Boolean(point && MERCH_MATCH_TABLE_EXCLUDED_POINTS.has(point));
+}
+
 export function isMerchMatchTablePoint(point?: MerchSalesPoint): boolean {
   return !point || !MERCH_MATCH_TABLE_EXCLUDED_POINTS.has(point);
 }

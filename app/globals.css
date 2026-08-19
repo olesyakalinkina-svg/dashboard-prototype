@@ -111,6 +111,15 @@ body {
   z-index: 3;
 }
 
+/*
+ * Sticky first cells paint their own background, so tr:hover never shows there.
+ * Paint every td (including the name column) when the row is hovered.
+ */
+.sticky-scroll-table-row-hover tbody tr:hover > td,
+.sticky-scroll-table-row-hover tbody tr:hover > td:first-child {
+  background: var(--background);
+}
+
 .tab-strip-fade {
   pointer-events: none;
   position: absolute;

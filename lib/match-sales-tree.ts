@@ -76,6 +76,15 @@ export const MATCH_SALES_SECTION_LABELS: Record<MatchSalesSectionKind, string> =
     priceZone: "Ценовая зона",
   };
 
+/** Revenue / plan as a percent, or null when there is no plan base. */
+export function matchSalesPlanFulfillmentPct(
+  revenue: number,
+  planRevenue: number | null | undefined,
+): number | null {
+  if (planRevenue == null || planRevenue <= 0) return null;
+  return (revenue / planRevenue) * 100;
+}
+
 type BranchAgg = TicketSalesAgg & { issuedTickets: number };
 
 function createBranchAgg(): BranchAgg {
@@ -209,6 +218,7 @@ export type MatchSalesSortId =
   | "eventLabel"
   | "date"
   | "revenue"
+  | "planFulfillment"
   | "avgPrice"
   | "ticketsSold"
   | "freeTickets"
@@ -240,6 +250,11 @@ function compareMatchSalesNodes(
       return (a.date?.getTime() ?? 0) - (b.date?.getTime() ?? 0);
     case "revenue":
       return a.revenue - b.revenue;
+    case "planFulfillment": {
+      const aPct = matchSalesPlanFulfillmentPct(a.revenue, a.planRevenue);
+      const bPct = matchSalesPlanFulfillmentPct(b.revenue, b.planRevenue);
+      return (aPct ?? Number.NEGATIVE_INFINITY) - (bPct ?? Number.NEGATIVE_INFINITY);
+    }
     case "avgPrice":
       return a.avgPrice - b.avgPrice;
     case "ticketsSold":

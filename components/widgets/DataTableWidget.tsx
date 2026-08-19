@@ -25,6 +25,9 @@ import {
   formatPercent,
 } from "@/lib/format";
 import { occupancyMassCapacity } from "@/lib/ticket-plan";
+import {
+  COMBINED_MATCH_SALES_COLUMN_WIDTHS,
+} from "@/components/ui/sales-table-layout";
 import { SUBSCRIPTION_CHANNEL_LABELS } from "@/lib/subscription-filter-options";
 import {
   ORDER_SOURCE_LABELS,
@@ -216,7 +219,7 @@ function DataTable<T>({
             {table.getRowModel().rows.map((row) => (
               <tr
                 key={row.id}
-                className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background)]"
+                className="border-b border-[var(--border)] last:border-0"
               >
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id} className="px-3 py-2.5 text-[var(--foreground)]">
@@ -269,6 +272,8 @@ type MerchSalesTableProps<T> = {
   pageSize?: number;
   titleKey?: string;
   dateKey?: string;
+  columnWidths?: Record<string, string>;
+  tableClassName?: string;
   /** Stretch to the grid row (taller neighbor). Off = hug the current page of rows. */
   fillHeight?: boolean;
 };
@@ -284,6 +289,8 @@ function MerchSalesTable<T>({
   pageSize = 10,
   titleKey,
   dateKey,
+  columnWidths,
+  tableClassName,
   fillHeight = true,
 }: MerchSalesTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>(defaultSort);
@@ -343,17 +350,39 @@ function MerchSalesTable<T>({
           />
         ) : (
           <StickyScrollTable>
-            <table className="w-full min-w-[52rem] text-sm leading-snug">
+            <table
+              className={clsx(
+                "w-full text-sm leading-snug",
+                tableClassName ?? "min-w-[52rem]",
+                columnWidths && "table-fixed",
+              )}
+            >
+          {columnWidths ? (
+            <colgroup>
+              {table.getAllLeafColumns().map((column) => (
+                <col key={column.id} className={columnWidths[column.id]} />
+              ))}
+            </colgroup>
+          ) : null}
           <thead>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id} className="border-b border-[var(--border)]">
                 {hg.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="cursor-pointer px-3 py-2 text-left text-xs font-medium leading-snug text-[var(--muted)]"
+                    className={clsx(
+                      "cursor-pointer px-3 py-2 text-left text-xs font-medium leading-snug text-[var(--muted)]",
+                      columnWidths && "overflow-hidden",
+                      columnWidths?.[header.column.id],
+                    )}
                     onClick={header.column.getToggleSortingHandler()}
                   >
-                    <span className="inline-flex items-center gap-1">
+                    <span
+                      className={clsx(
+                        "inline-flex items-center gap-1",
+                        columnWidths && "min-w-0 whitespace-nowrap",
+                      )}
+                    >
                       {flexRender(
                         header.column.columnDef.header,
                         header.getContext(),
@@ -372,10 +401,16 @@ function MerchSalesTable<T>({
             {table.getRowModel().rows.map((row) => (
               <tr
                 key={row.id}
-                className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background)]"
+                className="border-b border-[var(--border)] last:border-0"
               >
                 {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="px-3 py-2.5 text-[var(--foreground)]">
+                  <td
+                    key={cell.id}
+                    className={clsx(
+                      "px-3 py-2.5 text-[var(--foreground)]",
+                      columnWidths?.[cell.column.id],
+                    )}
+                  >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
@@ -568,6 +603,8 @@ export function CombinedMatchSalesTable({
           pageSize={15}
           titleKey="eventLabel"
           dateKey="date"
+          columnWidths={COMBINED_MATCH_SALES_COLUMN_WIDTHS}
+          tableClassName="min-w-[72rem]"
         />
   );
 }

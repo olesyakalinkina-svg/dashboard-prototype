@@ -3,10 +3,15 @@ import { DEFAULT_DASHBOARD_FILTERS } from "@/lib/filter-coverage";
 import {
   computeMatchSalesTable,
   computeMerchMatchSalesTable,
+  computeMerchOffMatchSalesRow,
+  computeMerchSalesTableWithOffMatch,
   filterMatchesByMerchFilters,
+  filterMerchTransactions,
 } from "@/lib/filters";
 import {
   DEFAULT_MERCH_FILTERS,
+  MERCH_OFF_MATCH_ID,
+  MERCH_OFF_MATCH_LABEL,
   MERCH_PRODUCT_CATEGORY_LABELS,
   MERCH_SALES_POINT_LABELS,
 } from "@/lib/merch-filter-options";
@@ -18,12 +23,16 @@ import {
   MERCH_FIXTURE_ARENA_TOP_PRODUCTS,
   MERCH_FIXTURE_NORTH_MATCH_ID,
   MERCH_FIXTURE_NORTH_TOP_SKU,
+  MERCH_FIXTURE_OFF_MATCH_RECEIPTS,
+  MERCH_FIXTURE_OFF_MATCH_REVENUE,
+  MERCH_FIXTURE_OFF_MATCH_UNITS,
 } from "@/lib/merch-sales-tree.fixture";
 import {
   computeMerchSalesTree,
   flattenExpandedMerchSalesTree,
   MERCH_SALES_SECTION_LABELS,
   MERCH_SALES_TOP_PRODUCTS_LIMIT,
+  sortMerchSalesNodes,
   type MerchSalesTreeNode,
 } from "@/lib/merch-sales-tree";
 
@@ -45,7 +54,7 @@ function shareSum(node: MerchSalesTreeNode): number {
 describe("merch sales tree", () => {
   it("builds match → three parallel sections, not nested into each other", () => {
     const { tree } = buildDefaultMerchFixtureTree();
-    expect(tree).toHaveLength(2);
+    expect(tree).toHaveLength(3);
 
     for (const match of tree) {
       expect(match.level).toBe("match");
@@ -185,7 +194,7 @@ describe("merch sales tree", () => {
     const { tree } = buildDefaultMerchFixtureTree();
     const collapsed = flattenExpandedMerchSalesTree(tree, new Set());
     expect(collapsed.every((row) => row.level === "match")).toBe(true);
-    expect(collapsed).toHaveLength(2);
+    expect(collapsed).toHaveLength(3);
 
     const match = tree[0]!;
     const matchOnly = flattenExpandedMerchSalesTree(
@@ -252,6 +261,79 @@ describe("merch sales tree", () => {
     expect(
       northTop.children.some((child) => child.label === "Футболка домашняя"),
     ).toBe(false);
+  });
+
+  it("adds a root-level off-match row that expands to the three retail/online channels", () => {
+    const { tree } = buildDefaultMerchFixtureTree();
+    const offMatch = tree.find((node) => node.matchId === MERCH_OFF_MATCH_ID);
+    expect(offMatch).toBeDefined();
+    expect(offMatch!.label).toBe(MERCH_OFF_MATCH_LABEL);
+    expect(offMatch!.level).toBe("match");
+    expect(offMatch!.revenue).toBe(MERCH_FIXTURE_OFF_MATCH_REVENUE);
+    expect(offMatch!.receipts).toBe(MERCH_FIXTURE_OFF_MATCH_RECEIPTS);
+    expect(offMatch!.units).toBe(MERCH_FIXTURE_OFF_MATCH_UNITS);
+    expect(offMatch!.attendance).toBe(0);
+    expect(offMatch!.planRevenue).toBe(0);
+
+    const channels = findSection(
+      offMatch!,
+      MERCH_SALES_SECTION_LABELS.salesChannel,
+    )!;
+    expect(channels.children.map((child) => child.label)).toEqual([
+      MERCH_SALES_POINT_LABELS.mall_raduga,
+      MERCH_SALES_POINT_LABELS.mall_continent,
+      MERCH_SALES_POINT_LABELS.online_store,
+    ]);
+    expect(
+      channels.children.find(
+        (child) => child.label === MERCH_SALES_POINT_LABELS.mall_raduga,
+      )!.revenue,
+    ).toBe(130_000);
+    expect(
+      channels.children.find(
+        (child) => child.label === MERCH_SALES_POINT_LABELS.mall_continent,
+      )!.revenue,
+    ).toBe(40_000);
+    expect(
+      channels.children.find(
+        (child) => child.label === MERCH_SALES_POINT_LABELS.online_store,
+      )!.revenue,
+    ).toBe(120_000);
+    expect(sumChildren(channels, "revenue")).toBe(offMatch!.revenue);
+
+    expect(tree.at(-1)?.matchId).toBe(MERCH_OFF_MATCH_ID);
+
+    const matchLabels = flattenExpandedMerchSalesTree(
+      tree.filter((node) => node.matchId !== MERCH_OFF_MATCH_ID),
+      new Set(),
+    ).map((row) => row.label);
+    expect(matchLabels).not.toContain(MERCH_SALES_POINT_LABELS.mall_raduga);
+    expect(matchLabels).not.toContain(MERCH_OFF_MATCH_LABEL);
+  });
+
+  it("pins off-match last after date or revenue sort", () => {
+    const { tree } = buildDefaultMerchFixtureTree();
+    const offMatch = tree.find((node) => node.matchId === MERCH_OFF_MATCH_ID)!;
+    expect(offMatch.date!.getTime()).toBeGreaterThan(
+      Math.max(
+        ...tree
+          .filter((node) => node.matchId !== MERCH_OFF_MATCH_ID)
+          .map((node) => node.date?.getTime() ?? 0),
+      ),
+    );
+    expect(tree.at(-1)?.matchId).toBe(MERCH_OFF_MATCH_ID);
+
+    const byDate = sortMerchSalesNodes(tree, { id: "date", desc: true });
+    expect(byDate.at(-1)?.matchId).toBe(MERCH_OFF_MATCH_ID);
+    expect(byDate.slice(0, -1).every((node) => node.matchId !== MERCH_OFF_MATCH_ID)).toBe(
+      true,
+    );
+
+    const byRevenueAsc = sortMerchSalesNodes(tree, { id: "revenue", desc: false });
+    expect(byRevenueAsc[0]?.revenue).toBeLessThanOrEqual(
+      byRevenueAsc[1]?.revenue ?? Infinity,
+    );
+    expect(byRevenueAsc.at(-1)?.matchId).toBe(MERCH_OFF_MATCH_ID);
   });
 });
 
@@ -380,5 +462,123 @@ describe("merch sales tree vs live mock", () => {
         ),
       ),
     ).toBe(true);
+  });
+
+  it("adds off-match Продажи aggregating ТРК Радуга, ТРК Континент, and Онлайн-магазин", () => {
+    const matchRows = computeMerchMatchSalesTable(
+      DEFAULT_DASHBOARD_FILTERS,
+      DEFAULT_MERCH_FILTERS,
+    );
+    const offMatch = computeMerchOffMatchSalesRow(
+      DEFAULT_DASHBOARD_FILTERS,
+      DEFAULT_MERCH_FILTERS,
+    );
+    const rows = computeMerchSalesTableWithOffMatch(
+      DEFAULT_DASHBOARD_FILTERS,
+      DEFAULT_MERCH_FILTERS,
+    );
+    expect(offMatch).not.toBeNull();
+    expect(rows).toHaveLength(matchRows.length + 1);
+    expect(rows.some((row) => row.matchId === MERCH_OFF_MATCH_ID)).toBe(true);
+    expect(rows.at(-1)?.matchId).toBe(MERCH_OFF_MATCH_ID);
+    expect(matchRows.some((row) => row.matchId === MERCH_OFF_MATCH_ID)).toBe(
+      false,
+    );
+
+    const txs = filterMerchTransactions(
+      DEFAULT_DASHBOARD_FILTERS,
+      DEFAULT_MERCH_FILTERS,
+      { useSeasonRange: true },
+    );
+    let revenue = 0;
+    let receipts = 0;
+    let units = 0;
+    const byPoint: Record<"mall_raduga" | "mall_continent" | "online_store", number> =
+      {
+        mall_raduga: 0,
+        mall_continent: 0,
+        online_store: 0,
+      };
+    for (const tx of txs) {
+      const point = tx.merchSalesPoint;
+      if (
+        point !== "mall_raduga" &&
+        point !== "mall_continent" &&
+        point !== "online_store"
+      ) {
+        continue;
+      }
+      if (tx.isReturn) {
+        revenue -= tx.amount;
+        units -= tx.quantity;
+        receipts = Math.max(0, receipts - 1);
+        byPoint[point] -= tx.amount;
+      } else {
+        revenue += tx.amount;
+        units += tx.quantity;
+        receipts += 1;
+        byPoint[point] += tx.amount;
+      }
+    }
+
+    expect(offMatch!.eventLabel).toBe(MERCH_OFF_MATCH_LABEL);
+    expect(offMatch!.revenue).toBe(revenue);
+    expect(offMatch!.receipts).toBe(receipts);
+    expect(offMatch!.units).toBe(units);
+    expect(offMatch!.revenue).toBeGreaterThan(0);
+    expect(byPoint.mall_raduga).toBeGreaterThan(0);
+    expect(byPoint.mall_continent).toBeGreaterThan(0);
+    expect(byPoint.online_store).toBeGreaterThan(0);
+
+    const tree = computeMerchSalesTree(
+      DEFAULT_DASHBOARD_FILTERS,
+      DEFAULT_MERCH_FILTERS,
+      rows,
+    );
+    const offNode = tree.find((node) => node.matchId === MERCH_OFF_MATCH_ID)!;
+    expect(tree.at(-1)?.matchId).toBe(MERCH_OFF_MATCH_ID);
+    const channels = findSection(
+      offNode,
+      MERCH_SALES_SECTION_LABELS.salesChannel,
+    )!;
+    expect(channels.children.map((child) => child.label)).toEqual([
+      MERCH_SALES_POINT_LABELS.mall_raduga,
+      MERCH_SALES_POINT_LABELS.mall_continent,
+      MERCH_SALES_POINT_LABELS.online_store,
+    ]);
+    expect(
+      channels.children.find(
+        (child) => child.label === MERCH_SALES_POINT_LABELS.mall_raduga,
+      )!.revenue,
+    ).toBe(byPoint.mall_raduga);
+    expect(
+      channels.children.find(
+        (child) => child.label === MERCH_SALES_POINT_LABELS.mall_continent,
+      )!.revenue,
+    ).toBe(byPoint.mall_continent);
+    expect(
+      channels.children.find(
+        (child) => child.label === MERCH_SALES_POINT_LABELS.online_store,
+      )!.revenue,
+    ).toBe(byPoint.online_store);
+    expect(sumChildren(channels, "revenue")).toBe(offNode.revenue);
+
+    const hiddenWhenMatchFilter = computeMerchOffMatchSalesRow(
+      DEFAULT_DASHBOARD_FILTERS,
+      { ...DEFAULT_MERCH_FILTERS, matchId: [matchRows[0]!.matchId] },
+    );
+    expect(hiddenWhenMatchFilter).toBeNull();
+
+    const allowed = filterMatchesByMerchFilters(DEFAULT_MERCH_FILTERS);
+    const upcoming = allowed.filter((match) => !match.eventCompleted);
+    expect(upcoming.length).toBeGreaterThan(0);
+    expect(matchRows).toHaveLength(
+      allowed.filter((match) => match.eventCompleted).length,
+    );
+    expect(
+      matchRows.some((row) =>
+        upcoming.some((match) => match.id === row.matchId),
+      ),
+    ).toBe(false);
   });
 });

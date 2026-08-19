@@ -49,7 +49,7 @@ describe("merch match sales plan", () => {
   it("varies by league and class so fulfillment can differ across matches", () => {
     const khl = getMatchMerchPlanRevenue(match());
     const vhl = getMatchMerchPlanRevenue(
-      match({ league: "VHL", attendance: 2500, capacity: 3000 }),
+      match({ league: "VHL", attendance: 3300, capacity: 4000 }),
     );
     const playoff = getMatchMerchPlanRevenue(match({ matchClass: "playoff" }));
     expect(khl).toBeGreaterThan(0);

@@ -5,6 +5,11 @@ import {
   ALL_MERCH_SALES_POINTS,
   getMerchProductCategory,
   isMerchMatchTablePoint,
+  isMerchOffMatchId,
+  isMerchOffMatchTablePoint,
+  pinMerchOffMatchLast,
+  MERCH_OFF_MATCH_ID,
+  MERCH_OFF_MATCH_SALES_POINTS,
   MERCH_PRODUCT_CATEGORY_LABELS,
   MERCH_SALES_POINT_LABELS,
 } from "@/lib/merch-filter-options";
@@ -173,13 +178,20 @@ export function sortMerchSalesNodes(
   nodes: MerchSalesTreeNode[],
   sort: { id: MerchSalesSortId; desc: boolean } | null,
 ): MerchSalesTreeNode[] {
-  if (!sort) return nodes;
+  const offMatch: MerchSalesTreeNode[] = [];
+  const matches: MerchSalesTreeNode[] = [];
+  for (const node of nodes) {
+    if (isMerchOffMatchId(node.matchId)) offMatch.push(node);
+    else matches.push(node);
+  }
+  if (!sort) return [...matches, ...offMatch];
   const direction = sort.desc ? -1 : 1;
-  return [...nodes].sort((a, b) => {
+  const sorted = [...matches].sort((a, b) => {
     const cmp = compareMerchSalesNodes(a, b, sort.id);
     if (cmp !== 0) return cmp * direction;
     return (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0);
   });
+  return [...sorted, ...offMatch];
 }
 
 function compareMerchSalesNodes(
@@ -266,16 +278,25 @@ function applyDimensionTransaction<K>(
   applyMerchBranchTransaction(agg, tx);
 }
 
+function merchSalesBucketId(tx: Transaction): string | null {
+  if (isMerchOffMatchTablePoint(tx.merchSalesPoint)) {
+    return MERCH_OFF_MATCH_ID;
+  }
+  if (!tx.matchId) return null;
+  if (!isMerchMatchTablePoint(tx.merchSalesPoint)) return null;
+  return tx.matchId;
+}
+
 export function buildMerchMatchAggregateIndex(
   transactions: Transaction[],
 ): Map<string, MerchMatchAggregate> {
   const index = new Map<string, MerchMatchAggregate>();
 
   for (const tx of transactions) {
-    if (!tx.matchId) continue;
-    if (!isMerchMatchTablePoint(tx.merchSalesPoint)) continue;
+    const bucketId = merchSalesBucketId(tx);
+    if (!bucketId) continue;
 
-    let match = index.get(tx.matchId);
+    let match = index.get(bucketId);
     if (!match) {
       match = {
         agg: createBranchAgg(),
@@ -283,7 +304,7 @@ export function buildMerchMatchAggregateIndex(
         categories: new Map(),
         products: new Map(),
       };
-      index.set(tx.matchId, match);
+      index.set(bucketId, match);
     }
     applyMerchBranchTransaction(match.agg, tx);
     applyDimensionTransaction(match.channels, tx.merchSalesPoint, tx);
@@ -433,7 +454,9 @@ function sectionNodesFromAggregate(
       salesChannel: leafNodesFromBuckets(
         row.matchId,
         "salesChannel",
-        ALL_MERCH_SALES_POINTS.filter((point) => isMerchMatchTablePoint(point)),
+        isMerchOffMatchId(row.matchId)
+          ? MERCH_OFF_MATCH_SALES_POINTS
+          : ALL_MERCH_SALES_POINTS.filter((point) => isMerchMatchTablePoint(point)),
         aggregate.channels,
         MERCH_SALES_POINT_LABELS,
         channelKey,
@@ -477,8 +500,14 @@ export function getMerchSalesTreeTransactions(
     useSeasonRange: true,
   });
   const allowed = matchIds ? new Set(matchIds) : null;
+  const includeOffMatch = !allowed || allowed.has(MERCH_OFF_MATCH_ID);
   const result: Transaction[] = [];
   for (const tx of txs) {
+    if (isMerchOffMatchTablePoint(tx.merchSalesPoint)) {
+      if (!includeOffMatch) continue;
+      result.push(tx);
+      continue;
+    }
     if (!tx.matchId) continue;
     if (allowed && !allowed.has(tx.matchId)) continue;
     if (!isMerchMatchTablePoint(tx.merchSalesPoint)) continue;
@@ -538,8 +567,10 @@ export function computeMerchSalesTree(
     });
   }
 
-  return nodes.sort(
-    (a, b) => (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0),
+  return pinMerchOffMatchLast(
+    nodes.sort(
+      (a, b) => (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0),
+    ),
   );
 }
 

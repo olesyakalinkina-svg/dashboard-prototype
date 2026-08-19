@@ -15,6 +15,7 @@ import {
   pruneExpandedKeys,
   pruneExpandedKeysForMatches,
   sortMatchSalesNodes,
+  matchSalesPlanFulfillmentPct,
   toggleExpandedKey,
   type MatchSalesTreeNode,
 } from "@/lib/match-sales-tree";
@@ -187,7 +188,15 @@ describe("match sales tree", () => {
       expect(node.loyaltyDiscountPct).toBe(row!.loyaltyDiscountPct);
       expect(node.planRevenue).toBe(row!.planRevenue);
       expect(node.capacity).toBe(row!.capacity);
+      expect(node.label).toBe(row!.eventLabel);
+      expect(node.label).not.toMatch(/\d{2}-\d{2}-\d{2}/);
     }
+  });
+
+  it("computes plan fulfillment percent only when a plan base exists", () => {
+    expect(matchSalesPlanFulfillmentPct(99, 100)).toBeCloseTo(99);
+    expect(matchSalesPlanFulfillmentPct(50, 0)).toBeNull();
+    expect(matchSalesPlanFulfillmentPct(50, null)).toBeNull();
   });
 
   it("treats sections as alternative views: totals match the parent, children split each cut", () => {

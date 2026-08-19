@@ -902,7 +902,8 @@ describe("composed zone/sector plan % (Динамо-like mix)", () => {
       mode: "zones_to_sectors",
     });
     const root = tree[0]!;
-    expect(root.label).toContain("Динамо Мск");
+    expect(root.label).toBe("Динамо Мск");
+    expect(root.label).not.toMatch(/\d{2}-\d{2}-\d{2}/);
     expect(root.revenue).toBe(MATCH_REVENUE);
     const matchPct = percentOneDecimal((root.revenue! / root.planRevenue!) * 100);
     expect(matchPct).toBe(99);

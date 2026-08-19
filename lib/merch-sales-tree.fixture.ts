@@ -1,5 +1,9 @@
 import { DEFAULT_DASHBOARD_FILTERS } from "@/lib/filter-coverage";
-import { DEFAULT_MERCH_FILTERS } from "@/lib/merch-filter-options";
+import {
+  DEFAULT_MERCH_FILTERS,
+  MERCH_OFF_MATCH_ID,
+  MERCH_OFF_MATCH_LABEL,
+} from "@/lib/merch-filter-options";
 import {
   computeMerchSalesTree,
   type MerchSalesTreeNode,
@@ -32,7 +36,7 @@ function d(year: number, monthIndex: number, day: number): Date {
 
 function merchTx(
   id: string,
-  matchId: string,
+  matchId: string | null,
   date: Date,
   fields: {
     amount: number;
@@ -60,6 +64,7 @@ function merchTx(
 
 const ARENA_DATE = d(2025, 9, 15);
 const NORTH_DATE = d(2025, 8, 20);
+const OFF_MATCH_DATE = d(2025, 10, 2);
 
 export const MERCH_FIXTURE_ARENA_TOP_PRODUCTS = [
   "Джерси игровое",
@@ -150,10 +155,53 @@ const NORTH_SALES: Transaction[] = [
   }),
 ];
 
+const OFF_MATCH_SALES: Transaction[] = [
+  merchTx("fx-off-raduga", null, OFF_MATCH_DATE, {
+    amount: 80_000,
+    quantity: 8,
+    merchSalesPoint: "mall_raduga",
+    productCategory: "jerseys",
+    description: "Футболка домашняя",
+  }),
+  merchTx("fx-off-continent", null, OFF_MATCH_DATE, {
+    amount: 40_000,
+    quantity: 4,
+    merchSalesPoint: "mall_continent",
+    productCategory: "souvenirs",
+    description: "Брелок клубный",
+  }),
+  merchTx("fx-off-online", null, OFF_MATCH_DATE, {
+    amount: 120_000,
+    quantity: 12,
+    merchSalesPoint: "online_store",
+    productCategory: "accessories",
+    description: "Кепка с логотипом",
+  }),
+];
+
+export const MERCH_FIXTURE_OFF_MATCH_REVENUE = 290_000;
+export const MERCH_FIXTURE_OFF_MATCH_RECEIPTS = 4;
+export const MERCH_FIXTURE_OFF_MATCH_UNITS = 29;
+
 export const MERCH_FIXTURE_TRANSACTIONS: Transaction[] = [
   ...ARENA_SALES,
   ...NORTH_SALES,
+  ...OFF_MATCH_SALES,
 ];
+
+export const MERCH_FIXTURE_OFF_MATCH_ROW: MerchMatchSalesRow = {
+  matchId: MERCH_OFF_MATCH_ID,
+  eventLabel: MERCH_OFF_MATCH_LABEL,
+  date: OFF_MATCH_DATE,
+  revenue: MERCH_FIXTURE_OFF_MATCH_REVENUE,
+  planRevenue: 0,
+  avgCheck: MERCH_FIXTURE_OFF_MATCH_REVENUE / MERCH_FIXTURE_OFF_MATCH_RECEIPTS,
+  receipts: MERCH_FIXTURE_OFF_MATCH_RECEIPTS,
+  units: MERCH_FIXTURE_OFF_MATCH_UNITS,
+  upt: MERCH_FIXTURE_OFF_MATCH_UNITS / MERCH_FIXTURE_OFF_MATCH_RECEIPTS,
+  attendance: 0,
+  purchaseConversionPct: 0,
+};
 
 export const MERCH_FIXTURE_MATCH_ROWS: MerchMatchSalesRow[] = [
   {
@@ -182,6 +230,7 @@ export const MERCH_FIXTURE_MATCH_ROWS: MerchMatchSalesRow[] = [
     attendance: 7200,
     purchaseConversionPct: (2 / 7200) * 100,
   },
+  MERCH_FIXTURE_OFF_MATCH_ROW,
 ];
 
 export function buildDefaultMerchFixtureTree(): {

@@ -17,6 +17,8 @@ import {
   issuedOccupancyPercent,
   occupancyMassCapacity,
   PARKING_CAPACITY_MAIN,
+  PARKING_CAPACITY_SECONDARY,
+  SECONDARY_ARENA_CAPACITY,
 } from "@/lib/ticket-plan";
 import { percentOneDecimal } from "@/lib/format";
 
@@ -187,6 +189,44 @@ describe("ticket plan fulfillment cap (dashboard data)", () => {
       expect(pct!).not.toBeCloseTo(112, 0);
     }
     expect(soldOutMain).toBeGreaterThan(0);
+  });
+
+  it("locks secondary arena 4000 + parking 800 for VHL occupancy", () => {
+    const rows = allMatchSalesRows();
+    const matches = new Map(getMatches().map((match) => [match.id, match]));
+    let vhl = 0;
+    let soldOutSecondary = 0;
+    for (const row of rows) {
+      const match = matches.get(row.matchId);
+      if (!match || match.league !== "VHL") continue;
+      vhl += 1;
+      expect(match.arena).toBe("secondary");
+      expect(match.capacity).toBe(SECONDARY_ARENA_CAPACITY);
+      expect(match.capacity).toBe(4000);
+      expect(row.capacity).toBe(4000);
+      const mass = occupancyMassCapacity(row.capacity);
+      expect(mass).toBe(4000 + PARKING_CAPACITY_SECONDARY);
+      expect(mass).toBe(4800);
+      const pct = issuedOccupancyPercent(
+        row.occupancyIssuedTickets,
+        row.capacity,
+      );
+      expect(pct, `${row.matchId} ${row.eventLabel} occupancy`).not.toBeNull();
+      expect(pct!).toBeLessThanOrEqual(100 + epsilon);
+      if (
+        isSoldOutOccupancyMatch(match) &&
+        match.eventCompleted &&
+        row.occupancyIssuedTickets > 0
+      ) {
+        soldOutSecondary += 1;
+        expect(pct, `${row.matchId} sold-out secondary occupancy`).toBeCloseTo(
+          100,
+          5,
+        );
+      }
+    }
+    expect(vhl).toBeGreaterThan(0);
+    expect(soldOutSecondary).toBeGreaterThan(0);
   });
 
   it("keeps tickets-tab KPI sold tickets and revenue at most +5% vs plan", () => {

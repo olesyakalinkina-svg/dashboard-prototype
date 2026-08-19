@@ -14,6 +14,7 @@ import { TableExcelButton } from "@/components/ui/ExcelDownloadButton";
 import { InlineBarCell } from "@/components/ui/InlineBarCell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { MobileSalesCards } from "@/components/widgets/MobileSalesCards";
+import { MATCH_SALES_COLUMN_WIDTHS } from "@/components/ui/sales-table-layout";
 import { StickyScrollTable } from "@/components/ui/StickyScrollTable";
 import { TreeExpandButton } from "@/components/ui/TreeExpandButton";
 import { useIsMobileLayout } from "@/hooks/useLayoutMode";
@@ -26,6 +27,7 @@ import {
   flattenExpandedMatchSalesTree,
   paginateTopLevel,
   sortMatchSalesNodes,
+  matchSalesPlanFulfillmentPct,
   type MatchSalesFlatRow,
   type MatchSalesTreeNode,
   type MatchSalesSortId,
@@ -41,17 +43,7 @@ import type { DashboardFilters, MatchSalesRow, TicketFilters } from "@/types/das
 
 const PAGE_SIZE = 15;
 
-const BAR_COLUMN_WIDTH_CLASS = "w-[10.5rem]";
-const COLUMN_WIDTH_CLASS: Record<string, string> = {
-  eventLabel: "w-auto min-w-0",
-  date: "w-[7rem]",
-  revenue: BAR_COLUMN_WIDTH_CLASS,
-  avgPrice: "w-[9rem]",
-  ticketsSold: "w-[9rem]",
-  freeTickets: "w-[6.5rem]",
-  issuedTickets: BAR_COLUMN_WIDTH_CLASS,
-  loyaltyDiscountPct: "w-[7rem]",
-};
+const COLUMN_WIDTH_CLASS = MATCH_SALES_COLUMN_WIDTHS;
 
 type MatchSalesTableMeta = {
   expandedSet: ReadonlySet<string>;
@@ -81,6 +73,7 @@ function isMatchSalesSortId(id: string): id is MatchSalesSortId {
     id === "eventLabel" ||
     id === "date" ||
     id === "revenue" ||
+    id === "planFulfillment" ||
     id === "avgPrice" ||
     id === "ticketsSold" ||
     id === "freeTickets" ||
@@ -170,24 +163,28 @@ const MATCH_SALES_COLUMNS: ColumnDef<MatchSalesFlatRow, unknown>[] = [
     header: "Выручка",
     cell: ({ row, table }) => {
       const item = row.original;
-      const { revenue, planRevenue } = item;
       const { barMax } = table.options.meta as MatchSalesTableMeta;
-      const fulfillmentPct =
-        planRevenue != null && planRevenue > 0
-          ? (revenue / planRevenue) * 100
-          : null;
       return (
         <InlineBarCell
-          value={revenue}
+          value={item.revenue}
           max={barMax.revenue}
-          share={fulfillmentPct ?? undefined}
-          formatted={formatCurrency(revenue)}
-          trailingFormatted={
-            fulfillmentPct !== null ? formatPercent(fulfillmentPct) : "—"
-          }
+          formatted={formatCurrency(item.revenue)}
           barClassName={getBarClass(item.level, "bg-rose-400", "bg-rose-300", "bg-rose-200")}
         />
       );
+    },
+  },
+  {
+    accessorKey: "planFulfillment",
+    accessorFn: (row) =>
+      matchSalesPlanFulfillmentPct(row.revenue, row.planRevenue),
+    header: "% выполнения плана",
+    cell: ({ row }) => {
+      const pct = matchSalesPlanFulfillmentPct(
+        row.original.revenue,
+        row.original.planRevenue,
+      );
+      return pct !== null ? formatPercent(pct) : "—";
     },
   },
   {
@@ -405,7 +402,7 @@ export const MatchSalesTable = memo(function MatchSalesTable({
         </div>
       )}
       <StickyScrollTable>
-      <table className="w-full min-w-[72rem] table-fixed text-sm leading-snug" data-testid="desktop-sales-table">
+      <table className="w-full min-w-[80rem] table-fixed text-sm leading-snug" data-testid="desktop-sales-table">
         <colgroup>
           {table.getAllLeafColumns().map((column) => (
             <col key={column.id} className={COLUMN_WIDTH_CLASS[column.id]} />
@@ -418,12 +415,12 @@ export const MatchSalesTable = memo(function MatchSalesTable({
                 <th
                   key={header.id}
                   className={clsx(
-                    "cursor-pointer px-3 py-2 text-left text-xs font-medium text-[var(--muted)]",
+                    "cursor-pointer overflow-hidden px-3 py-2 text-left text-xs font-medium leading-tight text-[var(--muted)]",
                     COLUMN_WIDTH_CLASS[header.column.id],
                   )}
                   onClick={header.column.getToggleSortingHandler()}
                 >
-                  <span className="inline-flex items-center gap-1">
+                  <span className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap">
                     {flexRender(
                       header.column.columnDef.header,
                       header.getContext(),
