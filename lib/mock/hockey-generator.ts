@@ -2908,6 +2908,7 @@ function generateSubscriptions(allMatches: Match[]): Subscription[] {
   id = seedCampaignPaceSubscriptions(subs, allMatches, id);
   realignPreviousSeasonSubscriptionPurchases(subs, allMatches);
   expandSeasonSubscriptionSoldTargets(subs, allMatches);
+  fillEmptyCampaignPaceDays(subs);
   applyLeagueSubscriptionCatalogPrices(subs);
 
   return subs.sort((a, b) => b.purchasedAt.getTime() - a.purchasedAt.getTime());
@@ -3499,15 +3500,19 @@ function ensureCriticalSubscriptionCombos(
   return id;
 }
 
-function getSellableCampaignDays(
-  totalDays: number,
-  emptyDays: ReadonlySet<number>,
-): number[] {
+function getSellableCampaignDays(totalDays: number): number[] {
   const days: number[] = [];
-  for (let day = 1; day <= totalDays; day += 1) {
-    if (!emptyDays.has(day)) days.push(day);
-  }
-  return days.length > 0 ? days : [Math.max(1, totalDays)];
+  for (let day = 1; day <= totalDays; day += 1) days.push(day);
+  return days.length > 0 ? days : [1];
+}
+
+function setCampaignPurchaseDay(
+  sub: Subscription,
+  campaignStart: Date,
+  day: number,
+): void {
+  sub.purchasedAt = addDays(campaignStart, day - 1);
+  sub.validTo = addDays(sub.purchasedAt, 90);
 }
 
 function assignPurchasedAtAlongCampaign(
@@ -3515,24 +3520,163 @@ function assignPurchasedAtAlongCampaign(
   campaignStart: Date,
   sellableDays: number[],
 ): void {
-  const total = items.length;
-  for (let index = 0; index < items.length; index += 1) {
-    const t = total <= 1 ? 0 : index / (total - 1);
+  if (items.length === 0 || sellableDays.length === 0) return;
+
+  const guaranteed = Math.min(items.length, sellableDays.length);
+  for (let index = 0; index < guaranteed; index += 1) {
+    setCampaignPurchaseDay(items[index], campaignStart, sellableDays[index]);
+  }
+
+  const rest = items.length - guaranteed;
+  for (let offset = 0; offset < rest; offset += 1) {
+    const index = guaranteed + offset;
+    const t = rest <= 1 ? 1 : (offset + 1) / rest;
     const biased = Math.pow(t, 1.35);
     const dayIndex = Math.min(
       sellableDays.length - 1,
       Math.floor(biased * sellableDays.length),
     );
-    items[index].purchasedAt = addDays(
-      campaignStart,
-      sellableDays[dayIndex] - 1,
+    setCampaignPurchaseDay(items[index], campaignStart, sellableDays[dayIndex]);
+  }
+}
+
+const PACE_FILL_LEAGUE: League = "KHL";
+const PACE_FILL_ARENA: ArenaId = "main";
+
+function isPaceFillSubscription(sub: Subscription): boolean {
+  return (
+    sub.league === PACE_FILL_LEAGUE &&
+    sub.arena === PACE_FILL_ARENA &&
+    sub.status !== "cancelled"
+  );
+}
+
+function pickCampaignDonorDay(
+  byDay: Map<number, Subscription[]>,
+  destDay: number,
+  totalDays: number,
+  targetPerDay: number,
+): number | null {
+  let bestDay: number | null = null;
+  let bestCount = 0;
+  for (let day = 1; day <= totalDays; day += 1) {
+    if (day === destDay) continue;
+    const count = byDay.get(day)?.length ?? 0;
+    if (count <= targetPerDay) continue;
+    if (count > bestCount) {
+      bestCount = count;
+      bestDay = day;
+    }
+  }
+  if (bestDay != null) return bestDay;
+
+  for (let day = 1; day <= totalDays; day += 1) {
+    if (day === destDay) continue;
+    const count = byDay.get(day)?.length ?? 0;
+    if (count < 2) continue;
+    if (count > bestCount) {
+      bestCount = count;
+      bestDay = day;
+    }
+  }
+  return bestDay;
+}
+
+/**
+ * Default KHL / main campaign pace has a sale on every campaign day.
+ * Days inside the KPI window are filled by moving surplus purchases;
+ * days before that window are cloned so default YoY counts stay put.
+ */
+export function fillEmptyCampaignPaceDays(
+  subs: Subscription[],
+  dataAsOfDate: Date = MOCK_TODAY,
+): void {
+  const campaigns = getSeasonTicketCampaignConfigs();
+  for (const campaign of campaigns) {
+    if (!campaign.endDate) continue;
+    const start = parseCalendarDate(campaign.startDate);
+    const end = parseCalendarDate(campaign.endDate);
+    if (end < start) continue;
+
+    const asOf = startOfDay(dataAsOfDate);
+    if (asOf < start) continue;
+
+    const lastInclusive = end < asOf ? end : asOf;
+    const totalDays = getCampaignDayNumber(lastInclusive, start);
+    if (totalDays < 1) continue;
+
+    fillCampaignDays(subs, campaign.seasonId, start, totalDays);
+  }
+}
+
+function fillCampaignDays(
+  subs: Subscription[],
+  seasonId: string,
+  campaignStart: Date,
+  totalDays: number,
+): void {
+  const byDay = new Map<number, Subscription[]>();
+  for (let day = 1; day <= totalDays; day += 1) byDay.set(day, []);
+
+  for (const sub of subs) {
+    if (sub.season !== seasonId || !isPaceFillSubscription(sub)) continue;
+    const day = getCampaignDayNumber(sub.purchasedAt, campaignStart);
+    if (day < 1 || day > totalDays) continue;
+    byDay.get(day)?.push(sub);
+  }
+
+  const templates = [...byDay.values()].flat();
+  if (templates.length === 0) return;
+
+  const targetPerDay = Math.max(1, Math.floor(templates.length / totalDays));
+
+  for (let day = 1; day <= totalDays; day += 1) {
+    const bucket = byDay.get(day);
+    if (!bucket) continue;
+    const destDate = addDays(campaignStart, day - 1);
+    const destInKpiWindow = isInRegularSubscriptionSalesWindow(
+      destDate,
+      seasonId,
     );
+
+    while (bucket.length < targetPerDay) {
+      if (destInKpiWindow) {
+        const donorDay = pickCampaignDonorDay(
+          byDay,
+          day,
+          totalDays,
+          targetPerDay,
+        );
+        if (donorDay == null) break;
+        const donor = byDay.get(donorDay);
+        const moved = donor?.pop();
+        if (!moved) break;
+        setCampaignPurchaseDay(moved, campaignStart, day);
+        bucket.push(moved);
+        continue;
+      }
+
+      const template = templates[bucket.length % templates.length];
+      const clone = cloneSoldSubscription(
+        template,
+        nextSubscriptionNumericId(subs),
+      );
+      clone.season = seasonId;
+      clone.league = PACE_FILL_LEAGUE;
+      clone.arena = PACE_FILL_ARENA;
+      clone.tournamentStage = "regular";
+      clone.status = clone.status === "cancelled" ? "active" : clone.status;
+      setCampaignPurchaseDay(clone, campaignStart, day);
+      subs.push(clone);
+      bucket.push(clone);
+      templates.push(clone);
+    }
   }
 }
 
 /**
  * Spreads (and, for older seasons, adds) purchases across each campaign
- * calendar so pace charts are not flat. Empty early days stay on the axis.
+ * calendar so pace charts are not flat. Every campaign day gets sales.
  */
 function seedCampaignPaceSubscriptions(
   subs: Subscription[],
@@ -3554,9 +3698,7 @@ function seedCampaignPaceSubscriptions(
 
     const lastInclusive = end < asOf ? end : asOf;
     const totalDays = getCampaignDayNumber(lastInclusive, start);
-    const emptyDays = new Set<number>([1, 2]);
-    if (totalDays >= 8) emptyDays.add(8);
-    const sellableDays = getSellableCampaignDays(totalDays, emptyDays);
+    const sellableDays = getSellableCampaignDays(totalDays);
 
     const existing = subs.filter((sub) => {
       if (sub.season !== campaign.seasonId) return false;
@@ -3606,7 +3748,6 @@ function seedCampaignPaceSubscriptions(
 
     if (created.length >= 4) {
       created[1].customerId = created[0].customerId;
-      created[1].purchasedAt = created[0].purchasedAt;
     }
   }
 

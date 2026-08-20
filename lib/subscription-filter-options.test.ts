@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   applySubscriptionFilterPatch,
@@ -57,5 +59,55 @@ describe("subscription filter options", () => {
       league: "all",
     });
     expect(allLeagues.arena).toBe("secondary");
+  });
+});
+
+describe("subscription category share chart layout", () => {
+  it("places Что покупают under the count campaign-pace chart, half width, outside renewal", () => {
+    const dashboard = readFileSync(
+      join(process.cwd(), "app/dashboard-app.tsx"),
+      "utf8",
+    );
+    const subscriptionsStart = dashboard.indexOf(
+      '{activeTab === "subscriptions" && (',
+    );
+    const ticketsStart = dashboard.indexOf('{activeTab === "tickets" && (');
+    expect(subscriptionsStart).toBeGreaterThan(-1);
+    expect(ticketsStart).toBeGreaterThan(subscriptionsStart);
+    const subscriptionsBlock = dashboard.slice(
+      subscriptionsStart,
+      ticketsStart,
+    );
+
+    expect(subscriptionsBlock).toMatch(
+      /<SubscriptionCampaignPaceWidget>[\s\S]*SubscriptionPriceCategoryShareChart[\s\S]*<\/SubscriptionCampaignPaceWidget>[\s\S]*<SubscriptionRenewalWidget \/>/,
+    );
+    expect(subscriptionsBlock).not.toMatch(
+      /SubscriptionRenewalWidget[\s\S]*SubscriptionPriceCategoryShareChart/,
+    );
+    expect(subscriptionsBlock).not.toMatch(
+      /grid-cols-1 items-stretch gap-4 min-\[1024px\]:grid-cols-2">[\s\S]*SubscriptionCampaignPaceWidget/,
+    );
+
+    const paceWidget = readFileSync(
+      join(process.cwd(), "components/widgets/SubscriptionCampaignPaceWidget.tsx"),
+      "utf8",
+    );
+    expect(paceWidget).toMatch(
+      /grid min-w-0 grid-cols-1 gap-4 min-\[1024px\]:grid-cols-2/,
+    );
+    expect(paceWidget).toMatch(
+      /<div className="flex min-w-0 flex-col gap-4">[\s\S]*COUNT_TITLE[\s\S]*\{children\}[\s\S]*REVENUE_TITLE/,
+    );
+
+    const renewalWidget = readFileSync(
+      join(process.cwd(), "components/widgets/SubscriptionRenewalWidget.tsx"),
+      "utf8",
+    );
+    expect(renewalWidget).toContain("RenewalProductChart");
+    expect(renewalWidget).not.toContain("{children}");
+    expect(renewalWidget).not.toMatch(
+      /grid-cols-1 items-stretch gap-4 min-\[1024px\]:grid-cols-2/,
+    );
   });
 });

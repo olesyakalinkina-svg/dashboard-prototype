@@ -31,6 +31,7 @@ type KpiCardProps = {
   compactCurrency?: boolean;
   rawCurrencyValue?: number;
   className?: string;
+  subtitleClassName?: string;
 };
 
 export const KpiCard = memo(function KpiCard({
@@ -45,6 +46,7 @@ export const KpiCard = memo(function KpiCard({
   compactCurrency = false,
   rawCurrencyValue,
   className,
+  subtitleClassName,
 }: KpiCardProps) {
   const isPositive = change >= 0;
   const isGood = positiveIsGood ? isPositive : !isPositive;
@@ -64,7 +66,14 @@ export const KpiCard = memo(function KpiCard({
         {displayValue}
       </p>
       {subtitle && (
-        <p className="mt-0.5 text-xs leading-snug text-[var(--muted)]">{subtitle}</p>
+        <p
+          className={clsx(
+            "mt-0.5 text-xs leading-snug",
+            subtitleClassName ?? "text-[var(--muted)]",
+          )}
+        >
+          {subtitle}
+        </p>
       )}
       {!hideTrend && (
         <div className="mt-2 flex items-end justify-between gap-2">

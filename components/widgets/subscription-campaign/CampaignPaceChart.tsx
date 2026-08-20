@@ -3,6 +3,7 @@
 import { useMemo, useState, type KeyboardEvent } from "react";
 import {
   CartesianGrid,
+  Customized,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -15,6 +16,13 @@ import {
   formatCampaignCountAxis,
   formatCampaignMoneyAxis,
 } from "@/lib/subscription-campaign";
+import {
+  END_LABEL_EDGE_PAD,
+  END_LABEL_FONT_SIZE,
+  lastPointForDataKey,
+  placeEndLabels,
+  type FormattedGraphicalItem,
+} from "@/components/widgets/subscription-campaign/campaign-pace-end-labels";
 import {
   CAMPAIGN_PACE_BENCHMARK_COLOR,
   CAMPAIGN_PACE_MAIN_COLOR,
@@ -53,7 +61,6 @@ function renderEndpointDot(
   lastIndex: number,
   color: string,
   shape: "circle" | "square",
-  label: string | null,
 ) {
   return function EndpointDot({ cx, cy, index }: DotProps) {
     const markerKey = `${color}-${index ?? 0}`;
@@ -83,14 +90,83 @@ function renderEndpointDot(
             strokeWidth={1.5}
           />
         )}
-        {label ? (
-          <text x={cx + 8} y={cy - 6} fontSize={10} fill={color}>
-            {label}
-          </text>
-        ) : null}
       </g>
     );
   };
+}
+
+type EndLabelSeries = {
+  dataKey: string;
+  text: string | null;
+  fill: string;
+};
+
+type ChartOffset = {
+  top?: number;
+  height?: number;
+};
+
+function CampaignPaceEndLabels({
+  series,
+  formattedGraphicalItems,
+  offset,
+  width,
+}: {
+  series: EndLabelSeries[];
+  formattedGraphicalItems?: readonly FormattedGraphicalItem[];
+  offset?: ChartOffset;
+  width?: number;
+  height?: number;
+}) {
+  if (width == null || width <= 0 || offset?.top == null || offset.height == null) {
+    return null;
+  }
+
+  const anchors = series.flatMap((item) => {
+    if (!item.text) return [];
+    const point = lastPointForDataKey(formattedGraphicalItems, item.dataKey);
+    if (!point) return [];
+    return [
+      {
+        id: item.dataKey,
+        cx: point.cx,
+        cy: point.cy,
+        text: item.text,
+        fill: item.fill,
+      },
+    ];
+  });
+
+  if (anchors.length === 0) return null;
+
+  const placed = placeEndLabels(anchors, {
+    left: END_LABEL_EDGE_PAD,
+    right: width - END_LABEL_EDGE_PAD,
+    top: END_LABEL_EDGE_PAD,
+    bottom: offset.top + offset.height - END_LABEL_EDGE_PAD,
+  });
+
+  return (
+    <g className="recharts-campaign-pace-end-labels" pointerEvents="none">
+      {placed.map((label) => (
+        <text
+          key={label.id}
+          x={label.x}
+          y={label.y}
+          textAnchor={label.textAnchor}
+          dominantBaseline="central"
+          fontSize={END_LABEL_FONT_SIZE}
+          fill={label.fill}
+          stroke="#fff"
+          strokeWidth={2.5}
+          paintOrder="stroke"
+          style={{ fontVariantNumeric: "tabular-nums" }}
+        >
+          {label.text}
+        </text>
+      ))}
+    </g>
+  );
 }
 
 export function CampaignPaceChart({
@@ -157,7 +233,7 @@ export function CampaignPaceChart({
       }
       onKeyDown={handleKeyDown}
     >
-      <div className="h-[320px] w-full sm:h-[300px]">
+      <div className="h-[320px] w-full overflow-hidden sm:h-[300px]">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart
             data={points as CampaignPacePoint[]}
@@ -205,7 +281,6 @@ export function CampaignPaceChart({
                 lastCurrent,
                 CAMPAIGN_PACE_MAIN_COLOR,
                 "circle",
-                currentLabel,
               )}
               activeDot={{ r: 5, fill: CAMPAIGN_PACE_MAIN_COLOR }}
             />
@@ -223,13 +298,39 @@ export function CampaignPaceChart({
                 lastBenchmark,
                 CAMPAIGN_PACE_BENCHMARK_COLOR,
                 "square",
-                benchmarkLabel,
               )}
               activeDot={{
                 r: 5,
                 fill: CAMPAIGN_PACE_BENCHMARK_COLOR,
                 strokeDasharray: undefined,
               }}
+            />
+            <Customized
+              component={(chartProps: {
+                formattedGraphicalItems?: readonly FormattedGraphicalItem[];
+                offset?: ChartOffset;
+                width?: number;
+                height?: number;
+              }) => (
+                <CampaignPaceEndLabels
+                  series={[
+                    {
+                      dataKey: currentKey,
+                      text: currentLabel,
+                      fill: CAMPAIGN_PACE_MAIN_COLOR,
+                    },
+                    {
+                      dataKey: benchmarkKey,
+                      text: benchmarkLabel,
+                      fill: CAMPAIGN_PACE_BENCHMARK_COLOR,
+                    },
+                  ]}
+                  formattedGraphicalItems={chartProps.formattedGraphicalItems}
+                  offset={chartProps.offset}
+                  width={chartProps.width}
+                  height={chartProps.height}
+                />
+              )}
             />
           </LineChart>
         </ResponsiveContainer>

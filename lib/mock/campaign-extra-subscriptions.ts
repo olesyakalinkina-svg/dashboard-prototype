@@ -49,26 +49,25 @@ export function getActiveCampaignPaceSubscriptions(
   const elapsed = getCampaignDayNumber(dataAsOfDate, campaign.startDate);
   if (elapsed < 1) return [];
 
-  const emptyDays = new Set<number>([1, 2]);
-  if (elapsed >= 8) emptyDays.add(8);
   const sellable: number[] = [];
-  for (let day = 1; day <= elapsed; day += 1) {
-    if (!emptyDays.has(day)) sellable.push(day);
-  }
-  if (sellable.length === 0) return [];
+  for (let day = 1; day <= elapsed; day += 1) sellable.push(day);
 
   const start = parseCalendarDate(campaign.startDate);
-  const count = 48;
+  const count = Math.max(48, elapsed);
   const created: Subscription[] = [];
 
   for (let index = 0; index < count; index += 1) {
-    const t = count <= 1 ? 0 : index / (count - 1);
-    const biased = Math.pow(t, 1.35);
-    const dayIndex = Math.min(
-      sellable.length - 1,
-      Math.floor(biased * sellable.length),
-    );
-    const purchasedAt = addDays(start, sellable[dayIndex] - 1);
+    let day = sellable[index];
+    if (day == null) {
+      const rest = count - sellable.length;
+      const t = rest <= 1 ? 1 : (index - sellable.length + 1) / rest;
+      const dayIndex = Math.min(
+        sellable.length - 1,
+        Math.floor(Math.pow(t, 1.35) * sellable.length),
+      );
+      day = sellable[dayIndex];
+    }
+    const purchasedAt = addDays(start, day - 1);
     const plan = PLANS[index % PLANS.length];
     created.push({
       id: `sub-cpace-${index + 1}`,
@@ -93,8 +92,6 @@ export function getActiveCampaignPaceSubscriptions(
 
   if (created.length >= 4) {
     created[1].customerId = created[0].customerId;
-    created[1].purchasedAt = created[0].purchasedAt;
-    created[1].validTo = created[0].validTo;
   }
 
   return created;

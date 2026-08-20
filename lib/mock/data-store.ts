@@ -10,6 +10,7 @@ import {
   type RawMockData,
 } from "@/lib/mock/revive-dates";
 import { mergeActiveCampaignPaceSubscriptions } from "@/lib/mock/campaign-extra-subscriptions";
+import { applySeasonRenewalCustomerLinks } from "@/lib/mock/subscription-renewal-links";
 
 type MockData = {
   matches: Match[];
@@ -45,7 +46,9 @@ function indexTransactions(transactions: Transaction[]) {
 function applyData(data: MockData) {
   cached = {
     ...data,
-    subscriptions: mergeActiveCampaignPaceSubscriptions(data.subscriptions),
+    subscriptions: applySeasonRenewalCustomerLinks(
+      mergeActiveCampaignPaceSubscriptions(data.subscriptions),
+    ),
   };
   matchByIdCache = new Map(data.matches.map((match) => [match.id, match]));
   indexTransactions(data.transactions);

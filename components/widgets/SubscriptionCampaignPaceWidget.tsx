@@ -28,7 +28,11 @@ const HIDDEN_WARNING_SNIPPETS = [
   "Данные не обновлены сегодня",
 ];
 
-export function SubscriptionCampaignPaceWidget() {
+export function SubscriptionCampaignPaceWidget({
+  children,
+}: {
+  children?: ReactNode;
+}) {
   const { subscriptionFilters } = useFilterState();
   const deferredFilters = useDeferredValue(subscriptionFilters);
   const [tableOpen, setTableOpen] = useState(false);
@@ -94,34 +98,37 @@ export function SubscriptionCampaignPaceWidget() {
       <div
         className={clsx(
           "grid min-w-0 grid-cols-1 gap-4 min-[1024px]:grid-cols-2",
-          tableOpen ? "items-start" : "items-stretch",
+          children || tableOpen ? "items-start" : "items-stretch",
         )}
       >
-        <CampaignPaceCard
-          title={COUNT_TITLE}
-          subtitle={COUNT_SUBTITLE}
-          highlight="count"
-          result={result}
-          stretch={!tableOpen}
-          compareSelect={compareSelect}
-          table={
-            result.kind === "ok" ? (
-              <CampaignPaceTable
-                open={tableOpen}
-                onToggle={() => setTableOpen((open) => !open)}
-                points={result.points}
-                mainSeasonName={result.mainCampaign.seasonName}
-                benchmarkSeasonName={result.benchmarkCampaign.seasonName}
-              />
-            ) : null
-          }
-        />
+        <div className="flex min-w-0 flex-col gap-4">
+          <CampaignPaceCard
+            title={COUNT_TITLE}
+            subtitle={COUNT_SUBTITLE}
+            highlight="count"
+            result={result}
+            stretch={!children && !tableOpen}
+            compareSelect={compareSelect}
+            table={
+              result.kind === "ok" ? (
+                <CampaignPaceTable
+                  open={tableOpen}
+                  onToggle={() => setTableOpen((open) => !open)}
+                  points={result.points}
+                  mainSeasonName={result.mainCampaign.seasonName}
+                  benchmarkSeasonName={result.benchmarkCampaign.seasonName}
+                />
+              ) : null
+            }
+          />
+          {children}
+        </div>
         <CampaignPaceCard
           title={REVENUE_TITLE}
           subtitle={REVENUE_SUBTITLE}
           highlight="revenue"
           result={result}
-          stretch={!tableOpen}
+          stretch={!children && !tableOpen}
           compareSelect={compareSelect}
         />
       </div>

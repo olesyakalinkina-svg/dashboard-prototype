@@ -96,8 +96,31 @@ const SubscriptionCampaignPaceWidget = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="grid min-w-0 grid-cols-1 gap-4 min-[1024px]:grid-cols-2">
+      <div className="grid min-w-0 grid-cols-1 items-start gap-4 min-[1024px]:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-4">
+          <ChartSkeleton height={280} />
+          <ChartSkeleton height={360} />
+        </div>
         <ChartSkeleton height={280} />
+      </div>
+    ),
+  },
+);
+
+const SubscriptionRenewalWidget = dynamic(
+  () =>
+    import("@/components/widgets/SubscriptionRenewalWidget").then((mod) => ({
+      default: mod.SubscriptionRenewalWidget,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="min-w-0 space-y-3">
+        <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-3">
+          <ChartSkeleton height={96} />
+          <ChartSkeleton height={96} />
+          <ChartSkeleton height={96} />
+        </div>
         <ChartSkeleton height={280} />
       </div>
     ),
@@ -256,11 +279,13 @@ function DashboardPanels() {
 
         {activeTab === "subscriptions" && (
           <>
-            <SubscriptionCampaignPaceWidget />
-            <SubscriptionPriceCategoryShareChart
-              data={subscriptionPriceCategoryShares}
-              season={appliedSubscriptionFilters.season}
-            />
+            <SubscriptionCampaignPaceWidget>
+              <SubscriptionPriceCategoryShareChart
+                data={subscriptionPriceCategoryShares}
+                season={appliedSubscriptionFilters.season}
+              />
+            </SubscriptionCampaignPaceWidget>
+            <SubscriptionRenewalWidget />
           </>
         )}
 
