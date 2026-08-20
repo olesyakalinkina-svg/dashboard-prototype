@@ -708,7 +708,7 @@ export function buildMatrixRows(options: BuildOptions): MatrixRow[] {
       }
       row = {
         matchId,
-        matchLabel: `vs ${match.opponent}`,
+        matchLabel: formatTicketEventTitle(match),
         date: match.date,
         zones,
         totals: { revenue: 0, sold: 0, free: 0, issued: 0, avgPrice: null },

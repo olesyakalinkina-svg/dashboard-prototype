@@ -100,23 +100,16 @@ test.describe("responsive audit — 18 checks", () => {
     expect(wraps).toBe(false);
   });
 
-  test("5. header title does not overlap refresh on mobile", async ({ page }) => {
+  test("5. header has no refresh controls on mobile", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await waitForDashboard(page);
-    const title = page.getByRole("heading", {
-      name: "Аналитика хоккейного клуба",
-    });
-    const refresh = page.getByRole("button", { name: "Обновить данные" });
-    const titleBox = await title.boundingBox();
-    const refreshBox = await refresh.boundingBox();
-    expect(titleBox && refreshBox).toBeTruthy();
-    expect(titleBox!.x + titleBox!.width).toBeLessThanOrEqual(refreshBox!.x + 1);
-    await expect(refresh).toHaveAttribute("aria-label", "Обновить данные");
-    const refreshHiddenLabel = await refresh.evaluate((el) => {
-      const span = el.querySelector("span");
-      return !span || getComputedStyle(span).display === "none";
-    });
-    expect(refreshHiddenLabel).toBe(true);
+    await expect(
+      page.getByRole("heading", { name: "Аналитика хоккейного клуба" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Обновить данные" }),
+    ).toHaveCount(0);
+    await expect(page.getByText(/Обновлено:/)).toHaveCount(0);
   });
 
   test("6. KPI grid is two columns on a 390 phone with no horizontal scroll", async ({

@@ -85,7 +85,7 @@ describe("ticket plan fulfillment cap (dashboard data)", () => {
     let soldOut = 0;
     for (const row of rows) {
       const match = matches.get(row.matchId);
-      if (!match || !isSoldOutOccupancyMatch(match)) continue;
+      if (!match || !isSoldOutOccupancyMatch(match) || !match.eventCompleted) continue;
       if (!(row.planRevenue > 0)) continue;
       soldOut += 1;
       const revUi = percentOneDecimal((row.revenue / row.planRevenue) * 100);

@@ -46,6 +46,7 @@ function getNestedBranchBorderClass(node: MatchSalesTreeNode): string {
   if (node.level === "ticketType") return "border-l-blue-300";
   if (node.level === "orderSource") return "border-l-green-300";
   if (node.level === "priceZone") return "border-l-violet-300";
+  if (node.level === "sector") return "border-l-violet-200";
   return "border-l-[var(--border)]";
 }
 

@@ -19,9 +19,11 @@ import {
   ORDER_SOURCE_OPTIONS,
   PRICE_ZONE_OPTIONS,
   SEASON_OPTIONS,
+  SECTOR_OPTIONS,
   TICKET_TYPE_OPTIONS,
   TREND_TIME_GROUPING_OPTIONS,
   TOURNAMENT_STAGE_OPTIONS,
+  KHL_SERIES_ORDER,
 } from "@/lib/ticket-filter-options";
 import {
   computeCombinedMatchSalesTable,
@@ -245,6 +247,21 @@ export function buildTicketsFilterCases(): FilterCoverageCase[] {
     );
   }
 
+  cases.push(
+    ticketCase("series", "Все серии", {
+      ...DEFAULT_TICKET_FILTERS,
+      series: "all",
+    }),
+  );
+  for (const series of KHL_SERIES_ORDER) {
+    cases.push(
+      ticketCase("series", series, {
+        ...DEFAULT_TICKET_FILTERS,
+        series,
+      }),
+    );
+  }
+
   for (const opt of ARENA_OPTIONS) {
     const testCase = ticketCase("arena", opt.label, {
       ...DEFAULT_TICKET_FILTERS,
@@ -284,6 +301,15 @@ export function buildTicketsFilterCases(): FilterCoverageCase[] {
     );
   }
 
+  for (const opt of SECTOR_OPTIONS) {
+    cases.push(
+      ticketCase("sector", opt.label, {
+        ...DEFAULT_TICKET_FILTERS,
+        sector: [opt.value],
+      }),
+    );
+  }
+
   for (const opt of ORDER_SOURCE_OPTIONS) {
     cases.push(
       ticketCase("orderSource", opt.label, {
@@ -318,21 +344,45 @@ export function buildMerchFilterCases(): FilterCoverageCase[] {
   }
 
   for (const opt of TOURNAMENT_STAGE_OPTIONS) {
-    cases.push(
-      merchCase("tournamentStage", opt.label, {
-        ...DEFAULT_MERCH_FILTERS,
-        tournamentStage: opt.value,
-      }),
-    );
+    const testCase = merchCase("tournamentStage", opt.label, {
+      ...DEFAULT_MERCH_FILTERS,
+      tournamentStage: opt.value,
+    });
+    if (opt.value === "playoff") {
+      testCase.excluded =
+        "KHL playoff Ак Барс is upcoming as of mock today (25.03.2026); merch is sold at completed matches";
+    }
+    cases.push(testCase);
   }
 
   for (const opt of MATCH_CLASS_OPTIONS) {
-    cases.push(
-      merchCase("matchClass", opt.label, {
-        ...DEFAULT_MERCH_FILTERS,
-        matchClass: opt.value,
-      }),
-    );
+    const testCase = merchCase("matchClass", opt.label, {
+      ...DEFAULT_MERCH_FILTERS,
+      matchClass: opt.value,
+    });
+    if (opt.value === "playoff") {
+      testCase.excluded =
+        "KHL playoff Ак Барс is upcoming as of mock today (25.03.2026); merch is sold at completed matches";
+    }
+    cases.push(testCase);
+  }
+
+  cases.push(
+    merchCase("series", "Все серии", {
+      ...DEFAULT_MERCH_FILTERS,
+      series: "all",
+    }),
+  );
+  for (const series of KHL_SERIES_ORDER) {
+    const testCase = merchCase("series", series, {
+      ...DEFAULT_MERCH_FILTERS,
+      series,
+    });
+    if (series === "ПО. Ак Барс") {
+      testCase.excluded =
+        "Playoff Ак Барс is upcoming as of mock today (25.03.2026); merch table hides upcoming matches";
+    }
+    cases.push(testCase);
   }
 
   for (const point of ALL_MERCH_SALES_POINTS) {
@@ -464,6 +514,21 @@ export function buildMatchSalesFilterCases(): FilterCoverageCase[] {
     );
   }
 
+  cases.push(
+    matchSalesCase("series", "Все серии", {
+      ...DEFAULT_MATCH_SALES_FILTERS,
+      series: "all",
+    }),
+  );
+  for (const series of KHL_SERIES_ORDER) {
+    cases.push(
+      matchSalesCase("series", series, {
+        ...DEFAULT_MATCH_SALES_FILTERS,
+        series,
+      }),
+    );
+  }
+
   for (const opt of ARENA_OPTIONS) {
     const testCase = matchSalesCase("arena", opt.label, {
       ...DEFAULT_MATCH_SALES_FILTERS,
@@ -583,7 +648,7 @@ export function buildCriticalComboCases(): CriticalComboCase[] {
           eventCompleted: "no",
         }).length > 0,
       excluded:
-        "Past season 2024/25 has no upcoming matches at mock today (May 2026)",
+        "Past season 2024/25 has no upcoming matches at mock today (March 2026)",
     },
     {
       name: "Merch: MHL + mall_raduga",
@@ -608,6 +673,8 @@ export function buildCriticalComboCases(): CriticalComboCase[] {
           tournamentStage: "playoff",
           matchClass: "class_3",
         }).revenue > 0,
+      excluded:
+        "KHL playoff has no class_3 matches; upcoming Ак Барс playoff has no merch yet",
     },
     {
       name: "Subscriptions: 2024/25 + VHL + weekend",

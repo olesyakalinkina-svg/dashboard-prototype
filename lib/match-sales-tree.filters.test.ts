@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_DASHBOARD_FILTERS } from "@/lib/filter-coverage";
-import { computeMatchSalesTable } from "@/lib/filters";
+import {
+  computeMatchSalesTable,
+  computeTicketsKpis,
+  computeTicketsMatchCumulativeSeries,
+  filterTicketTransactions,
+} from "@/lib/filters";
 import {
   CONFIRM_SCENARIO,
   FIXTURE_CURRENT_MATCH_ID,
@@ -80,6 +85,20 @@ describe("§7, §9 global filters (local widget filters removed)", () => {
         filters({ matchClass: "class_1" }),
       ).tree.map((n) => n.matchId),
     ).toEqual([FIXTURE_CURRENT_MATCH_ID]);
+
+    expect(
+      computeFixtureMatchSalesTable(
+        FIXTURE_DASHBOARD_FILTERS,
+        filters({ series: "Сентябрь" }),
+      ).tree.map((n) => n.matchId),
+    ).toEqual([FIXTURE_CURRENT_MATCH_ID]);
+
+    expect(
+      computeFixtureMatchSalesTable(
+        FIXTURE_DASHBOARD_FILTERS,
+        filters({ series: "ПО. Ак Барс" }),
+      ).tree,
+    ).toHaveLength(0);
 
     expect(
       computeFixtureMatchSalesTable(
@@ -177,6 +196,27 @@ describe("§7, §9 global filters (local widget filters removed)", () => {
     );
     expect(dated.tree[0]?.revenue).toBe(16_000 + 15_000);
     expect(dated.tree[0]?.ticketsSold).toBe(8 + 5);
+
+    const sectorA = computeFixtureMatchSalesTable(
+      FIXTURE_DASHBOARD_FILTERS,
+      filters({
+        matchId: [FIXTURE_CURRENT_MATCH_ID],
+        sector: ["A"],
+      }),
+    );
+    expect(sectorA.txs.map((tx) => tx.id)).toEqual(["fx-tx-a1"]);
+    expect(sectorA.tree[0]?.revenue).toBe(10_000);
+    expect(sectorA.tree[0]?.ticketsSold).toBe(10);
+    expect(sectorA.txs.every((tx) => tx.ticketType !== "parking")).toBe(true);
+    const cheapZone = findSection(
+      sectorA.tree,
+      FIXTURE_CURRENT_MATCH_ID,
+      "priceZone",
+    )?.children.find((child) => child.label === PRICE_ZONE_LABELS.up_to_1500);
+    expect(cheapZone?.children.map((child) => child.label)).toEqual(["A"]);
+    expect(cheapZone?.children.some((child) => child.label === "D1")).toBe(
+      false,
+    );
   });
 
   it("does not change the table when grouping changes", () => {
@@ -283,6 +323,14 @@ describe("filter combinations (AND across dimensions, OR within matchId)", () =>
       },
     ],
     [
+      "priceZone+sector",
+      {
+        matchId: [FIXTURE_CURRENT_MATCH_ID],
+        priceZone: "up_to_1500",
+        sector: ["A"],
+      },
+    ],
+    [
       "finished+match",
       { eventCompleted: "yes", matchId: [FIXTURE_CURRENT_MATCH_ID] },
     ],
@@ -370,6 +418,54 @@ describe("global mock computeMatchSalesTable (grouping / reset / empty)", () => 
     const allRevenue = all.reduce((sum, row) => sum + row.revenue, 0);
     const zonedRevenue = zoned.reduce((sum, row) => sum + row.revenue, 0);
     expect(zonedRevenue).toBeLessThanOrEqual(allRevenue);
+  });
+
+  it("sector filter reduces transactions, sales rows, KPIs, and dynamics", () => {
+    const allTxs = filterTicketTransactions(
+      DEFAULT_DASHBOARD_FILTERS,
+      DEFAULT_TICKET_FILTERS,
+    );
+    const vipFilters: TicketFilters = {
+      ...DEFAULT_TICKET_FILTERS,
+      sector: ["VIP"],
+    };
+    const vipTxs = filterTicketTransactions(DEFAULT_DASHBOARD_FILTERS, vipFilters);
+
+    expect(vipTxs.length).toBeGreaterThan(0);
+    expect(vipTxs.length).toBeLessThan(allTxs.length);
+    expect(vipTxs.every((tx) => tx.sector === "VIP")).toBe(true);
+    expect(vipTxs.every((tx) => tx.ticketType !== "parking")).toBe(true);
+
+    const allRows = computeMatchSalesTable(
+      DEFAULT_DASHBOARD_FILTERS,
+      DEFAULT_TICKET_FILTERS,
+    );
+    const vipRows = computeMatchSalesTable(DEFAULT_DASHBOARD_FILTERS, vipFilters);
+    const allRevenue = allRows.reduce((sum, row) => sum + row.revenue, 0);
+    const vipRevenue = vipRows.reduce((sum, row) => sum + row.revenue, 0);
+    expect(vipRows.length).toBeGreaterThan(0);
+    expect(vipRevenue).toBeLessThan(allRevenue);
+
+    const allKpis = computeTicketsKpis(
+      DEFAULT_DASHBOARD_FILTERS,
+      DEFAULT_TICKET_FILTERS,
+    );
+    const vipKpis = computeTicketsKpis(DEFAULT_DASHBOARD_FILTERS, vipFilters);
+    expect(vipKpis.revenue).toBeLessThan(allKpis.revenue);
+    expect(vipKpis.ticketsSold).toBeLessThan(allKpis.ticketsSold);
+
+    const allSeries = computeTicketsMatchCumulativeSeries(
+      DEFAULT_DASHBOARD_FILTERS,
+      DEFAULT_TICKET_FILTERS,
+    );
+    const vipSeries = computeTicketsMatchCumulativeSeries(
+      DEFAULT_DASHBOARD_FILTERS,
+      vipFilters,
+    );
+    const sumLast = (series: typeof allSeries) =>
+      series.reduce((sum, row) => sum + (row.points.at(-1)?.revenue ?? 0), 0);
+    expect(vipSeries.length).toBeGreaterThan(0);
+    expect(sumLast(vipSeries)).toBeLessThan(sumLast(allSeries));
   });
 });
 

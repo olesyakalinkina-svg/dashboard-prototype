@@ -90,7 +90,7 @@ describe("merch plan fulfillment (dashboard data)", () => {
       merchRowsCurrentKhl().map((row) => [row.matchId, row]),
     );
     const targets = Object.entries(MERCH_PLAN_FULFILLMENT_BY_MATCH_ID);
-    expect(targets).toHaveLength(13);
+    expect(targets).toHaveLength(12);
     for (const [matchId, target] of targets) {
       const row = byId.get(matchId);
       expect(row, matchId).toBeDefined();

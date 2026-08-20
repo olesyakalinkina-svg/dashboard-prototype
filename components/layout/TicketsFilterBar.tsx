@@ -8,10 +8,13 @@ import {
   ARENA_OPTIONS,
   EVENT_COMPLETED_OPTIONS,
   getMatchClassOptionsForStage,
+  getSectorOptionsForPriceZone,
   LEAGUE_OPTIONS,
+  NO_SECTORS_FILTER_VALUE,
   ORDER_SOURCE_OPTIONS,
   PRICE_ZONE_OPTIONS,
   sanitizeMatchClassForStage,
+  sanitizeSectorsForPriceZone,
   SEASON_OPTIONS,
   TICKET_TYPE_OPTIONS,
   TOURNAMENT_STAGE_OPTIONS,
@@ -63,6 +66,7 @@ export function TicketsFilterBar() {
   const {
     ticketFilters,
     ticketMatchOptions,
+    ticketSeriesOptions,
     setTicketFilters,
     resetTicketFilters,
   } = useFilterBarState();
@@ -90,6 +94,10 @@ export function TicketsFilterBar() {
   const timeGroupingRestrictedToDay =
     isTicketTimeGroupingRestrictedToDay(ticketFilters);
   const effectiveTimeGrouping = getEffectiveTicketTimeGrouping(ticketFilters);
+  const sectorOptions = useMemo(
+    () => getSectorOptionsForPriceZone(ticketFilters.priceZone),
+    [ticketFilters.priceZone],
+  );
 
   return (
     <ResponsiveFilterBar
@@ -167,6 +175,19 @@ export function TicketsFilterBar() {
         </Select>
 
         <Select
+          label="Серия"
+          value={ticketFilters.series}
+          onChange={(e) => update("series", e.target.value)}
+          className="xl:min-w-[160px]"
+        >
+          {ticketSeriesOptions.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </Select>
+
+        <Select
           label="Арена"
           value={ticketFilters.arena}
           onChange={(e) => update("arena", e.target.value as ArenaId | "all")}
@@ -217,6 +238,7 @@ export function TicketsFilterBar() {
               setTicketFilters({
                 ticketType,
                 priceZone: "all",
+                sector: [],
               });
             } else {
               update("ticketType", ticketType);
@@ -233,7 +255,16 @@ export function TicketsFilterBar() {
         <Select
           label="Ценовая зона"
           value={ticketFilters.priceZone}
-          onChange={(e) => update("priceZone", e.target.value as PriceZone | "all")}
+          onChange={(e) => {
+            const priceZone = e.target.value as PriceZone | "all";
+            setTicketFilters({
+              priceZone,
+              sector: sanitizeSectorsForPriceZone(
+                ticketFilters.sector,
+                priceZone,
+              ),
+            });
+          }}
           disabled={isParkingTicketType}
           className="disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -243,6 +274,22 @@ export function TicketsFilterBar() {
             </option>
           ))}
         </Select>
+
+        <MultiSelect
+          label="Сектор"
+          options={sectorOptions}
+          value={ticketFilters.sector}
+          onChange={(sector) => update("sector", sector)}
+          selectAllLabel="Все секторы"
+          allSelectedLabel="Все секторы"
+          emptyMeansAll
+          applyOnClose
+          noneValue={NO_SECTORS_FILTER_VALUE}
+          searchable
+          searchPlaceholder="Поиск сектора..."
+          disabled={isParkingTicketType}
+          className="xl:min-w-[180px]"
+        />
 
         <Select
           label="Источник заказа"

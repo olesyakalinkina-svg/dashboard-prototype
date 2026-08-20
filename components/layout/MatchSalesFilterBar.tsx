@@ -34,6 +34,7 @@ export function MatchSalesFilterBar() {
   const {
     matchSalesFilters,
     matchSalesMatchOptions,
+    matchSalesSeriesOptions,
     setMatchSalesFilters,
     resetMatchSalesFilters,
   } = useFilterBarState();
@@ -128,6 +129,19 @@ export function MatchSalesFilterBar() {
           className="xl:min-w-[160px]"
         >
           {matchClassOptions.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </Select>
+
+        <Select
+          label="Серия"
+          value={matchSalesFilters.series}
+          onChange={(e) => update("series", e.target.value)}
+          className="xl:min-w-[160px]"
+        >
+          {matchSalesSeriesOptions.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
             </option>

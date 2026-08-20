@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MultiSelect } from "@/components/ui/MultiSelect";
 
 const OPTIONS = [
-  { value: "a", label: "vs Динамо Мск · 17 мая 2026" },
-  { value: "b", label: "vs Торпедо · 25 апр. 2026" },
+  { value: "a", label: "Динамо Мск · 17 мая 2026" },
+  { value: "b", label: "Торпедо · 25 апр. 2026" },
 ];
 
 afterEach(() => {
@@ -37,7 +37,7 @@ describe("MultiSelect", () => {
     expect(menu.className).toMatch(/\bfixed\b/);
     expect(menu.className).toMatch(/overflow-auto/);
     expect(menu.className).toMatch(/max-h-64/);
-    expect(screen.getByText("vs Динамо Мск · 17 мая 2026")).toBeTruthy();
+    expect(screen.getByText("Динамо Мск · 17 мая 2026")).toBeTruthy();
   });
 
   it("keeps the menu open when clicking an option inside the portaled list", async () => {
@@ -56,7 +56,7 @@ describe("MultiSelect", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Все матчи" }));
-    await user.click(screen.getByText("vs Торпедо · 25 апр. 2026"));
+    await user.click(screen.getByText("Торпедо · 25 апр. 2026"));
 
     expect(screen.getByTestId("multi-select-menu")).toBeTruthy();
     expect(onChange).not.toHaveBeenCalled();

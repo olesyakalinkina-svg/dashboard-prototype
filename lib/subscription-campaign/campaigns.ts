@@ -13,11 +13,10 @@ export type SeasonTicketCampaignConfig = Omit<SeasonTicketCampaign, "status">;
 /**
  * Subscription sales campaigns by season. Dates are explicit sales windows,
  * not inferred from first purchase or hockey-season start. Status is computed
- * from dataAsOfDate (MOCK_TODAY ≈ 15.05.2026).
+ * from dataAsOfDate (MOCK_TODAY ≈ 25.03.2026).
  *
  * 2024/25 and 2025/26: completed Aug–Sep windows with different calendar starts.
- * 2026/27: spring pre-sale that started before MOCK_TODAY and is still running
- * (playoff-period window for next-season abonements — not Sep hockey start).
+ * 2026/27: spring pre-sale starting 01.04.2026 — still upcoming at mock today.
  */
 export const SEASON_TICKET_CAMPAIGN_CONFIGS: readonly SeasonTicketCampaignConfig[] =
   [

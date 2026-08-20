@@ -39,6 +39,7 @@ export function MerchFilterBar() {
   const {
     merchFilters,
     merchMatchOptions,
+    merchSeriesOptions,
     setMerchFilters,
     resetMerchFilters,
   } = useFilterBarState();
@@ -134,6 +135,19 @@ export function MerchFilterBar() {
           className="sm:min-w-[160px]"
         >
           {matchClassOptions.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </Select>
+
+        <Select
+          label="Серия"
+          value={merchFilters.series}
+          onChange={(e) => update("series", e.target.value)}
+          className="sm:min-w-[160px]"
+        >
+          {merchSeriesOptions.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
             </option>

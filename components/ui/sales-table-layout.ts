@@ -33,3 +33,13 @@ export const MATCH_SALES_COLUMN_WIDTHS: Record<string, string> = {
   issuedTickets: SALES_COL_PERCENT,
   loyaltyDiscountPct: SALES_COL_COMPACT_PCT,
 };
+
+/** SKU widget shares a half-width column — keep metrics rem-locked, name wraps. */
+export const MERCH_SKU_SALES_COLUMN_WIDTHS: Record<string, string> = {
+  productName: SALES_COL_NAME,
+  units: SALES_COL_QTY,
+  revenue: "w-[7.5rem] max-w-[7.5rem]",
+  receiptsWithProduct: "w-[5.75rem] max-w-[5.75rem]",
+  marginPct: SALES_COL_COMPACT_PCT,
+  actualToListPricePct: SALES_COL_COMPACT_PCT,
+};

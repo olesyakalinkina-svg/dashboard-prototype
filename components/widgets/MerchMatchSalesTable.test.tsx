@@ -41,6 +41,7 @@ const ORIGINAL_COLUMNS = [
   "Мероприятие",
   "Дата",
   "Выручка",
+  "% выполнения плана",
   "Средний чек",
   "Чеки",
   "Товары",
@@ -88,15 +89,26 @@ function renderMerch(
   );
 }
 
-function revenueCellForLabel(label: string) {
+function cellsForLabel(label: string) {
   const row = screen.getByText(label).closest("tr");
   expect(row).toBeTruthy();
-  const cells = within(row!).getAllByRole("cell");
-  return cells[2]!;
+  return within(row!).getAllByRole("cell");
+}
+
+function revenueCellForLabel(label: string) {
+  return cellsForLabel(label)[2]!;
+}
+
+function planCellForLabel(label: string) {
+  return cellsForLabel(label)[3]!;
 }
 
 function cellText(el: HTMLElement): string {
   return (el.textContent ?? "").replace(/\s/g, " ");
+}
+
+function revenueBarHasPlanColor(label: string): boolean {
+  return Boolean(revenueCellForLabel(label).querySelector("[class*='bg-rose']"));
 }
 
 describe("MerchMatchSalesTable drill-down", () => {
@@ -107,8 +119,8 @@ describe("MerchMatchSalesTable drill-down", () => {
     const headers = screen.getAllByRole("columnheader").map((el) => el.textContent);
     expect(headers).toEqual(ORIGINAL_COLUMNS);
     expect(screen.getByText("Продажи")).toBeTruthy();
-    expect(screen.getByText("vs СКА")).toBeTruthy();
-    expect(screen.getByText("vs ЦСКА")).toBeTruthy();
+    expect(screen.getByText("СКА")).toBeTruthy();
+    expect(screen.getByText("ЦСКА")).toBeTruthy();
     expect(screen.getByText(MERCH_OFF_MATCH_LABEL)).toBeTruthy();
     expect(screen.getByText("Итого")).toBeTruthy();
     expect(screen.queryByText(MERCH_SALES_SECTION_LABELS.salesChannel)).toBeNull();
@@ -117,6 +129,15 @@ describe("MerchMatchSalesTable drill-down", () => {
     expect(screen.queryByText(MERCH_SALES_POINT_LABELS.flagship)).toBeNull();
     expect(screen.queryByText(MERCH_PRODUCT_CATEGORY_LABELS.jerseys)).toBeNull();
     expect(screen.queryByText(MERCH_FIXTURE_ARENA_TOP_PRODUCTS[0])).toBeNull();
+  });
+
+  it("gives «% выполнения плана» the same locked width as tickets plan-%", () => {
+    renderMerch();
+    const header = screen.getByRole("columnheader", {
+      name: "% выполнения плана",
+    });
+    expect(header.className).toContain("w-[10.5rem]");
+    expect(header.className).toContain("max-w-[10.5rem]");
   });
 
   it("gives «Конверсия в покупку» enough width for the full header", () => {
@@ -134,11 +155,11 @@ describe("MerchMatchSalesTable drill-down", () => {
     const card = screen.getByTestId("merch-sales-table");
     const scroller = within(card).getByTestId("sticky-scroll-table");
     const table = scroller.querySelector("table");
-    expect(table?.className).toContain("min-w-[72rem]");
+    expect(table?.className).toContain("min-w-[84rem]");
     expect(table?.className).toContain("table-fixed");
     expect(scroller.className).toContain("overflow-x-auto");
     expect(scroller.className).toContain("sticky-scroll-table-row-hover");
-    const matchRow = screen.getByText("vs СКА").closest("tr");
+    const matchRow = screen.getByText("СКА").closest("tr");
     expect(matchRow?.className).not.toMatch(/hover:bg-/);
   });
 
@@ -152,19 +173,25 @@ describe("MerchMatchSalesTable drill-down", () => {
       formatCurrency(MERCH_FIXTURE_OFF_MATCH_REVENUE).replace(/\s/g, " ").trim(),
     );
     expect(offCells[offCells.length - 1]!.textContent).toBe("—");
+    expect(within(offCells[3]!).getByText("—")).toBeTruthy();
 
     const totalRow = screen.getByText("Итого").closest("tr");
     expect(totalRow).toBeTruthy();
     const totalCells = within(totalRow!).getAllByRole("cell");
+    const totalRevenue = 500_000 + 400_000 + MERCH_FIXTURE_OFF_MATCH_REVENUE;
+    const totalPlan = 450_000 + 500_000;
     expect(cellText(totalCells[2]!)).toContain(
-      formatCurrency(500_000 + 400_000 + MERCH_FIXTURE_OFF_MATCH_REVENUE)
+      formatCurrency(totalRevenue)
         .replace(/\s/g, " ")
         .trim(),
     );
-    expect(cellText(totalCells[4]!)).toContain(
-      formatNumber(2 + 2 + MERCH_FIXTURE_OFF_MATCH_RECEIPTS),
+    expect(cellText(totalCells[3]!)).toContain(
+      formatPercent((totalRevenue / totalPlan) * 100).replace(/\s/g, " "),
     );
     expect(cellText(totalCells[5]!)).toContain(
+      formatNumber(2 + 2 + MERCH_FIXTURE_OFF_MATCH_RECEIPTS),
+    );
+    expect(cellText(totalCells[6]!)).toContain(
       formatNumber(60 + 40 + MERCH_FIXTURE_OFF_MATCH_UNITS),
     );
   });
@@ -175,15 +202,12 @@ describe("MerchMatchSalesTable drill-down", () => {
 
     const lastDataBeforeTotal = () => {
       const rows = [...screen.getByRole("table").querySelectorAll("tbody > tr")];
-      const dataRows = rows.filter(
-        (row) => !within(row as HTMLElement).queryByText("Итого"),
-      );
-      return dataRows.at(-1) as HTMLElement;
+      return rows.at(-1) as HTMLElement;
     };
 
     expect(lastDataBeforeTotal().textContent).toContain(MERCH_OFF_MATCH_LABEL);
-    const tbodyRows = [...screen.getByRole("table").querySelectorAll("tbody > tr")];
-    expect(within(tbodyRows.at(-1) as HTMLElement).getByText("Итого")).toBeTruthy();
+    const totalRow = screen.getByText("Итого").closest("tr");
+    expect(totalRow?.closest("tfoot")).toBeTruthy();
 
     await user.click(screen.getByRole("columnheader", { name: "Дата" }));
     expect(lastDataBeforeTotal().textContent).toContain(MERCH_OFF_MATCH_LABEL);
@@ -283,8 +307,8 @@ describe("MerchMatchSalesTable drill-down", () => {
     expect(screen.queryByText(MERCH_SALES_SECTION_LABELS.topProducts)).toBeNull();
     expect(screen.queryByText(MERCH_SALES_POINT_LABELS.flagship)).toBeNull();
     expect(screen.queryByText(MERCH_FIXTURE_ARENA_TOP_PRODUCTS[0])).toBeNull();
-    expect(screen.getByText("vs СКА")).toBeTruthy();
-    expect(screen.getByText("vs ЦСКА")).toBeTruthy();
+    expect(screen.getByText("СКА")).toBeTruthy();
+    expect(screen.getByText("ЦСКА")).toBeTruthy();
     expect(screen.getAllByRole("columnheader").map((el) => el.textContent)).toEqual(
       ORIGINAL_COLUMNS,
     );
@@ -338,7 +362,7 @@ describe("MerchMatchSalesTable drill-down", () => {
     expect(labels).toHaveLength(1);
   });
 
-  it("shows plan fulfillment % in Выручка on match rows, like tickets", () => {
+  it("puts % выполнения плана in its own column after Выручка, not on the revenue bar", () => {
     const pipeline = buildDefaultMerchFixtureTree();
     const ska = pipeline.tree.find(
       (node) => node.matchId === MERCH_FIXTURE_ARENA_MATCH_ID,
@@ -348,24 +372,30 @@ describe("MerchMatchSalesTable drill-down", () => {
     )!;
     renderMerch(pipeline);
 
+    const headers = screen.getAllByRole("columnheader").map((el) => el.textContent);
+    expect(headers).toEqual(ORIGINAL_COLUMNS);
+
     const skaPct = formatPercent((ska.revenue / ska.planRevenue!) * 100);
     const cskaPct = formatPercent((cska.revenue / cska.planRevenue!) * 100);
     expect(skaPct).not.toBe(cskaPct);
-    expect(cellText(revenueCellForLabel(ska.label))).toContain(
+    expect(cellText(revenueCellForLabel(ska.label))).not.toContain(
       skaPct.replace(/\s/g, " "),
     );
-    expect(cellText(revenueCellForLabel(cska.label))).toContain(
+    expect(cellText(planCellForLabel(ska.label))).toContain(
+      skaPct.replace(/\s/g, " "),
+    );
+    expect(cellText(planCellForLabel(cska.label))).toContain(
       cskaPct.replace(/\s/g, " "),
     );
   });
 
-  it("shows em dash in Выручка when merch plan is missing, not 0%", () => {
+  it("shows em dash in % выполнения плана when merch plan is missing, not 0%", () => {
     const incomplete: MerchSalesTreeNode = {
       id: "mm:incomplete",
       level: "match",
       matchId: "incomplete",
       date: new Date(2025, 7, 1),
-      label: "vs Incomplete Plan",
+      label: "Incomplete Plan",
       revenue: 120_000,
       planRevenue: 0,
       avgCheck: 1_200,
@@ -393,12 +423,12 @@ describe("MerchMatchSalesTable drill-down", () => {
     };
     render(<Harness tree={[incomplete]} matchRows={[row]} />);
 
-    const cell = revenueCellForLabel("vs Incomplete Plan");
+    const cell = planCellForLabel("Incomplete Plan");
     expect(within(cell).getByText("—")).toBeTruthy();
     expect(within(cell).queryByText(formatPercent(0))).toBeNull();
   });
 
-  it("shows em dash in Выручка on child rows because plan is match-level", async () => {
+  it("shows em dash in % выполнения плана on section headers and children", async () => {
     const user = userEvent.setup();
     const pipeline = buildDefaultMerchFixtureTree();
     const match = pipeline.tree.find(
@@ -416,15 +446,76 @@ describe("MerchMatchSalesTable drill-down", () => {
     );
 
     const matchPct = formatPercent((match.revenue / match.planRevenue!) * 100);
+    expect(cellText(planCellForLabel(match.label))).toContain(
+      matchPct.replace(/\s/g, " "),
+    );
     expect(
-      cellText(revenueCellForLabel(MERCH_SALES_SECTION_LABELS.salesChannel)),
-    ).toContain(matchPct.replace(/\s/g, " "));
-    expect(
-      cellText(revenueCellForLabel(MERCH_SALES_POINT_LABELS.flagship)),
+      cellText(planCellForLabel(MERCH_SALES_SECTION_LABELS.salesChannel)),
     ).toContain("—");
     expect(
-      cellText(revenueCellForLabel(MERCH_SALES_POINT_LABELS.flagship)),
+      cellText(planCellForLabel(MERCH_SALES_SECTION_LABELS.salesChannel)),
+    ).not.toContain(matchPct.replace(/\s/g, " "));
+    expect(cellText(planCellForLabel(MERCH_SALES_POINT_LABELS.flagship))).toContain(
+      "—",
+    );
+    expect(
+      cellText(planCellForLabel(MERCH_SALES_POINT_LABELS.flagship)),
     ).not.toContain(formatPercent(0).replace(/\s/g, " "));
+  });
+
+  it("keeps a colored revenue bar only on match rows that have a plan", async () => {
+    const user = userEvent.setup();
+    const pipeline = buildDefaultMerchFixtureTree();
+    const match = pipeline.tree.find(
+      (node) => node.matchId === MERCH_FIXTURE_ARENA_MATCH_ID,
+    )!;
+    renderMerch(pipeline, [match.id]);
+
+    expect(revenueBarHasPlanColor(match.label)).toBe(true);
+    expect(cellText(revenueCellForLabel(match.label))).toContain(
+      formatCurrency(match.revenue).replace(/\s/g, " ").trim(),
+    );
+    expect(revenueBarHasPlanColor(MERCH_OFF_MATCH_LABEL)).toBe(false);
+
+    for (const label of [
+      MERCH_SALES_SECTION_LABELS.salesChannel,
+      MERCH_SALES_SECTION_LABELS.productCategory,
+      MERCH_SALES_SECTION_LABELS.topProducts,
+    ]) {
+      expect(revenueBarHasPlanColor(label)).toBe(false);
+      expect(cellText(revenueCellForLabel(label))).toContain(
+        formatCurrency(match.revenue).replace(/\s/g, " ").trim(),
+      );
+      expect(cellText(planCellForLabel(label))).toContain("—");
+    }
+
+    await user.click(
+      screen.getByRole("button", {
+        name: `Развернуть: ${MERCH_SALES_SECTION_LABELS.salesChannel}`,
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: `Развернуть: ${MERCH_SALES_SECTION_LABELS.productCategory}`,
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: `Развернуть: ${MERCH_SALES_SECTION_LABELS.topProducts}`,
+      }),
+    );
+
+    expect(revenueBarHasPlanColor(MERCH_SALES_POINT_LABELS.flagship)).toBe(false);
+    expect(revenueBarHasPlanColor(MERCH_PRODUCT_CATEGORY_LABELS.jerseys)).toBe(
+      false,
+    );
+    expect(revenueBarHasPlanColor(MERCH_FIXTURE_ARENA_TOP_PRODUCTS[0])).toBe(
+      false,
+    );
+    expect(cellText(revenueCellForLabel(MERCH_SALES_POINT_LABELS.flagship))).toMatch(
+      /₽/,
+    );
+    expect(revenueBarHasPlanColor(match.label)).toBe(true);
   });
 
   it("expanding «Топ-5 товаров» lists ranked SKUs as siblings, not under category", async () => {
@@ -464,10 +555,95 @@ describe("MerchMatchSalesTable drill-down", () => {
     const cells = within(conversionCell!).getAllByRole("cell");
     expect(cells[cells.length - 1]!.textContent).toBe("—");
   });
+
+  it("returns to the initial collapsed view when remounted after merch filter reset", async () => {
+    const user = userEvent.setup();
+    const pipeline = buildDefaultMerchFixtureTree();
+    const match = pipeline.tree.find(
+      (node) => node.matchId === MERCH_FIXTURE_ARENA_MATCH_ID,
+    )!;
+
+    function ResetHarness({ epoch }: { epoch: number }) {
+      return (
+        <Harness
+          key={epoch}
+          tree={pipeline.tree}
+          matchRows={pipeline.rows}
+        />
+      );
+    }
+
+    const { rerender } = render(<ResetHarness epoch={0} />);
+
+    await user.click(
+      screen.getByRole("button", { name: `Развернуть: ${match.label}` }),
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: `Развернуть: ${MERCH_SALES_SECTION_LABELS.salesChannel}`,
+      }),
+    );
+    expect(screen.getByText(MERCH_SALES_POINT_LABELS.flagship)).toBeTruthy();
+
+    await user.type(
+      screen.getByLabelText("Поиск по мероприятию..."),
+      "СКА",
+    );
+    expect(
+      (screen.getByLabelText("Поиск по мероприятию...") as HTMLInputElement)
+        .value,
+    ).toBe("СКА");
+
+    rerender(<ResetHarness epoch={1} />);
+
+    expect(
+      screen
+        .getByRole("button", { name: `Развернуть: ${match.label}` })
+        .getAttribute("aria-expanded"),
+    ).toBe("false");
+    expect(screen.queryByText(MERCH_SALES_SECTION_LABELS.salesChannel)).toBeNull();
+    expect(screen.queryByText(MERCH_SALES_POINT_LABELS.flagship)).toBeNull();
+    expect(
+      (screen.getByLabelText("Поиск по мероприятию...") as HTMLInputElement)
+        .value,
+    ).toBe("");
+  });
+});
+
+describe("merch sales reset wiring", () => {
+  it("bumps merchViewResetEpoch from resetMerchFilters and remounts Продажи", () => {
+    const filterContext = readFileSync(
+      join(process.cwd(), "context/FilterContext.tsx"),
+      "utf8",
+    );
+    expect(filterContext).toMatch(
+      /const resetMerchFilters = useCallback\(\(\) => \{[\s\S]*?setMerchViewResetEpoch\(\(epoch\) => epoch \+ 1\);/,
+    );
+    expect(filterContext).toMatch(
+      /export function useMerchViewResetEpoch\(\): number/,
+    );
+
+    const mobileDraft = readFileSync(
+      join(process.cwd(), "context/MobileFilterDraftContext.tsx"),
+      "utf8",
+    );
+    expect(mobileDraft).toMatch(
+      /const resetMerchFilters = useCallback\(\(\) => \{[\s\S]*?live\.resetMerchFilters\(\);/,
+    );
+
+    const table = readFileSync(
+      join(process.cwd(), "components/widgets/MerchMatchSalesTable.tsx"),
+      "utf8",
+    );
+    expect(table).toMatch(/useMerchViewResetEpoch/);
+    expect(table).toMatch(
+      /<MerchMatchSalesTableBody key=\{merchViewResetEpoch\} data=\{data\} \/>/,
+    );
+  });
 });
 
 describe("merch sales page layout", () => {
-  it("places merch Продажи full-bleed, then channels/SKU/categories below", () => {
+  it("places merch Продажи full-bleed, then SKU left and channels/categories right", () => {
     const dashboard = readFileSync(
       join(process.cwd(), "app/dashboard-app.tsx"),
       "utf8",
@@ -479,11 +655,12 @@ describe("merch sales page layout", () => {
     const merchBlock = dashboard.slice(merchStart, matchesStart);
 
     expect(merchBlock).toMatch(
-      /MerchKpiCards[\s\S]*MerchSalesWidget[\s\S]*TopProductsChart[\s\S]*MerchMatchSalesTable[\s\S]*MerchSalesChannelsChart[\s\S]*MerchSkuSalesTable[\s\S]*MerchProductCategoriesChart/,
+      /MerchKpiCards[\s\S]*MerchSalesWidget[\s\S]*TopProductsChart[\s\S]*MerchMatchSalesTable[\s\S]*MerchSkuSalesTable[\s\S]*MerchSalesChannelsChart[\s\S]*MerchProductCategoriesChart/,
     );
     expect(merchBlock).toMatch(
-      /<MerchMatchSalesTable data=\{merchMatchSales\} \/>\s*<div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-2">/,
+      /<MerchMatchSalesTable data=\{merchMatchSales\} \/>\s*<div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-2">[\s\S]*<MerchSkuSalesTable/,
     );
+    expect(merchBlock).not.toMatch(/xl:absolute xl:inset-0/);
     expect(merchBlock).not.toMatch(
       /<div className="flex min-w-0 flex-col gap-4">\s*<MerchMatchSalesTable/,
     );

@@ -86,17 +86,6 @@ const TicketsSeasonMatchDynamicsWidget = dynamic(
   },
 );
 
-const TicketsZoneSectorWidget = dynamic(
-  () =>
-    import("@/components/widgets/TicketsZoneSectorWidget").then((mod) => ({
-      default: mod.TicketsZoneSectorWidget,
-    })),
-  {
-    ssr: false,
-    loading: () => <ChartSkeleton height={420} />,
-  },
-);
-
 const SubscriptionCampaignPaceWidget = dynamic(
   () =>
     import("@/components/widgets/SubscriptionCampaignPaceWidget").then(
@@ -182,10 +171,6 @@ const DashboardShell = memo(function DashboardShell() {
     </div>
   );
 });
-
-/** Zone-sector keeps the previous 1.2fr / 1fr template (spacer column) so it does not stretch full-bleed. */
-const TICKETS_TWO_COL_GRID_CLASS =
-  "grid min-w-0 grid-cols-1 items-start gap-4 min-[1024px]:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]";
 
 const TicketsSalesSection = memo(function TicketsSalesSection({
   matchSales,
@@ -291,10 +276,6 @@ function DashboardPanels() {
               data={ticketsPlanFactTrend}
               timeGrouping={ticketChartTimeGrouping}
             />
-            <div className={TICKETS_TWO_COL_GRID_CLASS}>
-              <TicketsZoneSectorWidget />
-              <div aria-hidden="true" className="hidden min-[1024px]:block" />
-            </div>
           </>
         )}
 
@@ -307,11 +288,9 @@ function DashboardPanels() {
             </div>
             <MerchMatchSalesTable data={merchMatchSales} />
             <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-2">
+              <MerchSkuSalesTable data={merchSkuSales} />
               <div className="flex min-w-0 flex-col gap-4">
                 <MerchSalesChannelsChart data={merchSalesChannelRevenue} />
-              </div>
-              <div className="flex min-w-0 flex-col gap-4">
-                <MerchSkuSalesTable data={merchSkuSales} />
                 <MerchProductCategoriesChart data={merchProductCategoryRevenue} />
               </div>
             </div>

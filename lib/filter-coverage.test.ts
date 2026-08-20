@@ -39,8 +39,9 @@ describe("tickets tab", () => {
   it("documents intentional exclusions", () => {
     const excluded = excludedCases(cases);
     expect(excluded).toHaveLength(1);
-    expect(excluded[0]?.filter).toBe("arena");
-    expect(excluded[0]?.option).toBe("Второстепенная");
+    expect(excluded.map((testCase) => testCase.filter).sort()).toEqual([
+      "arena",
+    ]);
   });
 });
 
@@ -56,16 +57,23 @@ describe("merch tab", () => {
 
   it("documents empty multi-select selections as intentional exclusions", () => {
     const excluded = excludedCases(cases);
-    expect(excluded).toHaveLength(2);
-    expect(excluded.map((testCase) => testCase.filter).sort()).toEqual([
-      "productCategory",
-      "salesChannels",
-    ]);
+    expect(excluded.map((testCase) => `${testCase.filter}:${testCase.option}`).sort()).toEqual(
+      [
+        "matchClass:Плей-офф",
+        "productCategory:(empty selection)",
+        "salesChannels:(empty selection)",
+        "series:ПО. Ак Барс",
+        "tournamentStage:Плей-офф",
+      ].sort(),
+    );
     expect(
-      excluded.every((testCase) => testCase.option === "(empty selection)"),
-    ).toBe(true);
-    expect(
-      excluded.every((testCase) => testCase.excluded?.includes("intentional")),
+      excluded
+        .filter(
+          (testCase) =>
+            testCase.filter === "productCategory" ||
+            testCase.filter === "salesChannels",
+        )
+        .every((testCase) => testCase.excluded?.includes("intentional")),
     ).toBe(true);
   });
 });
@@ -99,8 +107,9 @@ describe("match sales tab", () => {
   it("documents intentional exclusions", () => {
     const excluded = excludedCases(cases);
     expect(excluded).toHaveLength(1);
-    expect(excluded[0]?.filter).toBe("arena");
-    expect(excluded[0]?.option).toBe("Второстепенная");
+    expect(excluded.map((testCase) => testCase.filter).sort()).toEqual([
+      "arena",
+    ]);
   });
 });
 

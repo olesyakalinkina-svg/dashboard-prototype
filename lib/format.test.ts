@@ -19,5 +19,11 @@ describe("formatTicketEventTitle", () => {
     expect(formatTicketEventTitle({ opponent: "Динамо Мск" })).not.toMatch(
       /\d{2}-\d{2}-\d{2}/,
     );
+    expect(formatTicketEventTitle({ opponent: "Динамо Москва" })).toBe(
+      "Динамо Москва",
+    );
+    expect(formatTicketEventTitle({ opponent: "Динамо Москва" })).not.toMatch(
+      /^vs\s/i,
+    );
   });
 });

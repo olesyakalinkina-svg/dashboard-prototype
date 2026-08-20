@@ -11,6 +11,8 @@ import {
 import {
   DEFAULT_TICKET_FILTERS,
   NO_MATCHES_FILTER_VALUE,
+  passesSectorFilter,
+  passesSeriesFilter,
 } from "@/lib/ticket-filter-options";
 import { getMatchPlanRevenue } from "@/lib/ticket-plan";
 import { passesOrderDateRange } from "@/lib/season-dates";
@@ -60,6 +62,7 @@ export const FIXTURE_CURRENT_MATCH: Match = {
   league: "KHL",
   tournamentStage: "regular",
   matchClass: "class_1",
+  series: "Сентябрь",
   arena: "main",
   eventCompleted: true,
   ticketSalesWindowDays: 14,
@@ -75,6 +78,7 @@ export const FIXTURE_PREV_MATCH: Match = {
   league: "KHL",
   tournamentStage: "regular",
   matchClass: "class_2",
+  series: "Октябрь - 1",
   arena: "main",
   eventCompleted: true,
   ticketSalesWindowDays: 12,
@@ -90,6 +94,7 @@ export const FIXTURE_EMPTY_MATCH: Match = {
   league: "KHL",
   tournamentStage: "playoff",
   matchClass: "playoff",
+  series: "ПО. Ак Барс",
   arena: "main",
   eventCompleted: false,
   ticketSalesWindowDays: 10,
@@ -181,7 +186,7 @@ const CURRENT_SALES: Transaction[] = [
     ticketType: "arena",
     orderSource: "yandex_afisha",
     priceZone: "from_2500_to_4000",
-    sector: "VIP",
+    sector: "C1",
   }),
   ticketTx("fx-tx-a4", FIXTURE_CURRENT_MATCH_ID, d(2025, 9, 10), {
     amount: 10_000,
@@ -189,7 +194,7 @@ const CURRENT_SALES: Transaction[] = [
     ticketType: "arena",
     orderSource: "box_office",
     priceZone: "from_4000_to_6000",
-    sector: "C1",
+    sector: "VIP",
   }),
   ticketTx("fx-tx-a5", FIXTURE_CURRENT_MATCH_ID, d(2025, 9, 2), {
     amount: 0,
@@ -518,6 +523,9 @@ export function matchPassesTicketFilters(
   ) {
     return false;
   }
+  if (!passesSeriesFilter(match.series, ticketFilters.series)) {
+    return false;
+  }
   if (ticketFilters.arena !== "all" && match.arena !== ticketFilters.arena) {
     return false;
   }
@@ -551,6 +559,9 @@ export function txPassesTicketFilters(
     ticketFilters.priceZone !== "all" &&
     tx.priceZone !== ticketFilters.priceZone
   ) {
+    return false;
+  }
+  if (!passesSectorFilter(tx.sector, ticketFilters.sector)) {
     return false;
   }
   if (

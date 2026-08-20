@@ -51,6 +51,7 @@ CREATE TABLE match (
         CHECK (match_class IN ('class_1', 'class_2', 'class_3', 'playoff')),
     ticket_sales_window_days SMALLINT NOT NULL DEFAULT 14
         CHECK (ticket_sales_window_days BETWEEN 1 AND 60),
+    series      TEXT,
     capacity    INTEGER NOT NULL CHECK (capacity > 0)
 );
 

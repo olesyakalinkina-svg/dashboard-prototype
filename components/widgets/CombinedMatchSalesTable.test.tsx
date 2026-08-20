@@ -14,7 +14,7 @@ afterEach(() => {
 const SAMPLE: CombinedMatchSalesRow[] = [
   {
     matchId: "m1",
-    eventLabel: "vs СКА",
+    eventLabel: "СКА",
     date: new Date(2025, 9, 15),
     ticketRevenue: 100_000,
     merchRevenue: 50_000,
@@ -71,7 +71,7 @@ describe("CombinedMatchSalesTable", () => {
 
     const scroller = screen.getByTestId("sticky-scroll-table");
     expect(scroller.className).toContain(STICKY_TABLE_ROW_HOVER_CLASS);
-    const row = screen.getByText("vs СКА").closest("tr");
+    const row = screen.getByText("СКА").closest("tr");
     expect(row?.className).not.toMatch(/hover:bg-/);
 
     const css = readFileSync(join(process.cwd(), "app/globals.css"), "utf8");

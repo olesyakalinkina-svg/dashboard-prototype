@@ -116,13 +116,13 @@ describe("merch match sales plan", () => {
   });
 
   it("sets stored plan so actual/plan matches an explicit target", () => {
-    const row = match({ id: "match-14" });
+    const row = match({ id: "match-5" });
     const actual = 229_940;
     expect(applyExplicitMatchMerchPlan(row, actual)).toBe(true);
-    expect(row.merchPlanRevenue).toBe(merchPlanRevenueForTarget(actual, 0.61));
-    expect(actual / row.merchPlanRevenue!).toBeCloseTo(0.61, 5);
+    expect(row.merchPlanRevenue).toBe(merchPlanRevenueForTarget(actual, 0.75));
+    expect(actual / row.merchPlanRevenue!).toBeCloseTo(0.75, 5);
     applyMatchMerchPlanFloorWhenTicketsMet(row, actual);
     applyMatchMerchPlanFulfillmentBand(row, actual, true);
-    expect(row.merchPlanRevenue).toBe(merchPlanRevenueForTarget(actual, 0.61));
+    expect(row.merchPlanRevenue).toBe(merchPlanRevenueForTarget(actual, 0.75));
   });
 });

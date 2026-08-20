@@ -447,7 +447,7 @@ export const MatchSalesTable = memo(function MatchSalesTable({
                   className={clsx(
                     "px-3 py-2.5 text-[var(--foreground)]",
                     COLUMN_WIDTH_CLASS[cell.column.id],
-                    cell.column.id === "eventLabel" && "relative z-20",
+                    cell.column.id === "eventLabel" && "relative z-[2]",
                   )}
                   onClick={
                     cell.column.id === "eventLabel"

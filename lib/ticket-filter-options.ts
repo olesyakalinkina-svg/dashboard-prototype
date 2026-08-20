@@ -31,6 +31,10 @@ export const ALL_SECTORS: Sector[] = [
   "VIP",
 ];
 
+export const SECTOR_OPTIONS: { value: Sector; label: string }[] = ALL_SECTORS.map(
+  (sector) => ({ value: sector, label: sector }),
+);
+
 export const ALL_PRICE_ZONES: PriceZone[] = [
   "up_to_1500",
   "from_1500_to_2500",
@@ -133,6 +137,62 @@ export function visibleSectorsForFilters(
   });
 }
 
+export function getSectorOptionsForPriceZone(
+  priceZone: PriceZone | "all",
+): { value: Sector; label: string }[] {
+  const zones = priceZone === "all" ? [] : [priceZone];
+  return visibleSectorsForFilters(zones, []).map((sector) => ({
+    value: sector,
+    label: sector,
+  }));
+}
+
+export function sanitizeSectorsForPriceZone(
+  sectors: readonly string[],
+  priceZone: PriceZone | "all",
+): string[] {
+  if (isNoSectorsFilterValue(sectors)) return [NO_SECTORS_FILTER_VALUE];
+  if (sectors.length === 0) return [];
+  const allowed = new Set(
+    getSectorOptionsForPriceZone(priceZone).map((opt) => opt.value),
+  );
+  const next = sectors.filter((sector) => allowed.has(sector as Sector));
+  if (next.length === 0) return [NO_SECTORS_FILTER_VALUE];
+  return next;
+}
+
+/** Empty selection means all seating sectors (same as match multi-select). */
+export function hasActiveSectorFilter(sectors: readonly string[]): boolean {
+  return sectors.length > 0;
+}
+
+export function passesSectorFilter(
+  txSector: Sector | undefined,
+  selected: readonly string[],
+): boolean {
+  if (selected.length === 0) return true;
+  if (isNoSectorsFilterValue(selected)) return false;
+  if (!txSector) return false;
+  return selected.includes(txSector);
+}
+
+export function mergeTicketSectorFilters(
+  globalSectors: readonly string[],
+  localSectors: readonly string[],
+): string[] {
+  if (
+    isNoSectorsFilterValue(globalSectors) ||
+    isNoSectorsFilterValue(localSectors)
+  ) {
+    return [NO_SECTORS_FILTER_VALUE];
+  }
+  if (globalSectors.length === 0) return [...localSectors];
+  if (localSectors.length === 0) return [...globalSectors];
+  const allowed = new Set(globalSectors);
+  const next = localSectors.filter((sector) => allowed.has(sector));
+  return next.length > 0 ? next : [NO_SECTORS_FILTER_VALUE];
+}
+
 export function priceZoneFromUnitPrice(unitPrice: number): PriceZone {
   if (unitPrice < 1500) return "up_to_1500";
   if (unitPrice < 2500) return "from_1500_to_2500";
@@ -158,11 +218,13 @@ export const DEFAULT_TICKET_FILTERS: TicketFilters = {
   league: "KHL",
   tournamentStage: "all",
   matchClass: "all",
+  series: "all",
   arena: "all",
   eventCompleted: "all",
   matchId: [],
   ticketType: "all",
   priceZone: "all",
+  sector: [],
   orderSource: "all",
   transactionDateRange: DEFAULT_TICKET_TRANSACTION_DATE_RANGE,
   timeGrouping: "week",
@@ -229,10 +291,14 @@ export function buildMatchFilterOptions(
   return matchList
     .slice()
     .sort((a, b) => b.date.getTime() - a.date.getTime())
-    .map((match) => ({
-      value: match.id,
-      label: `vs ${match.opponent} · ${format(match.date, "d MMM yyyy", { locale: ru })}`,
-    }));
+    .map((match) => {
+      const dateLabel = format(match.date, "d MMM yyyy", { locale: ru });
+      const seriesLabel = match.series ? ` · ${match.series}` : "";
+      return {
+        value: match.id,
+        label: `${match.opponent} · ${dateLabel}${seriesLabel}`,
+      };
+    });
 }
 
 export const SEASON_OPTIONS = [
@@ -307,6 +373,68 @@ export function sanitizeMatchClassForStage(
     (opt) => opt.value === matchClass,
   );
   return isValid ? matchClass : "all";
+}
+
+/** Canonical KHL 2025/26 home-calendar series, in calendar order. */
+export const KHL_SERIES_ORDER = [
+  "Сентябрь",
+  "Октябрь - 1",
+  "Октябрь - 2",
+  "Ноябрь - 1",
+  "Ноябрь - 2",
+  "Декабрь",
+  "Январь - 1",
+  "Январь - 2",
+  "Февраль",
+  "Февраль-Март",
+  "ПО. Ак Барс",
+] as const;
+
+export const SERIES_ALL_OPTION = {
+  value: "all" as const,
+  label: "Все серии",
+};
+
+function seriesSortIndex(series: string): number {
+  const index = KHL_SERIES_ORDER.indexOf(
+    series as (typeof KHL_SERIES_ORDER)[number],
+  );
+  return index === -1 ? KHL_SERIES_ORDER.length : index;
+}
+
+/** Distinct series from the current match universe, plus «Все серии». */
+export function buildSeriesFilterOptions(
+  matchList: Match[],
+): { value: string; label: string }[] {
+  const present = new Set<string>();
+  for (const match of matchList) {
+    if (match.series) present.add(match.series);
+  }
+  const ordered = [...present].sort((left, right) => {
+    const indexDelta = seriesSortIndex(left) - seriesSortIndex(right);
+    if (indexDelta !== 0) return indexDelta;
+    return left.localeCompare(right, "ru");
+  });
+  return [
+    SERIES_ALL_OPTION,
+    ...ordered.map((series) => ({ value: series, label: series })),
+  ];
+}
+
+export function sanitizeSeriesForOptions(
+  series: string | "all",
+  options: readonly { value: string }[],
+): string | "all" {
+  if (series === "all") return "all";
+  return options.some((opt) => opt.value === series) ? series : "all";
+}
+
+export function passesSeriesFilter(
+  matchSeries: string | undefined,
+  selected: string | "all",
+): boolean {
+  if (selected === "all") return true;
+  return matchSeries === selected;
 }
 
 export const ARENA_OPTIONS: { value: ArenaId | "all"; label: string }[] = [

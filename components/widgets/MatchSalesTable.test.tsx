@@ -149,6 +149,38 @@ describe("MatchSalesTable integration (E2E stand-in)", () => {
     expect(priceZone.children.length).toBeGreaterThan(0);
   });
 
+  it("expands a price zone into sector rows with the same columns", async () => {
+    const user = userEvent.setup();
+    const pipeline = buildDefaultFixtureTree();
+    const match = pipeline.tree.find((n) => n.matchId === FIXTURE_CURRENT_MATCH_ID)!;
+    const priceZone = match.children.find(
+      (child) => child.label === MATCH_SALES_SECTION_LABELS.priceZone,
+    )!;
+    const vipZone = priceZone.children.find(
+      (child) => child.label === PRICE_ZONE_LABELS.from_4000_to_6000,
+    )!;
+    renderSales(pipeline, [match.id, priceZone.id]);
+
+    expect(screen.queryByText("VIP")).toBeNull();
+    const expandZone = screen.getByRole("button", {
+      name: `Развернуть: ${PRICE_ZONE_LABELS.from_4000_to_6000}`,
+    });
+    expect(expandZone.getAttribute("aria-expanded")).toBe("false");
+    await user.click(expandZone);
+    expect(
+      screen.getByRole("button", {
+        name: `Свернуть: ${PRICE_ZONE_LABELS.from_4000_to_6000}`,
+      }).getAttribute("aria-expanded"),
+    ).toBe("true");
+    expect(screen.getByText("VIP")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Развернуть: VIP" })).toBeNull();
+
+    const cells = cellsForLabel("VIP");
+    expect(cellText(cells[1]!)).toBe("");
+    expect(within(cells[3]!).getByText("—")).toBeTruthy();
+    expect(vipZone.children[0]?.revenue).toBe(vipZone.revenue);
+  });
+
   it("scenario 3: confirm match + price zone via global filter pipeline", () => {
     const pipeline = computeFixtureMatchSalesTable(FIXTURE_DASHBOARD_FILTERS, {
       ...FIXTURE_TICKET_FILTERS,

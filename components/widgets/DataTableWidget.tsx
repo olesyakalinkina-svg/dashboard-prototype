@@ -15,7 +15,7 @@ import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import clsx from "clsx";
 import { ChevronDown, ChevronUp, Search } from "lucide-react";
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { RowsExcelButton, TableExcelButton } from "@/components/ui/ExcelDownloadButton";
 import { getMatchLabel } from "@/lib/mock/hockey";
 import {
@@ -27,6 +27,7 @@ import {
 import { occupancyMassCapacity } from "@/lib/ticket-plan";
 import {
   COMBINED_MATCH_SALES_COLUMN_WIDTHS,
+  MERCH_SKU_SALES_COLUMN_WIDTHS,
 } from "@/components/ui/sales-table-layout";
 import { SUBSCRIPTION_CHANNEL_LABELS } from "@/lib/subscription-filter-options";
 import {
@@ -276,6 +277,10 @@ type MerchSalesTableProps<T> = {
   tableClassName?: string;
   /** Stretch to the grid row (taller neighbor). Off = hug the current page of rows. */
   fillHeight?: boolean;
+  /** Allow wrapping in header labels (needed for narrow multi-column tables). */
+  wrapHeaders?: boolean;
+  /** When false, columns must fit — no horizontal scrollbar. */
+  overflowX?: boolean;
 };
 
 function MerchSalesTable<T>({
@@ -292,10 +297,14 @@ function MerchSalesTable<T>({
   columnWidths,
   tableClassName,
   fillHeight = true,
+  wrapHeaders = false,
+  overflowX = true,
 }: MerchSalesTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>(defaultSort);
   const [globalFilter, setGlobalFilter] = useState("");
   const isMobile = useIsMobileLayout();
+  const resolvedPageSize = isMobile ? Math.min(pageSize, 10) : pageSize;
+  const stretch = fillHeight && !isMobile;
 
   const table = useReactTable({
     data,
@@ -307,8 +316,12 @@ function MerchSalesTable<T>({
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    initialState: { pagination: { pageSize } },
+    initialState: { pagination: { pageSize: resolvedPageSize } },
   });
+
+  useEffect(() => {
+    table.setPageSize(resolvedPageSize);
+  }, [resolvedPageSize, table]);
 
   const filteredRows = table.getFilteredRowModel().rows;
   const summary = summaryRow?.(filteredRows.map((row) => row.original));
@@ -321,10 +334,10 @@ function MerchSalesTable<T>({
     <Card
       className={clsx(
         "min-w-0 w-full",
-        fillHeight && "flex h-full flex-col",
+        stretch && "flex h-full min-h-0 flex-col",
       )}
     >
-      <CardHeader>
+      <CardHeader className={stretch ? "shrink-0" : undefined}>
         <CardTitle>{title}</CardTitle>
         <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
           <TableExcelButton table={table} fileName={title} />
@@ -340,7 +353,10 @@ function MerchSalesTable<T>({
         </div>
       </CardHeader>
       <CardContent
-        className={clsx("min-w-0", fillHeight && "flex flex-1 flex-col")}
+        className={clsx(
+          "min-w-0",
+          stretch && "flex min-h-0 flex-1 flex-col",
+        )}
       >
         {isMobile ? (
           <MobileTableCards
@@ -349,7 +365,17 @@ function MerchSalesTable<T>({
             dateKey={dateKey}
           />
         ) : (
-          <StickyScrollTable>
+          <StickyScrollTable
+            overflowX={overflowX}
+            className={
+              stretch
+                ? clsx(
+                    "min-h-0 flex-1",
+                    overflowX ? "overflow-auto" : "overflow-y-auto overflow-x-hidden",
+                  )
+                : undefined
+            }
+          >
             <table
               className={clsx(
                 "w-full text-sm leading-snug",
@@ -380,7 +406,9 @@ function MerchSalesTable<T>({
                     <span
                       className={clsx(
                         "inline-flex items-center gap-1",
-                        columnWidths && "min-w-0 whitespace-nowrap",
+                        columnWidths && "min-w-0",
+                        columnWidths && !wrapHeaders && "whitespace-nowrap",
+                        wrapHeaders && "flex-wrap",
                       )}
                     >
                       {flexRender(
@@ -388,8 +416,8 @@ function MerchSalesTable<T>({
                         header.getContext(),
                       )}
                       {{
-                        asc: <ChevronUp className="h-3 w-3" />,
-                        desc: <ChevronDown className="h-3 w-3" />,
+                        asc: <ChevronUp className="h-3 w-3 shrink-0" />,
+                        desc: <ChevronDown className="h-3 w-3 shrink-0" />,
                       }[header.column.getIsSorted() as string] ?? null}
                     </span>
                   </th>
@@ -416,15 +444,17 @@ function MerchSalesTable<T>({
                 ))}
               </tr>
             ))}
-            {summary}
           </tbody>
+          {summary ? (
+            <tfoot className="font-medium">{summary}</tfoot>
+          ) : null}
             </table>
           </StickyScrollTable>
         )}
         <div
           className={clsx(
-            "flex flex-wrap items-center justify-between gap-2 text-xs leading-snug text-[var(--muted)]",
-            fillHeight ? "mt-auto pt-3" : "mt-3",
+            "flex shrink-0 flex-wrap items-center justify-between gap-2 text-xs leading-snug text-[var(--muted)]",
+            stretch ? "mt-auto pt-3" : "mt-3",
           )}
         >
           <span>
@@ -574,7 +604,7 @@ export function CombinedMatchSalesTable({
     const merchReceipts = rows.reduce((sum, row) => sum + row.merchReceipts, 0);
 
     return (
-      <tr className="border-t-2 border-[var(--border)] font-medium">
+      <tr>
         <td className="px-3 py-2.5">Итого</td>
         <td className="px-3 py-2.5" />
         <td className="px-3 py-2.5">{formatCurrency(ticketRevenue)}</td>
@@ -772,7 +802,9 @@ export function MerchSkuSalesTable({ data }: { data: MerchSkuSalesRow[] }) {
         accessorKey: "productName",
         header: "Товар",
         cell: ({ getValue }) => (
-          <span className="font-medium">{getValue<string>()}</span>
+          <span className="break-words font-medium leading-snug">
+            {getValue<string>()}
+          </span>
         ),
       },
       {
@@ -850,9 +882,13 @@ export function MerchSkuSalesTable({ data }: { data: MerchSkuSalesRow[] }) {
       searchPlaceholder="Поиск по товару..."
       countLabel="товаров"
       defaultSort={[{ id: "units", desc: true }]}
-      pageSize={10}
+      pageSize={20}
       titleKey="productName"
       fillHeight={false}
+      wrapHeaders
+      overflowX={false}
+      columnWidths={MERCH_SKU_SALES_COLUMN_WIDTHS}
+      tableClassName="min-w-0"
     />
   );
 }

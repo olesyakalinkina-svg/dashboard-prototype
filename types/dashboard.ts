@@ -141,6 +141,11 @@ export type Match = {
   league: League;
   tournamentStage: TournamentStage;
   matchClass: MatchClass;
+  /**
+   * Home-calendar series label (e.g. «Сентябрь», «Февраль-Март», «ПО. Ак Барс»).
+   * Regular-season KHL 2025/26 uses the club calendar; playoffs use round names.
+   */
+  series?: string;
   arena: ArenaId;
   eventCompleted: boolean;
   /** Days before match when ticket sales open (10–16). */
@@ -198,11 +203,15 @@ export type TicketFilters = {
   league: League | "all";
   tournamentStage: TournamentStage | "all";
   matchClass: MatchClass | "all";
+  /** Home-calendar series label, or all series. */
+  series: string | "all";
   arena: ArenaId | "all";
   eventCompleted: "all" | "yes" | "no";
   matchId: string[];
   ticketType: TicketType | "all";
   priceZone: PriceZone | "all";
+  /** Empty / all selected = no restriction. `__no_sectors__` = explicit none. */
+  sector: string[];
   orderSource: OrderSource | "all";
   /** Purchase date window for ticket transactions (within season window) */
   transactionDateRange: MerchOrderDateRange;
@@ -214,6 +223,8 @@ export type MerchFilters = {
   league: League | "all";
   tournamentStage: TournamentStage | "all";
   matchClass: MatchClass | "all";
+  /** Home-calendar series label, or all series. */
+  series: string | "all";
   matchId: string[];
   salesChannels: MerchSalesPoint[];
   productCategories: MerchProductCategory[];
@@ -236,6 +247,8 @@ export type MatchSalesFilters = {
   league: League | "all";
   tournamentStage: TournamentStage | "all";
   matchClass: MatchClass | "all";
+  /** Home-calendar series label, or all series. */
+  series: string | "all";
   arena: ArenaId | "all";
   eventCompleted: "all" | "yes" | "no";
   matchId: string[];

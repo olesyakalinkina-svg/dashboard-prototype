@@ -26,10 +26,11 @@ import {
   ORDER_SOURCE_LABELS,
   PRICE_ZONE_LABELS,
   TICKET_TYPE_LABELS,
+  isAllowedSectorPriceZone,
   priceZoneFromUnitPrice,
 } from "@/lib/ticket-filter-options";
 import { getMatches, getTicketTransactionsByMatchId } from "@/lib/mock/data-store";
-import type { PriceZone, TicketFilters, Transaction } from "@/types/dashboard";
+import type { PriceZone, Sector, TicketFilters, Transaction } from "@/types/dashboard";
 
 const filters = DEFAULT_DASHBOARD_FILTERS;
 const ticketFilters = DEFAULT_TICKET_FILTERS;
@@ -163,9 +164,9 @@ describe("match sales tree", () => {
     expect(sample!.priceZone.children.every((child) => child.level === "priceZone")).toBe(
       true,
     );
-    expect(sample!.priceZone.children.every((child) => child.children.length === 0)).toBe(
-      true,
-    );
+    expect(
+      sample!.priceZone.children.some((child) => child.children.length > 0),
+    ).toBe(true);
     expect(sample!.match.date).toBeInstanceOf(Date);
     expect(sample!.priceZone.children[0]?.date).toBeNull();
     expect(sample!.priceZone.children[0]?.planRevenue).toBeNull();
@@ -296,25 +297,23 @@ describe("match sales tree", () => {
     );
   });
 
-  it("shows Парковка under upcoming Dynamo Moscow matches (match-15, match-16)", () => {
+  it("shows Парковка under KHL matches with arena ticket sales", () => {
     const { tree } = buildTree();
-    for (const matchId of ["match-15", "match-16"]) {
-      const match = tree.find((node) => node.matchId === matchId);
-      expect(match, matchId).toBeDefined();
-      expect(match!.label).toContain("Динамо Мск");
-      const ticketType = findSection(
-        match!,
-        MATCH_SALES_SECTION_LABELS.ticketType,
-      );
-      const parking = ticketType?.children.find(
+    const khlWithParking = tree.filter((node) => {
+      const ticketType = findSection(node, MATCH_SALES_SECTION_LABELS.ticketType);
+      return ticketType?.children.some(
         (child) => child.label === TICKET_TYPE_LABELS.parking,
       );
-      expect(parking, `${matchId} parking leaf`).toBeDefined();
-      expect(parking!.ticketsSold, `${matchId} parking qty`).toBeGreaterThanOrEqual(
-        8,
-      );
-      expect(parking!.revenue, `${matchId} parking revenue`).toBeGreaterThan(0);
-    }
+    });
+    expect(khlWithParking.length).toBeGreaterThan(0);
+    const sample = khlWithParking[0]!;
+    const ticketType = findSection(sample, MATCH_SALES_SECTION_LABELS.ticketType);
+    const parking = ticketType?.children.find(
+      (child) => child.label === TICKET_TYPE_LABELS.parking,
+    );
+    expect(parking).toBeDefined();
+    expect(parking!.ticketsSold).toBeGreaterThanOrEqual(8);
+    expect(parking!.revenue).toBeGreaterThan(0);
   });
 
   it("hides the price-zone section when parking tickets have no zone", () => {
@@ -562,5 +561,92 @@ describe("match sales tree", () => {
     expect(kept).toEqual(expanded);
     const dropped = pruneExpandedKeysForMatches(expanded, new Set());
     expect(dropped).toEqual([]);
+  });
+
+  it("expands a price zone into allowed sectors with sales", () => {
+    const { tree } = buildTree();
+    const sample = findParallelCuts(tree);
+    expect(sample).not.toBeNull();
+
+    const zonesWithSectors = sample!.priceZone.children.filter(
+      (child) => child.children.length > 0,
+    );
+    expect(zonesWithSectors.length).toBeGreaterThan(0);
+
+    for (const match of tree.slice(0, 12)) {
+      const priceZone = findSection(match, MATCH_SALES_SECTION_LABELS.priceZone);
+      if (!priceZone) continue;
+      for (const zone of priceZone.children) {
+        const zoneId = ALL_PRICE_ZONES.find(
+          (id) => PRICE_ZONE_LABELS[id] === zone.label,
+        );
+        expect(zoneId).toBeDefined();
+        expect(zone.hasChildren).toBe(zone.children.length > 0);
+        expect(zone.children.every((child) => child.level === "sector")).toBe(
+          true,
+        );
+        expect(zone.children.every((child) => child.hasChildren === false)).toBe(
+          true,
+        );
+        expect(zone.children.every((child) => child.planRevenue === null)).toBe(
+          true,
+        );
+        expect(zone.children.every((child) => child.capacity === null)).toBe(
+          true,
+        );
+        for (const sector of zone.children) {
+          expect(
+            isAllowedSectorPriceZone(sector.label as Sector, zoneId!),
+          ).toBe(true);
+          expect(
+            sector.ticketsSold > 0 ||
+              sector.freeTickets > 0 ||
+              sector.issuedTickets > 0,
+          ).toBe(true);
+          expect(sector.avgPrice).toBe(
+            sector.ticketsSold > 0 ? sector.revenue / sector.ticketsSold : 0,
+          );
+        }
+        const sectorRevenue = zone.children.reduce(
+          (sum, child) => sum + child.revenue,
+          0,
+        );
+        expect(sectorRevenue).toBeCloseTo(zone.revenue, 6);
+      }
+    }
+
+    const vipZone = sample!.priceZone.children.find(
+      (child) => child.label === PRICE_ZONE_LABELS.from_4000_to_6000,
+    );
+    expect(vipZone).toBeDefined();
+    expect(vipZone!.children.map((child) => child.label)).toEqual(["VIP"]);
+
+    expect(sample!.parking?.children ?? []).toEqual([]);
+    expect(sample!.arena.children).toEqual([]);
+
+    const zone = zonesWithSectors[0]!;
+    const flat = flattenExpandedMatchSalesTree(
+      [sample!.match],
+      new Set([sample!.match.id, sample!.priceZone.id, zone.id]),
+    );
+    const sectorRows = flat.filter((row) => row.level === "sector");
+    expect(sectorRows.length).toBe(zone.children.length);
+    expect(sectorRows.every((row) => row.depth === 3)).toBe(true);
+  });
+
+  it("hides filtered-out sectors under a price zone", () => {
+    const sectorFilters: TicketFilters = { ...ticketFilters, sector: ["A"] };
+    const { tree } = buildTree(sectorFilters);
+    expect(tree.length).toBeGreaterThan(0);
+    for (const match of tree) {
+      const priceZone = findSection(match, MATCH_SALES_SECTION_LABELS.priceZone);
+      if (!priceZone) continue;
+      for (const zone of priceZone.children) {
+        expect(zone.children.every((child) => child.label === "A")).toBe(true);
+        expect(
+          zone.children.some((child) => child.label === "VIP"),
+        ).toBe(false);
+      }
+    }
   });
 });

@@ -160,6 +160,16 @@ describe("§3 tree shape — three parallel cuts", () => {
       true,
     );
     for (const child of match.children) {
+      if (child.label === MATCH_SALES_SECTION_LABELS.priceZone) {
+        expect(
+          child.children.every(
+            (zone) =>
+              zone.level === "priceZone" &&
+              zone.children.every((sector) => sector.level === "sector"),
+          ),
+        ).toBe(true);
+        continue;
+      }
       expect(child.children.every((leafNode) => leafNode.children.length === 0)).toBe(
         true,
       );
@@ -232,6 +242,45 @@ describe("§3 tree shape — three parallel cuts", () => {
     expect(ids.every((id) => !/^\d+$/.test(id))).toBe(true);
   });
 
+  it("expands a price zone into allowed sectors and keeps parking as a leaf", () => {
+    const { tree } = buildDefaultFixtureTree();
+    const match = currentMatch(tree);
+    const priceZone = section(match, "priceZone")!;
+    const cheap = leaf(priceZone, PRICE_ZONE_LABELS.up_to_1500);
+    const mid = leaf(priceZone, PRICE_ZONE_LABELS.from_1500_to_2500);
+    const upper = leaf(priceZone, PRICE_ZONE_LABELS.from_2500_to_4000);
+    const vip = leaf(priceZone, PRICE_ZONE_LABELS.from_4000_to_6000);
+
+    expect(cheap.children.map((child) => child.label)).toEqual(["A", "D1"]);
+    expect(mid.children.map((child) => child.label)).toEqual(["B1"]);
+    expect(upper.children.map((child) => child.label)).toEqual(["C1"]);
+    expect(vip.children.map((child) => child.label)).toEqual(["VIP"]);
+    expect(vip.hasChildren).toBe(true);
+    expect(cheap.children.reduce((sum, child) => sum + child.revenue, 0)).toBe(
+      cheap.revenue,
+    );
+    expect(vip.children[0]?.revenue).toBe(vip.revenue);
+    expect(vip.children[0]?.avgPrice).toBe(vip.revenue / vip.ticketsSold);
+    expect(vip.children[0]?.planRevenue).toBeNull();
+    expect(vip.children[0]?.id).toBe(
+      `m:${FIXTURE_CURRENT_MATCH_ID}|z:from_4000_to_6000|sec:VIP`,
+    );
+
+    const parking = leaf(section(match, "ticketType"), TICKET_TYPE_LABELS.parking);
+    expect(parking.hasChildren).toBe(false);
+    expect(parking.children).toHaveLength(0);
+
+    const incomplete = tree.find(
+      (node) => node.matchId === FIXTURE_INCOMPLETE_MATCH_ID,
+    )!;
+    const incompleteParking = leaf(
+      section(incomplete, "ticketType"),
+      TICKET_TYPE_LABELS.parking,
+    );
+    expect(incompleteParking.children).toHaveLength(0);
+    expect(section(incomplete, "priceZone")).toBeUndefined();
+  });
+
   it("does not leak transactions across matches and skips the empty match", () => {
     const { tree, rows } = buildDefaultFixtureTree();
     expect(tree.some((node) => node.matchId === FIXTURE_EMPTY_MATCH_ID)).toBe(
@@ -266,11 +315,13 @@ describe("§3 tree shape — three parallel cuts", () => {
         league: "all",
         tournamentStage: "all",
         matchClass: "all",
+        series: "all",
         arena: "all",
         eventCompleted: "all",
         matchId: [],
         ticketType: "all",
         priceZone: "all",
+        sector: [],
         orderSource: "all",
         transactionDateRange: { from: null, to: null },
         timeGrouping: "day",
@@ -461,6 +512,12 @@ describe("§5–6 expand, independent branches, several matches", () => {
     const arena = leaf(section(match, "ticketType"), TICKET_TYPE_LABELS.arena);
     expect(arena.hasChildren).toBe(false);
     expect(arena.children).toHaveLength(0);
+    const cheapZone = leaf(
+      section(match, "priceZone"),
+      PRICE_ZONE_LABELS.up_to_1500,
+    );
+    expect(cheapZone.hasChildren).toBe(true);
+    expect(cheapZone.children.length).toBeGreaterThan(0);
     const incomplete = tree.find(
       (node) => node.matchId === FIXTURE_INCOMPLETE_MATCH_ID,
     )!;

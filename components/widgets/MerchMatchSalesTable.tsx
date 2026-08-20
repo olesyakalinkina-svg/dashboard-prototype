@@ -13,10 +13,14 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { TableExcelButton } from "@/components/ui/ExcelDownloadButton";
 import { InlineBarCell } from "@/components/ui/InlineBarCell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { SALES_COL_PERCENT } from "@/components/ui/sales-table-layout";
 import { StickyScrollTable } from "@/components/ui/StickyScrollTable";
 import { TreeExpandButton } from "@/components/ui/TreeExpandButton";
 import { MerchMobileSalesCards } from "@/components/widgets/MerchMobileSalesCards";
-import { useFilterData } from "@/context/FilterContext";
+import {
+  useFilterData,
+  useMerchViewResetEpoch,
+} from "@/context/FilterContext";
 import { useIsMobileLayout } from "@/hooks/useLayoutMode";
 import {
   useMerchSalesPageTree,
@@ -25,6 +29,7 @@ import {
 } from "@/hooks/useMerchSalesTree";
 import {
   flattenExpandedMerchSalesTree,
+  merchSalesPlanFulfillmentPct,
   paginateTopLevel,
   sortMerchSalesNodes,
   type MerchSalesFlatRow,
@@ -46,6 +51,7 @@ const COLUMN_WIDTH_CLASS: Record<string, string> = {
   eventLabel: "w-auto min-w-[14rem]",
   date: "w-[7rem]",
   revenue: BAR_COLUMN_WIDTH_CLASS,
+  planFulfillment: SALES_COL_PERCENT,
   avgCheck: "w-[9rem]",
   receipts: "w-[8rem]",
   units: "w-[9rem]",
@@ -85,6 +91,7 @@ function isMerchSalesSortId(id: string): id is MerchSalesSortId {
     id === "eventLabel" ||
     id === "date" ||
     id === "revenue" ||
+    id === "planFulfillment" ||
     id === "avgCheck" ||
     id === "receipts" ||
     id === "units" ||
@@ -170,24 +177,32 @@ const MERCH_SALES_COLUMNS: ColumnDef<MerchSalesFlatRow, unknown>[] = [
     header: "Выручка",
     cell: ({ row, table }) => {
       const item = row.original;
-      const { revenue, planRevenue } = item;
       const { barMax } = table.options.meta as MerchSalesTableMeta;
-      const fulfillmentPct =
-        planRevenue != null && planRevenue > 0
-          ? (revenue / planRevenue) * 100
-          : null;
       return (
         <InlineBarCell
-          value={revenue}
+          value={item.revenue}
           max={barMax.revenue}
-          share={fulfillmentPct ?? undefined}
-          formatted={formatCurrency(revenue)}
-          trailingFormatted={
-            fulfillmentPct !== null ? formatPercent(fulfillmentPct) : "—"
+          formatted={formatCurrency(item.revenue)}
+          showFill={
+            merchSalesPlanFulfillmentPct(item.revenue, item.planRevenue) !==
+            null
           }
           barClassName={getBarClass(item.level, "bg-rose-400", "bg-rose-300", "bg-rose-200")}
         />
       );
+    },
+  },
+  {
+    accessorKey: "planFulfillment",
+    accessorFn: (row) =>
+      merchSalesPlanFulfillmentPct(row.revenue, row.planRevenue),
+    header: "% выполнения плана",
+    cell: ({ row }) => {
+      const pct = merchSalesPlanFulfillmentPct(
+        row.original.revenue,
+        row.original.planRevenue,
+      );
+      return pct !== null ? formatPercent(pct) : "—";
     },
   },
   {
@@ -288,6 +303,10 @@ function summaryFromMatchNodes(nodes: MerchSalesTreeNode[]) {
   if (nodes.length === 0) return null;
 
   const totalRevenue = nodes.reduce((sum, row) => sum + row.revenue, 0);
+  const totalPlanRevenue = nodes.reduce(
+    (sum, row) => sum + (row.planRevenue ?? 0),
+    0,
+  );
   const totalReceipts = nodes.reduce((sum, row) => sum + row.receipts, 0);
   const totalUnits = nodes.reduce((sum, row) => sum + row.units, 0);
   const totalAttendance = nodes.reduce((sum, row) => sum + row.attendance, 0);
@@ -298,12 +317,16 @@ function summaryFromMatchNodes(nodes: MerchSalesTreeNode[]) {
   const upt = totalReceipts > 0 ? totalUnits / totalReceipts : 0;
   const purchaseConversionPct =
     totalAttendance > 0 ? (matchReceipts / totalAttendance) * 100 : 0;
+  const planPct = merchSalesPlanFulfillmentPct(totalRevenue, totalPlanRevenue);
 
   return (
-    <tr className="border-t-2 border-[var(--border)] font-medium">
+    <tr>
       <td className="px-3 py-2.5">Итого</td>
       <td className="px-3 py-2.5" />
       <td className="px-3 py-2.5">{formatCurrency(totalRevenue)}</td>
+      <td className="px-3 py-2.5">
+        {planPct !== null ? formatPercent(planPct) : "—"}
+      </td>
       <td className="px-3 py-2.5">{formatCurrency(avgCheck)}</td>
       <td className="px-3 py-2.5">{formatNumber(totalReceipts)}</td>
       <td className="px-3 py-2.5">{formatNumber(totalUnits)} шт</td>
@@ -428,7 +451,7 @@ export const MerchSalesTableView = memo(function MerchSalesTableView({
       </CardHeader>
       <CardContent className="flex min-w-0 flex-1 flex-col">
         <StickyScrollTable>
-        <table className="w-full min-w-[72rem] table-fixed text-sm leading-snug">
+        <table className="w-full min-w-[84rem] table-fixed text-sm leading-snug">
           <colgroup>
             {table.getAllLeafColumns().map((column) => (
               <col key={column.id} className={COLUMN_WIDTH_CLASS[column.id]} />
@@ -473,7 +496,7 @@ export const MerchSalesTableView = memo(function MerchSalesTableView({
                     className={clsx(
                       "px-3 py-2.5 text-[var(--foreground)]",
                       COLUMN_WIDTH_CLASS[cell.column.id],
-                      cell.column.id === "eventLabel" && "relative z-20",
+                      cell.column.id === "eventLabel" && "relative z-[2]",
                     )}
                     onClick={
                       cell.column.id === "eventLabel"
@@ -486,8 +509,10 @@ export const MerchSalesTableView = memo(function MerchSalesTableView({
                 ))}
               </tr>
             ))}
-            {summary}
           </tbody>
+          {summary ? (
+            <tfoot className="font-medium">{summary}</tfoot>
+          ) : null}
         </table>
         </StickyScrollTable>
         <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-3 text-xs leading-snug text-[var(--muted)]">
@@ -522,6 +547,15 @@ export const MerchSalesTableView = memo(function MerchSalesTableView({
 });
 
 export const MerchMatchSalesTable = memo(function MerchMatchSalesTable({
+  data,
+}: {
+  data: MerchMatchSalesRow[];
+}) {
+  const merchViewResetEpoch = useMerchViewResetEpoch();
+  return <MerchMatchSalesTableBody key={merchViewResetEpoch} data={data} />;
+});
+
+const MerchMatchSalesTableBody = memo(function MerchMatchSalesTableBody({
   data,
 }: {
   data: MerchMatchSalesRow[];

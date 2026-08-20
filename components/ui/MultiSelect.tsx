@@ -31,6 +31,7 @@ type MultiSelectProps = {
   leadingExclusiveOption?: MultiSelectOption;
   searchable?: boolean;
   searchPlaceholder?: string;
+  disabled?: boolean;
 };
 
 const OPTION_ROW_CLASS =
@@ -124,6 +125,7 @@ export function MultiSelect({
   leadingExclusiveOption,
   searchable = false,
   searchPlaceholder = "Поиск...",
+  disabled = false,
 }: MultiSelectProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -247,6 +249,7 @@ export function MultiSelect({
   }
 
   function openDropdown() {
+    if (disabled) return;
     setDraftValue(value);
     setOpen(true);
   }
@@ -314,8 +317,9 @@ export function MultiSelect({
       <button
         ref={triggerRef}
         type="button"
+        disabled={disabled}
         onClick={() => (open ? closeDropdown() : openDropdown())}
-        className="flex h-11 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-[var(--border)] bg-white px-3 text-left text-sm leading-snug text-[var(--foreground)] outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] xl:h-9 xl:min-w-[200px]"
+        className="flex h-11 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-[var(--border)] bg-white px-3 text-left text-sm leading-snug text-[var(--foreground)] outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50 xl:h-9 xl:min-w-[200px]"
       >
         <span className="truncate">{displayText}</span>
         <ChevronDown

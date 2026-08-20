@@ -11,6 +11,7 @@ import {
 } from "@/hooks/useMerchSalesTree";
 import {
   flattenExpandedMerchSalesTree,
+  merchSalesPlanFulfillmentPct,
   paginateTopLevel,
   sortMerchSalesNodes,
   type MerchSalesFlatRow,
@@ -28,6 +29,7 @@ const MERCH_SALES_EXCEL_HEADERS = [
   "Мероприятие",
   "Дата",
   "Выручка",
+  "% выполнения плана",
   "Средний чек",
   "Чеки",
   "Товары",
@@ -40,6 +42,9 @@ function formatUpt(value: number): string {
 }
 
 function CompactKpis({ row }: { row: MerchSalesTreeNode | MerchSalesFlatRow }) {
+  const planPct = merchSalesPlanFulfillmentPct(row.revenue, row.planRevenue);
+  const planPctLabel = planPct !== null ? formatPercent(planPct) : "—";
+
   return (
     <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs leading-snug">
       <div className="col-span-2">
@@ -47,6 +52,10 @@ function CompactKpis({ row }: { row: MerchSalesTreeNode | MerchSalesFlatRow }) {
         <dd className="font-medium text-[var(--foreground)]">
           {formatCurrency(row.revenue)}
         </dd>
+      </div>
+      <div className="col-span-2">
+        <dt className="text-[var(--muted)]">% выполнения плана</dt>
+        <dd className="text-[var(--foreground)]">{planPctLabel}</dd>
       </div>
       <div>
         <dt className="text-[var(--muted)]">Чеки</dt>
@@ -63,10 +72,6 @@ function CompactKpis({ row }: { row: MerchSalesTreeNode | MerchSalesFlatRow }) {
 }
 
 function DetailKpis({ row }: { row: MerchSalesTreeNode | MerchSalesFlatRow }) {
-  const fulfillmentPct =
-    row.planRevenue != null && row.planRevenue > 0
-      ? (row.revenue / row.planRevenue) * 100
-      : null;
   const showConversion =
     (row.level === "match" || row.level === "section") && row.attendance > 0;
 
@@ -79,12 +84,6 @@ function DetailKpis({ row }: { row: MerchSalesTreeNode | MerchSalesFlatRow }) {
       <div>
         <dt className="text-[var(--muted)]">UPT</dt>
         <dd className="text-[var(--foreground)]">{formatUpt(row.upt)}</dd>
-      </div>
-      <div>
-        <dt className="text-[var(--muted)]">К плану</dt>
-        <dd className="text-[var(--foreground)]">
-          {fulfillmentPct !== null ? formatPercent(fulfillmentPct) : "—"}
-        </dd>
       </div>
       {showConversion ? (
         <div>
@@ -238,16 +237,20 @@ const TopLevelCard = memo(function TopLevelCard({
 });
 
 function getTreeExcelRows(rows: MerchSalesFlatRow[]): ExcelValue[][] {
-  return rows.map((row) => [
-    row.label,
-    row.date ? formatDate(row.date) : "",
-    row.revenue,
-    row.avgCheck,
-    row.receipts,
-    row.units,
-    Math.round(row.upt * 100) / 100,
-    Math.round(row.purchaseConversionPct * 10) / 10,
-  ]);
+  return rows.map((row) => {
+    const pct = merchSalesPlanFulfillmentPct(row.revenue, row.planRevenue);
+    return [
+      row.label,
+      row.date ? formatDate(row.date) : "",
+      row.revenue,
+      pct !== null ? Math.round(pct * 10) / 10 : "—",
+      row.avgCheck,
+      row.receipts,
+      row.units,
+      Math.round(row.upt * 100) / 100,
+      Math.round(row.purchaseConversionPct * 10) / 10,
+    ];
+  });
 }
 
 export const MerchMobileSalesCards = memo(function MerchMobileSalesCards({

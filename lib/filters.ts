@@ -38,7 +38,10 @@ import {
   ORDER_SOURCE_LABELS,
   ALL_PRICE_ZONES,
   ALL_SECTORS,
+  isNoSectorsFilterValue,
   NO_MATCHES_FILTER_VALUE,
+  passesSectorFilter,
+  passesSeriesFilter,
   TICKET_TYPE_LABELS,
   TOURNAMENT_STAGE_OPTIONS,
   getEffectiveTicketTimeGrouping,
@@ -219,11 +222,13 @@ function ticketFilterCacheKey(
     ticketFilters.league,
     ticketFilters.tournamentStage,
     ticketFilters.matchClass,
+    ticketFilters.series,
     ticketFilters.arena,
     ticketFilters.eventCompleted,
     ticketFilters.matchId.join(","),
     ticketFilters.ticketType,
     ticketFilters.priceZone,
+    ticketFilters.sector.join(","),
     ticketFilters.orderSource,
     ticketFilters.transactionDateRange.from ?? "",
     ticketFilters.transactionDateRange.to ?? "",
@@ -243,6 +248,7 @@ function merchFilterCacheKey(
     merchFilters.league,
     merchFilters.tournamentStage,
     merchFilters.matchClass,
+    merchFilters.series,
     merchFilters.matchId.join(","),
     merchFilters.salesChannels.join(","),
     merchFilters.productCategories.join(","),
@@ -577,6 +583,9 @@ export function filterMatchesByMerchFilters(
     ) {
       return false;
     }
+    if (!passesSeriesFilter(match.series, merchFilters.series)) {
+      return false;
+    }
     if (!passesMatchIdFilter(match.id, merchFilters.matchId)) {
       return false;
     }
@@ -824,6 +833,9 @@ export function filterMatchesByTicketFilters(
     ) {
       return false;
     }
+    if (!passesSeriesFilter(match.series, ticketFilters.series)) {
+      return false;
+    }
     if (ticketFilters.arena !== "all" && match.arena !== ticketFilters.arena) {
       return false;
     }
@@ -851,6 +863,9 @@ function passesTicketFieldFilters(
     return false;
   }
   if (ticketFilters.priceZone !== "all" && tx.priceZone !== ticketFilters.priceZone) {
+    return false;
+  }
+  if (!passesSectorFilter(tx.sector, ticketFilters.sector)) {
     return false;
   }
   if (ticketFilters.orderSource !== "all" && tx.orderSource !== ticketFilters.orderSource) {
@@ -1199,6 +1214,7 @@ function matchLevelTicketFilters(ticketFilters: TicketFilters): TicketFilters {
     ...ticketFilters,
     ticketType: "all",
     priceZone: "all",
+    sector: [],
     orderSource: "all",
   };
 }
@@ -1209,11 +1225,13 @@ function ticketTodayCacheKey(ticketFilters: TicketFilters): string {
     ticketFilters.league,
     ticketFilters.tournamentStage,
     ticketFilters.matchClass,
+    ticketFilters.series,
     ticketFilters.arena,
     ticketFilters.eventCompleted,
     ticketFilters.matchId.join(","),
     ticketFilters.ticketType,
     ticketFilters.priceZone,
+    ticketFilters.sector.join(","),
     ticketFilters.orderSource,
     ticketFilters.transactionDateRange.from ?? "",
     ticketFilters.transactionDateRange.to ?? "",
@@ -1761,6 +1779,11 @@ function ticketPlanScale(ticketFilters: TicketFilters): number {
     scale *= TICKET_TYPE_PLAN_SHARE[ticketFilters.ticketType];
   }
   if (ticketFilters.priceZone !== "all") scale *= 1 / ALL_PRICE_ZONES.length;
+  if (isNoSectorsFilterValue(ticketFilters.sector)) {
+    scale *= 0;
+  } else if (ticketFilters.sector.length > 0) {
+    scale *= ticketFilters.sector.length / ALL_SECTORS.length;
+  }
   if (ticketFilters.orderSource !== "all") scale *= 1 / 3;
   return scale;
 }
@@ -3308,7 +3331,7 @@ export function computeMerchMatchSalesTable(
 
     rows.push({
       matchId: match.id,
-      eventLabel: `vs ${match.opponent}`,
+      eventLabel: formatTicketEventTitle(match),
       date: match.date,
       revenue: agg.revenue,
       planRevenue,

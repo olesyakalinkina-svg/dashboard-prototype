@@ -65,7 +65,7 @@ export function formatDate(date: Date): string {
 }
 
 /**
- * Tickets «Продажи» / zone-sector / Matches tab table event title: opponent only.
+ * Tickets/merch «Продажи», Matches table, and match-filter titles: opponent only (no «vs»).
  * Match date stays in the separate Дата column (and chart labels keep their own format).
  */
 export function formatTicketEventTitle(match: { opponent: string }): string {

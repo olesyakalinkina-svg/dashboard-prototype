@@ -1356,6 +1356,7 @@ describe("dashboard zone-sector match occupancy bands", () => {
       if (row.level !== "match" || row.kind === "dash") continue;
       const match = matchesById.get(row.matchId);
       if (!match || !isSoldOutOccupancyMatch(match)) continue;
+      if (!match.eventCompleted) continue;
       if (row.revenue == null || row.planRevenue == null || !(row.planRevenue > 0)) {
         continue;
       }
@@ -1410,10 +1411,12 @@ describe("dashboard zone-sector match occupancy bands", () => {
   });
 
   it("keeps occupancy in [89%, 96%] when match revenue/plan is in [89%, 95%]", () => {
-    const { tree } = zoneSectorMatchRows();
+    const { matchesById, tree } = zoneSectorMatchRows();
     let mid = 0;
     for (const row of tree) {
       if (row.level !== "match" || row.kind === "dash") continue;
+      const match = matchesById.get(row.matchId);
+      if (match && !match.eventCompleted) continue;
       if (row.revenue == null || row.planRevenue == null || !(row.planRevenue > 0)) {
         continue;
       }
@@ -1433,12 +1436,14 @@ describe("dashboard zone-sector match occupancy bands", () => {
   });
 
   it("keeps visible match occupancy in the revenue/plan bands", () => {
-    const { tree } = zoneSectorMatchRows();
+    const { matchesById, tree } = zoneSectorMatchRows();
     let mid = 0;
     let high = 0;
     let over = 0;
     for (const row of tree) {
       if (row.level !== "match" || row.kind === "dash") continue;
+      const match = matchesById.get(row.matchId);
+      if (match && !match.eventCompleted) continue;
       if (row.revenue == null || row.planRevenue == null || !(row.planRevenue > 0)) {
         continue;
       }

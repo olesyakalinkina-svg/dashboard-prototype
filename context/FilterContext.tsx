@@ -42,8 +42,10 @@ import { yieldToEventLoop, yieldUntilIdle } from "@/lib/idle";
 import { beginTicketsUiTurn, noteTicketsCompute } from "@/lib/tickets-compute-trace";
 import {
   buildMatchFilterOptions,
+  buildSeriesFilterOptions,
   DEFAULT_TICKET_FILTERS,
   getEffectiveTicketTimeGrouping,
+  sanitizeSeriesForOptions,
 } from "@/lib/ticket-filter-options";
 import {
   DEFAULT_MERCH_FILTERS,
@@ -126,7 +128,6 @@ type FilterStateContextValue = {
   matchSalesFilters: MatchSalesFilters;
   subscriptionFilters: SubscriptionFilters;
   activeTab: DashboardTab;
-  lastUpdated: Date | null;
   setDateRange: (range: DateRangePreset) => void;
   setMatchId: (matchId: string | "all") => void;
   setTicketFilters: (patch: Partial<TicketFilters>) => void;
@@ -139,10 +140,12 @@ type FilterStateContextValue = {
   resetMerchFilters: () => void;
   resetMatchSalesFilters: () => void;
   resetSubscriptionFilters: () => void;
-  refresh: () => void;
   ticketMatchOptions: ReturnType<typeof buildMatchFilterOptions>;
   merchMatchOptions: ReturnType<typeof buildMatchFilterOptions>;
   matchSalesMatchOptions: ReturnType<typeof buildMatchFilterOptions>;
+  ticketSeriesOptions: ReturnType<typeof buildSeriesFilterOptions>;
+  merchSeriesOptions: ReturnType<typeof buildSeriesFilterOptions>;
+  matchSalesSeriesOptions: ReturnType<typeof buildSeriesFilterOptions>;
 };
 
 type FilterDataContextValue = {
@@ -241,6 +244,7 @@ const EMPTY_MATCH_SALES_KPIS: MatchSalesKpiData = {
 const FilterStateContext = createContext<FilterStateContextValue | null>(null);
 const FilterDataContext = createContext<FilterDataContextValue | null>(null);
 const TicketsViewResetContext = createContext(0);
+const MerchViewResetContext = createContext(0);
 
 function emptyTicketsDataValue(
   appliedTicketFilters: TicketFilters,
@@ -448,10 +452,10 @@ export function FilterProvider({ children }: { children: ReactNode }) {
   const [subscriptionFilters, setSubscriptionFiltersState] =
     useState<SubscriptionFilters>(DEFAULT_SUBSCRIPTION_FILTERS);
   const [activeTab, setActiveTabState] = useState<DashboardTab>("tickets");
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [dataReady, setDataReady] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
   const [ticketsViewResetEpoch, setTicketsViewResetEpoch] = useState(0);
+  const [merchViewResetEpoch, setMerchViewResetEpoch] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -459,7 +463,6 @@ export function FilterProvider({ children }: { children: ReactNode }) {
       .then(() => {
         if (cancelled) return;
         setDataReady(true);
-        setLastUpdated(new Date());
       })
       .catch((error: unknown) => {
         if (!cancelled) {
@@ -521,6 +524,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
   const resetMerchFilters = useCallback(() => {
     setFilters(defaultFilters);
     setMerchFiltersState(DEFAULT_MERCH_FILTERS);
+    setMerchViewResetEpoch((epoch) => epoch + 1);
   }, []);
 
   const resetMatchSalesFilters = useCallback(() => {
@@ -537,10 +541,6 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     setActiveTabState(tab);
   }, []);
 
-  const refresh = useCallback(() => {
-    setLastUpdated(new Date());
-  }, []);
-
   const ticketMatchOptions = useMemo(
     () =>
       dataReady
@@ -548,6 +548,29 @@ export function FilterProvider({ children }: { children: ReactNode }) {
             filterMatchesByTicketFilters({ ...ticketFilters, matchId: [] }),
           )
         : [],
+    [
+      dataReady,
+      ticketFilters.season,
+      ticketFilters.league,
+      ticketFilters.tournamentStage,
+      ticketFilters.matchClass,
+      ticketFilters.series,
+      ticketFilters.arena,
+      ticketFilters.eventCompleted,
+    ],
+  );
+
+  const ticketSeriesOptions = useMemo(
+    () =>
+      dataReady
+        ? buildSeriesFilterOptions(
+            filterMatchesByTicketFilters({
+              ...ticketFilters,
+              matchId: [],
+              series: "all",
+            }),
+          )
+        : [ { value: "all", label: "Все серии" } ],
     [
       dataReady,
       ticketFilters.season,
@@ -566,6 +589,27 @@ export function FilterProvider({ children }: { children: ReactNode }) {
             filterMatchesByMerchFilters({ ...merchFilters, matchId: [] }),
           )
         : [],
+    [
+      dataReady,
+      merchFilters.season,
+      merchFilters.league,
+      merchFilters.tournamentStage,
+      merchFilters.matchClass,
+      merchFilters.series,
+    ],
+  );
+
+  const merchSeriesOptions = useMemo(
+    () =>
+      dataReady
+        ? buildSeriesFilterOptions(
+            filterMatchesByMerchFilters({
+              ...merchFilters,
+              matchId: [],
+              series: "all",
+            }),
+          )
+        : [ { value: "all", label: "Все серии" } ],
     [
       dataReady,
       merchFilters.season,
@@ -591,10 +635,69 @@ export function FilterProvider({ children }: { children: ReactNode }) {
       matchSalesFilters.league,
       matchSalesFilters.tournamentStage,
       matchSalesFilters.matchClass,
+      matchSalesFilters.series,
       matchSalesFilters.arena,
       matchSalesFilters.eventCompleted,
     ],
   );
+
+  const matchSalesSeriesOptions = useMemo(
+    () =>
+      dataReady
+        ? buildSeriesFilterOptions(
+            filterMatchesByMatchSalesFilters({
+              ...matchSalesFilters,
+              matchId: [],
+              series: "all",
+            }),
+          )
+        : [ { value: "all", label: "Все серии" } ],
+    [
+      dataReady,
+      matchSalesFilters.season,
+      matchSalesFilters.league,
+      matchSalesFilters.tournamentStage,
+      matchSalesFilters.matchClass,
+      matchSalesFilters.arena,
+      matchSalesFilters.eventCompleted,
+    ],
+  );
+
+  useEffect(() => {
+    const next = sanitizeSeriesForOptions(
+      ticketFilters.series,
+      ticketSeriesOptions,
+    );
+    if (next !== ticketFilters.series) {
+      setTicketFiltersState((prev) =>
+        prev.series === next ? prev : { ...prev, series: next },
+      );
+    }
+  }, [ticketFilters.series, ticketSeriesOptions]);
+
+  useEffect(() => {
+    const next = sanitizeSeriesForOptions(
+      merchFilters.series,
+      merchSeriesOptions,
+    );
+    if (next !== merchFilters.series) {
+      setMerchFiltersState((prev) =>
+        prev.series === next ? prev : { ...prev, series: next },
+      );
+    }
+  }, [merchFilters.series, merchSeriesOptions]);
+
+  useEffect(() => {
+    const next = sanitizeSeriesForOptions(
+      matchSalesFilters.series,
+      matchSalesSeriesOptions,
+    );
+    if (next !== matchSalesFilters.series) {
+      setMatchSalesFiltersState((prev) =>
+        prev.series === next ? prev : { ...prev, series: next },
+      );
+    }
+  }, [matchSalesFilters.series, matchSalesSeriesOptions]);
 
   const stateValue = useMemo<FilterStateContextValue>(
     () => ({
@@ -604,7 +707,6 @@ export function FilterProvider({ children }: { children: ReactNode }) {
       matchSalesFilters,
       subscriptionFilters,
       activeTab,
-      lastUpdated,
       setDateRange,
       setMatchId,
       setTicketFilters,
@@ -617,10 +719,12 @@ export function FilterProvider({ children }: { children: ReactNode }) {
       resetMerchFilters,
       resetMatchSalesFilters,
       resetSubscriptionFilters,
-      refresh,
       ticketMatchOptions,
       merchMatchOptions,
       matchSalesMatchOptions,
+      ticketSeriesOptions,
+      merchSeriesOptions,
+      matchSalesSeriesOptions,
     }),
     [
       filters,
@@ -629,7 +733,6 @@ export function FilterProvider({ children }: { children: ReactNode }) {
       matchSalesFilters,
       subscriptionFilters,
       activeTab,
-      lastUpdated,
       setDateRange,
       setMatchId,
       setTicketFilters,
@@ -642,27 +745,31 @@ export function FilterProvider({ children }: { children: ReactNode }) {
       resetMerchFilters,
       resetMatchSalesFilters,
       resetSubscriptionFilters,
-      refresh,
       ticketMatchOptions,
       merchMatchOptions,
       matchSalesMatchOptions,
+      ticketSeriesOptions,
+      merchSeriesOptions,
+      matchSalesSeriesOptions,
     ],
   );
 
   return (
     <FilterStateContext.Provider value={stateValue}>
       <TicketsViewResetContext.Provider value={ticketsViewResetEpoch}>
-        {!dataReady ? (
-          dataError ? (
-            <div className="flex min-h-screen items-center justify-center bg-[var(--background)] p-6">
-              <p className="text-sm text-red-600">{dataError}</p>
-            </div>
+        <MerchViewResetContext.Provider value={merchViewResetEpoch}>
+          {!dataReady ? (
+            dataError ? (
+              <div className="flex min-h-screen items-center justify-center bg-[var(--background)] p-6">
+                <p className="text-sm text-red-600">{dataError}</p>
+              </div>
+            ) : (
+              <DashboardLoading />
+            )
           ) : (
-            <DashboardLoading />
-          )
-        ) : (
-          children
-        )}
+            children
+          )}
+        </MerchViewResetContext.Provider>
       </TicketsViewResetContext.Provider>
     </FilterStateContext.Provider>
   );
@@ -781,6 +888,7 @@ function TabCompute({
     () => ({
       ...ticketFilters,
       matchId: ticketFilters.matchId,
+      sector: [...ticketFilters.sector],
       transactionDateRange: { ...ticketFilters.transactionDateRange },
     }),
     [
@@ -788,11 +896,13 @@ function TabCompute({
       ticketFilters.league,
       ticketFilters.tournamentStage,
       ticketFilters.matchClass,
+      ticketFilters.series,
       ticketFilters.arena,
       ticketFilters.eventCompleted,
       ticketFilters.matchId,
       ticketFilters.ticketType,
       ticketFilters.priceZone,
+      ticketFilters.sector,
       ticketFilters.orderSource,
       ticketFilters.transactionDateRange.from,
       ticketFilters.transactionDateRange.to,
@@ -814,6 +924,7 @@ function TabCompute({
       merchFilters.league,
       merchFilters.tournamentStage,
       merchFilters.matchClass,
+      merchFilters.series,
       merchFilters.matchId,
       merchFilters.salesChannels,
       merchFilters.productCategories,
@@ -860,6 +971,7 @@ function TabCompute({
       matchSalesFilters.league,
       matchSalesFilters.tournamentStage,
       matchSalesFilters.matchClass,
+      matchSalesFilters.series,
       matchSalesFilters.arena,
       matchSalesFilters.eventCompleted,
       matchSalesFilters.matchId,
@@ -1188,6 +1300,10 @@ export function useFilterData() {
 
 export function useTicketsViewResetEpoch(): number {
   return useContext(TicketsViewResetContext);
+}
+
+export function useMerchViewResetEpoch(): number {
+  return useContext(MerchViewResetContext);
 }
 
 export function useFilters(): FilterContextValue {

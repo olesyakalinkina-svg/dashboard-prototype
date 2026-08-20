@@ -132,6 +132,7 @@ describe("hockey generator sold-out occupancy", () => {
     expect(partial.length).toBeGreaterThan(0);
 
     for (const match of soldOut) {
+      if (!match.eventCompleted) continue;
       expect(arenaIssuedForMatch(match, transactions)).toBe(match.capacity);
     }
 
@@ -313,7 +314,7 @@ describe("hockey generator sold-out occupancy", () => {
     const epsilon = 1e-9;
     let soldOut = 0;
     for (const match of matches) {
-      if (!isSoldOutOccupancyMatch(match)) continue;
+      if (!isSoldOutOccupancyMatch(match) || !match.eventCompleted) continue;
       const planRevenue = getMatchPlanRevenue(match);
       if (!(planRevenue > 0)) continue;
       let revenue = 0;
@@ -362,6 +363,7 @@ describe("hockey generator sold-out occupancy", () => {
     const epsilon = 1e-9;
     let highRevenue = 0;
     for (const match of matches) {
+      if (!match.eventCompleted) continue;
       if (!(match.capacity > 0)) continue;
       const planRevenue = getMatchPlanRevenue(match);
       if (!(planRevenue > 0)) continue;
@@ -403,6 +405,8 @@ describe("hockey generator sold-out occupancy", () => {
     let over = 0;
     for (const row of tree) {
       if (row.level !== "match" || row.kind === "dash") continue;
+      const match = matchesById.get(row.matchId);
+      if (match && !match.eventCompleted) continue;
       if (row.revenue == null || row.planRevenue == null || !(row.planRevenue > 0)) {
         continue;
       }
@@ -468,5 +472,104 @@ describe("hockey generator sold-out occupancy", () => {
         false,
       );
     }
+  });
+
+  it("uses the 34-game KHL 2025/26 regular home calendar with series labels", () => {
+    const khl = matches
+      .filter(
+        (match) =>
+          match.league === "KHL" &&
+          match.season === "2025/26" &&
+          match.tournamentStage === "regular",
+      )
+      .sort((left, right) => left.date.getTime() - right.date.getTime());
+
+    const expected: [string, string, string][] = [
+      ["Локомотив", "2025-09-15", "Сентябрь"],
+      ["Спартак", "2025-09-18", "Сентябрь"],
+      ["Авангард", "2025-09-20", "Сентябрь"],
+      ["СКА", "2025-09-25", "Сентябрь"],
+      ["Амур", "2025-10-06", "Октябрь - 1"],
+      ["Амур", "2025-10-08", "Октябрь - 1"],
+      ["Сибирь", "2025-10-10", "Октябрь - 1"],
+      ["Ак Барс", "2025-10-23", "Октябрь - 2"],
+      ["Сибирь", "2025-10-26", "Октябрь - 2"],
+      ["ЦСКА", "2025-11-01", "Ноябрь - 1"],
+      ["Барыс", "2025-11-04", "Ноябрь - 1"],
+      ["Ак Барс", "2025-11-06", "Ноябрь - 1"],
+      ["Автомобилист", "2025-11-08", "Ноябрь - 1"],
+      ["Шанхай Дрэгонс", "2025-11-10", "Ноябрь - 1"],
+      ["Лада", "2025-11-24", "Ноябрь - 2"],
+      ["Автомобилист", "2025-11-26", "Ноябрь - 2"],
+      ["Металлург", "2025-11-28", "Ноябрь - 2"],
+      ["Нефтехимик", "2025-12-27", "Декабрь"],
+      ["Динамо Минск", "2026-01-04", "Январь - 1"],
+      ["Салават Юлаев", "2026-01-06", "Январь - 1"],
+      ["Нефтехимик", "2026-01-10", "Январь - 1"],
+      ["Салават Юлаев", "2026-01-19", "Январь - 2"],
+      ["Динамо Москва", "2026-01-22", "Январь - 2"],
+      ["Барыс", "2026-01-24", "Январь - 2"],
+      ["Металлург", "2026-01-28", "Январь - 2"],
+      ["Адмирал", "2026-02-11", "Февраль"],
+      ["Адмирал", "2026-02-13", "Февраль"],
+      ["ХК Сочи", "2026-02-16", "Февраль"],
+      ["Авангард", "2026-02-28", "Февраль-Март"],
+      ["Северсталь", "2026-03-02", "Февраль-Март"],
+      ["Автомобилист", "2026-03-07", "Февраль-Март"],
+      ["Металлург", "2026-03-09", "Февраль-Март"],
+      ["Торпедо", "2026-03-11", "Февраль-Март"],
+      ["Авангард", "2026-03-13", "Февраль-Март"],
+    ];
+
+    expect(khl).toHaveLength(34);
+    expect(khl.every((match) => match.eventCompleted)).toBe(true);
+    expect(khl.some((match) => match.opponent === "Динамо Мск")).toBe(false);
+    expect(khl.some((match) => match.date.getTime() === new Date(2026, 4, 15).getTime())).toBe(
+      false,
+    );
+
+    for (let i = 0; i < expected.length; i += 1) {
+      const [opponent, iso, series] = expected[i];
+      const [year, month, day] = iso.split("-").map(Number);
+      expect(khl[i].opponent, `regular ${i + 1}`).toBe(opponent);
+      expect(khl[i].series, `series ${i + 1}`).toBe(series);
+      expect(khl[i].matchClass).not.toBe("playoff");
+      expect(khl[i].date.getFullYear()).toBe(year);
+      expect(khl[i].date.getMonth()).toBe(month - 1);
+      expect(khl[i].date.getDate()).toBe(day);
+    }
+
+    const playoffs = matches.filter(
+      (match) =>
+        match.league === "KHL" &&
+        match.season === "2025/26" &&
+        match.tournamentStage === "playoff",
+    );
+    expect(playoffs.length).toBe(2);
+    expect(playoffs.every((match) => match.matchClass === "playoff")).toBe(true);
+    expect(playoffs.every((match) => match.eventCompleted)).toBe(false);
+    expect(playoffs.every((match) => match.opponent === "Ак Барс")).toBe(true);
+    expect(playoffs.every((match) => match.series === "ПО. Ак Барс")).toBe(true);
+    expect(playoffs.map((match) => match.date.getDate()).sort((a, b) => a - b)).toEqual([
+      27, 29,
+    ]);
+    expect(playoffs.every((match) => match.date.getMonth() === 2)).toBe(true);
+    expect(playoffs.every((match) => match.date.getFullYear() === 2026)).toBe(true);
+
+    const prevKhl = matches.filter(
+      (match) => match.league === "KHL" && match.season === "2024/25",
+    );
+    expect(prevKhl).toHaveLength(16);
+
+    const vhl = matches.filter(
+      (match) => match.league === "VHL" && match.season === "2025/26",
+    );
+    const mhl = matches.filter(
+      (match) => match.league === "MHL" && match.season === "2025/26",
+    );
+    expect(vhl).toHaveLength(8);
+    expect(mhl).toHaveLength(8);
+    expect(vhl.every((match) => match.arena === "secondary")).toBe(true);
+    expect(mhl.every((match) => match.arena === "main")).toBe(true);
   });
 });

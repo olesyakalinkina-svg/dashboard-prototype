@@ -164,10 +164,20 @@ export function pruneMerchExpandedKeysForMatches(
   return next;
 }
 
+/** Revenue / merch plan as a percent, or null when there is no plan base. */
+export function merchSalesPlanFulfillmentPct(
+  revenue: number,
+  planRevenue: number | null | undefined,
+): number | null {
+  if (planRevenue == null || planRevenue <= 0) return null;
+  return (revenue / planRevenue) * 100;
+}
+
 export type MerchSalesSortId =
   | "eventLabel"
   | "date"
   | "revenue"
+  | "planFulfillment"
   | "avgCheck"
   | "receipts"
   | "units"
@@ -206,6 +216,11 @@ function compareMerchSalesNodes(
       return (a.date?.getTime() ?? 0) - (b.date?.getTime() ?? 0);
     case "revenue":
       return a.revenue - b.revenue;
+    case "planFulfillment": {
+      const aPct = merchSalesPlanFulfillmentPct(a.revenue, a.planRevenue);
+      const bPct = merchSalesPlanFulfillmentPct(b.revenue, b.planRevenue);
+      return (aPct ?? Number.NEGATIVE_INFINITY) - (bPct ?? Number.NEGATIVE_INFINITY);
+    }
     case "avgCheck":
       return a.avgCheck - b.avgCheck;
     case "receipts":
@@ -430,7 +445,8 @@ function sectionNodeFromMatchRow(
     date: null,
     label: MERCH_SALES_SECTION_LABELS[section],
     revenue: row.revenue,
-    planRevenue: row.planRevenue,
+    // No per-channel / category / SKU plan — do not inherit the match plan.
+    planRevenue: null,
     avgCheck: row.avgCheck,
     receipts: row.receipts,
     units: row.units,

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { format, startOfDay } from "date-fns";
+import { format } from "date-fns";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_DASHBOARD_FILTERS } from "@/lib/filter-coverage";
 import { computeTicketsMatchCumulativeSeries } from "@/lib/filters";
@@ -607,13 +607,12 @@ describe("tickets season match chart — helpers", () => {
     const ticketsBlock = dashboard.slice(ticketsStart, merchStart);
 
     expect(ticketsBlock).toMatch(
-      /TicketsSalesSection[\s\S]*TicketsMatchDynamicsSection[\s\S]*TicketsPlanFactWidget[\s\S]*TicketsZoneSectorWidget/,
+      /TicketsSalesSection[\s\S]*TicketsMatchDynamicsSection[\s\S]*TicketsPlanFactWidget/,
     );
+    expect(ticketsBlock).not.toContain("TicketsZoneSectorWidget");
+    expect(ticketsBlock).not.toContain("TICKETS_TWO_COL_GRID_CLASS");
     expect(ticketsBlock).not.toMatch(
-      /TICKETS_TWO_COL_GRID_CLASS[\s\S]*TicketsSalesSection[\s\S]*TicketsMatchDynamicsSection/,
-    );
-    expect(ticketsBlock).toMatch(
-      /TICKETS_TWO_COL_GRID_CLASS[\s\S]*TicketsZoneSectorWidget/,
+      /grid-cols-\[minmax\(0,1\.2fr\)_minmax\(0,1fr\)\]/,
     );
   });
 
@@ -656,15 +655,20 @@ describe("tickets season match chart — mock series", () => {
 
     const views = buildSeasonMatchSeriesViews(series);
     const onSale = views.filter((view) => view.isOnSale);
-    expect(onSale.length).toBeGreaterThan(0);
-
     const selected = selectSeasonMatchChartViews(views);
-    expect(viewIds(selected)).toEqual(viewIds(onSale));
-    expect(
-      selected.every(
-        (view) => !view.eventCompleted && view.isOnSale,
-      ),
-    ).toBe(true);
+    expect(selected.length).toBeGreaterThan(0);
+
+    if (onSale.length > 0) {
+      expect(viewIds(selected)).toEqual(viewIds(onSale));
+      expect(
+        selected.every(
+          (view) => !view.eventCompleted && view.isOnSale,
+        ),
+      ).toBe(true);
+    } else {
+      expect(selected).toHaveLength(SEASON_MATCH_LAST_COMPLETED_FALLBACK_COUNT);
+      expect(selected.every((view) => view.eventCompleted)).toBe(true);
+    }
 
     const rows = buildSeasonMatchChartRows(selected, series);
     expect(rows.length).toBeGreaterThan(0);
@@ -675,148 +679,42 @@ describe("tickets season match chart — mock series", () => {
     }
   });
 
-  it("includes Dynamo Msk 17.05.2026 in current sales with the match date on labels and the axis", () => {
-    expect(format(MOCK_TODAY, "dd.MM.yyyy")).toBe("15.05.2026");
+  it("does not keep a May 15 Dynamo regular-season current-sales demo", () => {
+    expect(format(MOCK_TODAY, "dd.MM.yyyy")).toBe("25.03.2026");
 
     const series = computeTicketsMatchCumulativeSeries(
       DEFAULT_DASHBOARD_FILTERS,
       DEFAULT_TICKET_FILTERS,
     );
     const views = buildSeasonMatchSeriesViews(series);
+    expect(
+      views.some(
+        (view) =>
+          view.opponent.includes("Динамо Мск") ||
+          view.matchDate.includes("15.05") ||
+          view.matchDate.includes("17.05"),
+      ),
+    ).toBe(false);
+
+    const regularKhl = series.filter(
+      (item) => item.league === "KHL" && item.eventCompleted,
+    );
+    expect(regularKhl.length).toBeGreaterThanOrEqual(34);
+  });
+
+  it("shows current-sales curves for upcoming KHL playoff Ак Барс", () => {
+    const series = computeTicketsMatchCumulativeSeries(
+      DEFAULT_DASHBOARD_FILTERS,
+      DEFAULT_TICKET_FILTERS,
+    );
+    const views = buildSeasonMatchSeriesViews(series);
+    expect(views.some((view) => view.isOnSale)).toBe(true);
+
     const selected = selectSeasonMatchChartViews(views);
-    const dynamo17 = selected.find(
-      (view) =>
-        view.matchId === "match-16" ||
-        (view.opponent.includes("Динамо Мск") &&
-          view.matchDate.includes("17.05")),
+    expect(selected.every((view) => !view.eventCompleted && view.isOnSale)).toBe(
+      true,
     );
-
-    expect(dynamo17).toBeDefined();
-    expect(dynamo17?.isOnSale).toBe(true);
-    expect(dynamo17?.eventCompleted).toBe(false);
-    expect(dynamo17?.matchDate).toBe("17.05.26");
-    expect(dynamo17?.legendLabel).toContain("17.05.26");
-    expect(dynamo17?.legendLabel).toContain("Динамо Мск");
-
-    const daily = buildSeasonMatchChartRows(selected, series);
-    const weekly = aggregateSeasonMatchChartRowsByGrouping(
-      daily,
-      selected,
-      "week",
-    );
-    const matchDateKeys = selected.map((view) => view.matchDateKey);
-    const weeklyLabels = buildSeasonMatchXAxisTicks(weekly, {
-      grouping: "week",
-      matchDateKeys,
-    }).map((tick) => formatSeasonMatchAxisLabel(tick, weekly, matchDateKeys));
-    const dailyLabels = buildSeasonMatchXAxisTicks(daily, {
-      matchDateKeys,
-    }).map((tick) => formatSeasonMatchAxisLabel(tick, daily, matchDateKeys));
-
-    expect(weeklyLabels).toContain("17.05.26");
-    expect(dailyLabels).toContain("17.05.26");
-  });
-
-  it("keeps Dynamo 15.05 and 17.05 on distinct dates in current-sales, including week grouping", () => {
-    expect(format(MOCK_TODAY, "dd.MM.yyyy")).toBe("15.05.2026");
-
-    const series = computeTicketsMatchCumulativeSeries(
-      DEFAULT_DASHBOARD_FILTERS,
-      DEFAULT_TICKET_FILTERS,
-    );
-    const selected = selectSeasonMatchChartViews(
-      buildSeasonMatchSeriesViews(series),
-    );
-    const dynamo15 = selected.find(
-      (view) =>
-        view.matchId === "match-15" ||
-        (view.opponent.includes("Динамо Мск") &&
-          view.matchDate.includes("15.05")),
-    );
-    const dynamo17 = selected.find(
-      (view) =>
-        view.matchId === "match-16" ||
-        (view.opponent.includes("Динамо Мск") &&
-          view.matchDate.includes("17.05")),
-    );
-
-    expect(dynamo15).toBeDefined();
-    expect(dynamo17).toBeDefined();
-    expect(dynamo15?.isOnSale).toBe(true);
-    expect(dynamo17?.isOnSale).toBe(true);
-    expect(dynamo15?.eventCompleted).toBe(false);
-    expect(dynamo17?.eventCompleted).toBe(false);
-    expect(dynamo15?.matchDate).toBe("15.05.26");
-    expect(dynamo17?.matchDate).toBe("17.05.26");
-    expect(dynamo15?.matchDateKey).not.toBe(dynamo17?.matchDateKey);
-
-    const todayKey = startOfDay(MOCK_TODAY).getTime();
-    expect(formatSeasonMatchDateLabel(dynamo15!.matchDateKey)).toBe("15.05.26");
-    expect(formatSeasonMatchDateLabel(dynamo17!.matchDateKey)).toBe("17.05.26");
-    expect(dynamo17!.matchDateKey).toBeGreaterThan(todayKey);
-
-    const daily = buildSeasonMatchChartRows(selected, series);
-    const weekly = aggregateSeasonMatchChartRowsByGrouping(
-      daily,
-      selected,
-      "week",
-    );
-
-    for (const rows of [daily, weekly]) {
-      const plan15Rows = rows.filter(
-        (row) => row[seasonMatchPlanKey(dynamo15!.matchId)] != null,
-      );
-      const plan16Rows = rows.filter(
-        (row) => row[seasonMatchPlanKey(dynamo17!.matchId)] != null,
-      );
-      expect(plan15Rows).toHaveLength(1);
-      expect(plan16Rows).toHaveLength(1);
-      expect(plan15Rows[0].dateKey).toBe(dynamo15!.matchDateKey);
-      expect(plan16Rows[0].dateKey).toBe(dynamo17!.matchDateKey);
-      expect(plan15Rows[0].dateKey).not.toBe(plan16Rows[0].dateKey);
-
-      const fact16 = seasonMatchFactKey(dynamo17!.matchId);
-      const lastFact16 = [...rows]
-        .reverse()
-        .find((row) => row[fact16] != null);
-      expect(lastFact16).toBeDefined();
-      expect(formatSeasonMatchDateLabel(lastFact16!.dateKey)).toBe("15.05.26");
-      expect(lastFact16!.dateKey).toBeLessThan(dynamo17!.matchDateKey);
-      expect(lastFact16![seasonMatchPlanKey(dynamo17!.matchId)]).toBeNull();
-
-      const matchDateKeys = selected.map((view) => view.matchDateKey);
-      const labels = buildSeasonMatchXAxisTicks(rows, {
-        grouping: rows === weekly ? "week" : "day",
-        matchDateKeys,
-      }).map((tick) => formatSeasonMatchAxisLabel(tick, rows, matchDateKeys));
-      expect(labels).toContain("15.05.26");
-      expect(labels).toContain("17.05.26");
-    }
-  });
-
-  it("keeps independent Dynamo current-sales series rather than a shared copy", () => {
-    const series = computeTicketsMatchCumulativeSeries(
-      DEFAULT_DASHBOARD_FILTERS,
-      DEFAULT_TICKET_FILTERS,
-    );
-    const match15 = series.find((item) => item.matchId === "match-15");
-    const match16 = series.find((item) => item.matchId === "match-16");
-    expect(match15).toBeDefined();
-    expect(match16).toBeDefined();
-    expect(match15!.points).not.toBe(match16!.points);
-
-    const views = selectSeasonMatchChartViews(
-      buildSeasonMatchSeriesViews(series),
-    );
-    const rows = buildSeasonMatchChartRows(views, series);
-    const fact15 = seasonMatchFactKey("match-15");
-    const fact16 = seasonMatchFactKey("match-16");
-    const overlap = rows.filter(
-      (row) => row[fact15] != null && row[fact16] != null,
-    );
-
-    expect(overlap.length).toBeGreaterThan(3);
-    expect(overlap.some((row) => row[fact15] !== row[fact16])).toBe(true);
+    expect(selected.map((view) => view.opponent)).toEqual(["Ак Барс", "Ак Барс"]);
   });
 
   it("falls back to the last three completed matches when the tab has only finished games", () => {

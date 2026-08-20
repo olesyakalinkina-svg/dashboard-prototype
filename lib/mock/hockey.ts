@@ -10,6 +10,7 @@ import {
   SUBSCRIPTIONS_PERIOD_END,
   SUBSCRIPTIONS_PERIOD_START,
 } from "@/lib/mock/constants";
+import { formatTicketEventTitle } from "@/lib/format";
 import { getMatchById } from "@/lib/mock/data-store";
 
 export {
@@ -123,7 +124,7 @@ export const promotions: Promotion[] = [
 export function getMatchLabel(matchId: string): string {
   const match = getMatchById().get(matchId);
   if (!match) return "—";
-  return `vs ${match.opponent}`;
+  return formatTicketEventTitle(match);
 }
 
 export { subscriptionPlans } from "@/lib/mock/subscription-catalog";

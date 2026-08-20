@@ -206,7 +206,7 @@ export const MERCH_FIXTURE_OFF_MATCH_ROW: MerchMatchSalesRow = {
 export const MERCH_FIXTURE_MATCH_ROWS: MerchMatchSalesRow[] = [
   {
     matchId: MERCH_FIXTURE_ARENA_MATCH_ID,
-    eventLabel: "vs СКА",
+    eventLabel: "СКА",
     date: ARENA_DATE,
     revenue: 500_000,
     planRevenue: 450_000,
@@ -219,7 +219,7 @@ export const MERCH_FIXTURE_MATCH_ROWS: MerchMatchSalesRow[] = [
   },
   {
     matchId: MERCH_FIXTURE_NORTH_MATCH_ID,
-    eventLabel: "vs ЦСКА",
+    eventLabel: "ЦСКА",
     date: NORTH_DATE,
     revenue: 400_000,
     planRevenue: 500_000,

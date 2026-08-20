@@ -125,6 +125,31 @@ describe("MobileSalesCards parallel structure", () => {
     expect(screen.queryByRole("button", { name: "Развернуть: Арена" })).toBeNull();
   });
 
+  it("expands a price zone into sector cards on mobile", async () => {
+    const user = userEvent.setup();
+    const pipeline = buildDefaultFixtureTree();
+    const match = pipeline.tree.find((n) => n.matchId === FIXTURE_CURRENT_MATCH_ID)!;
+    render(<Harness tree={pipeline.tree} matchRows={pipeline.rows} />);
+    await user.click(
+      screen.getByRole("button", { name: `Развернуть: ${match.label}` }),
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: `Развернуть: ${MATCH_SALES_SECTION_LABELS.priceZone}`,
+      }),
+    );
+    expect(screen.getByText("до 1500")).toBeTruthy();
+    expect(screen.queryByText("VIP")).toBeNull();
+    await user.click(
+      screen.getByRole("button", {
+        name: `Развернуть: от 4000 до 6000`,
+      }),
+    );
+    expect(screen.getByText("VIP")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Развернуть: VIP" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Развернуть: Арена" })).toBeNull();
+  });
+
   it("shows opponent name without the match date on the card title", () => {
     const pipeline = buildDefaultFixtureTree();
     const match = pipeline.tree.find((n) => n.matchId === FIXTURE_CURRENT_MATCH_ID)!;

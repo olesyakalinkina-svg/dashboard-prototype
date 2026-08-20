@@ -7,6 +7,7 @@ import {
 import { DEFAULT_SUBSCRIPTION_FILTERS } from "@/lib/subscription-filter-options";
 import {
   DEFAULT_TICKET_FILTERS,
+  hasActiveSectorFilter,
   hasTransactionDateRangeFilter,
   isNoMatchesFilterValue,
 } from "@/lib/ticket-filter-options";
@@ -47,6 +48,7 @@ export function countActiveTicketFilters(filters: TicketFilters): number {
     "league",
     "tournamentStage",
     "matchClass",
+    "series",
     "arena",
     "eventCompleted",
     "ticketType",
@@ -56,6 +58,10 @@ export function countActiveTicketFilters(filters: TicketFilters): number {
   ]);
 
   if (filters.matchId.length > 0 && !isNoMatchesFilterValue(filters.matchId)) {
+    count += 1;
+  }
+
+  if (hasActiveSectorFilter(filters.sector)) {
     count += 1;
   }
 
@@ -75,6 +81,7 @@ export function countActiveMerchFilters(filters: MerchFilters): number {
     "league",
     "tournamentStage",
     "matchClass",
+    "series",
     "timeGrouping",
   ]);
 
@@ -116,6 +123,7 @@ export function countActiveMatchSalesFilters(filters: MatchSalesFilters): number
     "league",
     "tournamentStage",
     "matchClass",
+    "series",
     "arena",
     "eventCompleted",
   ]);

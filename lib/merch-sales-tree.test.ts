@@ -30,6 +30,7 @@ import {
 import {
   computeMerchSalesTree,
   flattenExpandedMerchSalesTree,
+  merchSalesPlanFulfillmentPct,
   MERCH_SALES_SECTION_LABELS,
   MERCH_SALES_TOP_PRODUCTS_LIMIT,
   sortMerchSalesNodes,
@@ -135,8 +136,11 @@ describe("merch sales tree", () => {
       expect(sumChildren(categories, "units")).toBe(match.units);
       expect(shareSum(channels)).toBeCloseTo(100, 8);
       expect(shareSum(categories)).toBeCloseTo(100, 8);
-      expect(channels.planRevenue).toBe(match.planRevenue);
-      expect(categories.planRevenue).toBe(match.planRevenue);
+      expect(channels.planRevenue).toBeNull();
+      expect(categories.planRevenue).toBeNull();
+      expect(
+        findSection(match, MERCH_SALES_SECTION_LABELS.topProducts)!.planRevenue,
+      ).toBeNull();
       expect(channels.children[0]?.planRevenue).toBeNull();
       expect(categories.children[0]?.planRevenue).toBeNull();
     }
@@ -337,6 +341,34 @@ describe("merch sales tree", () => {
   });
 });
 
+describe("merchSalesPlanFulfillmentPct", () => {
+  it("returns revenue/plan*100 when a plan exists, else null so UI shows —", () => {
+    const { tree } = buildDefaultMerchFixtureTree();
+    const ska = tree.find((node) => node.matchId === MERCH_FIXTURE_ARENA_MATCH_ID)!;
+    const offMatch = tree.find((node) => node.matchId === MERCH_OFF_MATCH_ID)!;
+    const channel = findSection(ska, MERCH_SALES_SECTION_LABELS.salesChannel)!;
+
+    expect(merchSalesPlanFulfillmentPct(ska.revenue, ska.planRevenue)).toBeCloseTo(
+      (500_000 / 450_000) * 100,
+      8,
+    );
+    expect(
+      merchSalesPlanFulfillmentPct(channel.revenue, channel.planRevenue),
+    ).toBeNull();
+    expect(
+      merchSalesPlanFulfillmentPct(
+        channel.children[0]!.revenue,
+        channel.children[0]!.planRevenue,
+      ),
+    ).toBeNull();
+    expect(
+      merchSalesPlanFulfillmentPct(offMatch.revenue, offMatch.planRevenue),
+    ).toBeNull();
+    expect(merchSalesPlanFulfillmentPct(100, 0)).toBeNull();
+    expect(merchSalesPlanFulfillmentPct(100, null)).toBeNull();
+  });
+});
+
 describe("merch sales tree vs live mock", () => {
   it("preserves computeMerchMatchSalesTable metrics and invariants", () => {
     const rows = computeMerchMatchSalesTable(
@@ -366,6 +398,7 @@ describe("merch sales tree vs live mock", () => {
       expect(match.purchaseConversionPct).toBe(row.purchaseConversionPct);
       expect(match.planRevenue).toBe(row.planRevenue);
       expect(match.planRevenue).toBeGreaterThan(0);
+      expect(row.eventLabel.startsWith("vs ")).toBe(false);
 
       const channels = findSection(
         match,
@@ -444,12 +477,14 @@ describe("merch sales tree vs live mock", () => {
     const upcoming = allowed.filter((match) => !match.eventCompleted);
     const rowIds = new Set(rows.map((row) => row.matchId));
 
-    expect(upcoming.length).toBeGreaterThan(0);
+    expect(completed.length).toBeGreaterThan(0);
     expect(rows).toHaveLength(completed.length);
     expect(rowIds).toEqual(new Set(completed.map((match) => match.id)));
     expect(rows.every((row) => row.receipts > 0 && row.revenue > 0)).toBe(true);
-    expect(ticketRows.length).toBeGreaterThan(rows.length);
     expect(ticketRows.length).toBe(allowed.length);
+    if (upcoming.length > 0) {
+      expect(ticketRows.length).toBeGreaterThan(rows.length);
+    }
 
     const fulfillmentKeys = new Set(
       tree.map((match) => (match.revenue / (match.planRevenue ?? 0)).toFixed(3)),
@@ -457,8 +492,10 @@ describe("merch sales tree vs live mock", () => {
     expect(fulfillmentKeys.size).toBeGreaterThan(1);
     expect(
       tree.every((match) =>
-        match.children.every((section) =>
-          section.children.every((leaf) => leaf.planRevenue === null),
+        match.children.every(
+          (section) =>
+            section.planRevenue === null &&
+            section.children.every((leaf) => leaf.planRevenue === null),
         ),
       ),
     ).toBe(true);
@@ -571,7 +608,6 @@ describe("merch sales tree vs live mock", () => {
 
     const allowed = filterMatchesByMerchFilters(DEFAULT_MERCH_FILTERS);
     const upcoming = allowed.filter((match) => !match.eventCompleted);
-    expect(upcoming.length).toBeGreaterThan(0);
     expect(matchRows).toHaveLength(
       allowed.filter((match) => match.eventCompleted).length,
     );

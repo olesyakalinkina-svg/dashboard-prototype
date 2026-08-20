@@ -174,6 +174,7 @@ export const DEFAULT_MERCH_FILTERS: MerchFilters = {
   league: "KHL",
   tournamentStage: "all",
   matchClass: "all",
+  series: "all",
   matchId: [],
   salesChannels: [...ALL_MERCH_SALES_POINTS],
   productCategories: [...ALL_MERCH_PRODUCT_CATEGORIES],
@@ -218,4 +219,6 @@ export {
   getMatchClassOptionsForStage,
   sanitizeMatchClassForStage,
   buildMatchFilterOptions,
+  buildSeriesFilterOptions,
+  sanitizeSeriesForOptions,
 } from "@/lib/ticket-filter-options";

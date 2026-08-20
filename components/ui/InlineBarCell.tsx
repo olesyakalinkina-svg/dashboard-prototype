@@ -59,6 +59,7 @@ export function InlineBarCell({
   planValue,
   planFormatted,
   compactLabels = false,
+  showFill = true,
 }: {
   value: number;
   max: number;
@@ -70,6 +71,7 @@ export function InlineBarCell({
   planValue?: number;
   planFormatted?: string;
   compactLabels?: boolean;
+  showFill?: boolean;
 }) {
   const widthPct =
     share !== undefined
@@ -90,7 +92,7 @@ export function InlineBarCell({
         stackLabels ? "h-8" : "h-6",
       )}
     >
-      {planValue !== undefined && planWidthPct > 0 && (
+      {showFill && planValue !== undefined && planWidthPct > 0 && (
         <div
           className="absolute left-0 top-0 h-full max-w-full rounded-sm border border-[#8B8B8E] bg-[#e4e4e7]"
           style={{
@@ -99,7 +101,7 @@ export function InlineBarCell({
           }}
         />
       )}
-      {widthPct > 0 && (
+      {showFill && widthPct > 0 && (
         <div
           className={clsx("absolute left-0 top-0 h-full max-w-full rounded-sm", barClassName)}
           style={{

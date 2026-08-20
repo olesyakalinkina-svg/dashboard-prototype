@@ -24,4 +24,14 @@ describe("merch KPIs", () => {
     expect(Math.abs(sc.receiptsChange)).toBeLessThanOrEqual(YOY_ABS_MAX);
     expect(Math.abs(sc.returnsPctChange)).toBeLessThanOrEqual(YOY_ABS_MAX);
   });
+
+  it("shows a calm default returns % (~0.8–1.5)", () => {
+    const kpis = computeMerchKpis(
+      DEFAULT_DASHBOARD_FILTERS,
+      DEFAULT_MERCH_FILTERS,
+    );
+
+    expect(kpis.returnsPct).toBeGreaterThanOrEqual(0.8);
+    expect(kpis.returnsPct).toBeLessThanOrEqual(1.5);
+  });
 });

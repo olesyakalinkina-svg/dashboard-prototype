@@ -13,11 +13,16 @@ import {
 } from "@/lib/merch-sales-tree.fixture";
 import {
   getMerchSalesBarMaxima,
+  merchSalesPlanFulfillmentPct,
   MERCH_SALES_SECTION_LABELS,
   toggleExpandedKey,
   type MerchSalesTreeNode,
 } from "@/lib/merch-sales-tree";
-import { MERCH_PRODUCT_CATEGORY_LABELS } from "@/lib/merch-filter-options";
+import {
+  MERCH_PRODUCT_CATEGORY_LABELS,
+  MERCH_SALES_POINT_LABELS,
+} from "@/lib/merch-filter-options";
+import { formatCurrency, formatPercent } from "@/lib/format";
 import type { MerchMatchSalesRow } from "@/types/dashboard";
 import type { MerchSalesTreeState } from "@/hooks/useMerchSalesTree";
 
@@ -96,5 +101,75 @@ describe("MerchMobileSalesCards parallel structure", () => {
         name: `Развернуть: ${MERCH_FIXTURE_ARENA_TOP_PRODUCTS[0]}`,
       }),
     ).toBeNull();
+  });
+
+  it("shows % выполнения плана next to revenue on match cards", () => {
+    const pipeline = buildDefaultMerchFixtureTree();
+    const match = pipeline.tree.find(
+      (node) => node.matchId === MERCH_FIXTURE_ARENA_MATCH_ID,
+    )!;
+    render(<Harness tree={pipeline.tree} matchRows={pipeline.rows} />);
+
+    const card = screen.getByText(match.label).closest("article");
+    expect(card).toBeTruthy();
+    const pct = formatPercent(
+      merchSalesPlanFulfillmentPct(match.revenue, match.planRevenue)!,
+    );
+    expect(card!.textContent).toContain("% выполнения плана");
+    expect(card!.textContent).toContain(pct);
+
+    const revenueDt = [...card!.querySelectorAll("dt")].find(
+      (el) => el.textContent === "Выручка",
+    );
+    expect(revenueDt?.nextElementSibling?.textContent).toBe(
+      formatCurrency(match.revenue),
+    );
+    expect(revenueDt?.nextElementSibling?.textContent).not.toContain(pct);
+
+    const planDt = [...card!.querySelectorAll("dt")].find(
+      (el) => el.textContent === "% выполнения плана",
+    );
+    expect(planDt?.nextElementSibling?.textContent).toContain(pct);
+  });
+
+  it("shows — for % выполнения плана on section and child cards", async () => {
+    const user = userEvent.setup();
+    const pipeline = buildDefaultMerchFixtureTree();
+    const match = pipeline.tree.find(
+      (node) => node.matchId === MERCH_FIXTURE_ARENA_MATCH_ID,
+    )!;
+    render(<Harness tree={pipeline.tree} matchRows={pipeline.rows} />);
+    await user.click(
+      screen.getByRole("button", { name: `Развернуть: ${match.label}` }),
+    );
+
+    const matchPct = formatPercent(
+      merchSalesPlanFulfillmentPct(match.revenue, match.planRevenue)!,
+    );
+    const card = screen.getByText(match.label).closest("article");
+    expect(card?.textContent).toContain(matchPct);
+
+    const section = screen
+      .getByText(MERCH_SALES_SECTION_LABELS.salesChannel)
+      .closest("div");
+    expect(section).toBeTruthy();
+    const sectionPlanDt = [...section!.querySelectorAll("dt")].find(
+      (el) => el.textContent === "% выполнения плана",
+    );
+    expect(sectionPlanDt?.nextElementSibling?.textContent).toBe("—");
+    expect(section?.textContent).not.toContain(matchPct);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: `Развернуть: ${MERCH_SALES_SECTION_LABELS.salesChannel}`,
+      }),
+    );
+    const child = screen
+      .getByText(MERCH_SALES_POINT_LABELS.flagship)
+      .closest("div");
+    const childPlanDt = [...child!.querySelectorAll("dt")].find(
+      (el) => el.textContent === "% выполнения плана",
+    );
+    expect(childPlanDt?.nextElementSibling?.textContent).toBe("—");
   });
 });

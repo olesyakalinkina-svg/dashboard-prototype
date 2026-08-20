@@ -677,16 +677,15 @@ describe("computeCampaignBenchmark", () => {
 });
 
 describe("configured campaigns as of mock today", () => {
-  it("has two completed campaigns and one active spring pre-sale", () => {
+  it("has two completed campaigns and an upcoming spring pre-sale", () => {
     const asOf = getDataAsOfDate();
-    expect(toCalendarDateKey(asOf)).toBe("2026-05-15");
+    expect(toCalendarDateKey(asOf)).toBe("2026-03-25");
     const listed = listSeasonTicketCampaigns(asOf);
     expect(listed.filter((campaign) => campaign.status === "completed")).toHaveLength(2);
-    expect(listed.filter((campaign) => campaign.status === "active")).toHaveLength(1);
-    expect(listed.filter((campaign) => campaign.status === "upcoming")).toHaveLength(0);
-    const active = listed.find((campaign) => campaign.status === "active");
-    expect(active).toBeDefined();
-    expect(active!.startDate < "2026-05-15").toBe(true);
-    expect(active!.endDate == null || active!.endDate > "2026-05-15").toBe(true);
+    expect(listed.filter((campaign) => campaign.status === "active")).toHaveLength(0);
+    expect(listed.filter((campaign) => campaign.status === "upcoming")).toHaveLength(1);
+    const upcoming = listed.find((campaign) => campaign.status === "upcoming");
+    expect(upcoming).toBeDefined();
+    expect(upcoming!.startDate > "2026-03-25").toBe(true);
   });
 });

@@ -14,6 +14,8 @@ import {
 import {
   ALL_ORDER_SOURCES,
   ALL_PRICE_ZONES,
+  allowedSectorsForPriceZone,
+  isAllowedSectorPriceZone,
   ORDER_SOURCE_LABELS,
   PRICE_ZONE_LABELS,
   TICKET_TYPE_LABELS,
@@ -23,6 +25,7 @@ import type {
   MatchSalesRow,
   OrderSource,
   PriceZone,
+  Sector,
   TicketFilters,
   TicketType,
   Transaction,
@@ -35,7 +38,8 @@ export type MatchSalesTreeLevel =
   | "section"
   | "ticketType"
   | "orderSource"
-  | "priceZone";
+  | "priceZone"
+  | "sector";
 
 export type MatchSalesTreeNode = {
   id: string;
@@ -134,6 +138,10 @@ function zoneKey(matchId: string, zone: PriceZone): string {
   return `m:${matchId}|z:${zone}`;
 }
 
+function sectorKey(matchId: string, zone: PriceZone, sector: Sector): string {
+  return `m:${matchId}|z:${zone}|sec:${sector}`;
+}
+
 export function matchSalesNodeId(matchId: string): string {
   return `m:${matchId}`;
 }
@@ -174,7 +182,7 @@ export function pruneExpandedKeys(
   return next;
 }
 
-/** Keep expand keys whose match still exists, including nested type/source/zone ids. */
+/** Keep expand keys whose match still exists, including nested type/source/zone/sector ids. */
 export function pruneExpandedKeysForMatches(
   expanded: Iterable<string>,
   validMatchNodeIds: ReadonlySet<string>,
@@ -318,6 +326,7 @@ export type MatchAggregate = {
   types: Map<TicketType, BranchAgg>;
   sources: Map<OrderSource, BranchAgg>;
   zones: Map<PriceZone, BranchAgg>;
+  zoneSectors: Map<PriceZone, Map<Sector, BranchAgg>>;
 };
 
 function applyDimensionTransaction<K>(
@@ -334,10 +343,28 @@ function applyDimensionTransaction<K>(
   applyBranchTransaction(agg, tx);
 }
 
+function applyZoneSectorTransaction(
+  zoneSectors: Map<PriceZone, Map<Sector, BranchAgg>>,
+  tx: Transaction,
+): void {
+  if (tx.ticketType === "parking") return;
+  const zone = tx.priceZone;
+  const sector = tx.sector;
+  if (!zone || !sector) return;
+  if (!isAllowedSectorPriceZone(sector, zone)) return;
+  let bySector = zoneSectors.get(zone);
+  if (!bySector) {
+    bySector = new Map();
+    zoneSectors.set(zone, bySector);
+  }
+  applyDimensionTransaction(bySector, sector, tx);
+}
+
 /**
  * One pass over transactions: three parallel cuts of a match
- * (ticket type, order source, price zone). Callers must not .filter()
- * the full array per node.
+ * (ticket type, order source, price zone) plus sector children under
+ * each seating price zone. Callers must not .filter() the full array
+ * per node.
  */
 export function buildMatchAggregateIndex(
   transactions: Transaction[],
@@ -354,6 +381,7 @@ export function buildMatchAggregateIndex(
         types: new Map(),
         sources: new Map(),
         zones: new Map(),
+        zoneSectors: new Map(),
       };
       index.set(tx.matchId, match);
     }
@@ -361,6 +389,7 @@ export function buildMatchAggregateIndex(
     applyDimensionTransaction(match.types, tx.ticketType, tx);
     applyDimensionTransaction(match.sources, tx.orderSource, tx);
     applyDimensionTransaction(match.zones, tx.priceZone, tx);
+    applyZoneSectorTransaction(match.zoneSectors, tx);
   }
 
   return index;
@@ -389,6 +418,64 @@ function leafNodesFromBuckets<K extends string>(
         capacity: null,
         hasChildren: false,
         children: [],
+      }),
+    );
+  }
+  return nodes;
+}
+
+function sectorNodesFromBuckets(
+  matchId: string,
+  zone: PriceZone,
+  buckets: Map<Sector, BranchAgg> | undefined,
+): MatchSalesTreeNode[] {
+  if (!buckets || buckets.size === 0) return [];
+  const nodes: MatchSalesTreeNode[] = [];
+  for (const sector of allowedSectorsForPriceZone(zone)) {
+    const agg = buckets.get(sector);
+    if (!agg || isEmptyTicketSalesAgg(agg, agg.issuedTickets)) continue;
+    nodes.push(
+      metricsFromAgg(agg, {
+        id: sectorKey(matchId, zone, sector),
+        level: "sector",
+        matchId,
+        date: null,
+        label: sector,
+        planRevenue: null,
+        capacity: null,
+        hasChildren: false,
+        children: [],
+      }),
+    );
+  }
+  return nodes;
+}
+
+function priceZoneNodesFromAggregate(
+  matchId: string,
+  zones: Map<PriceZone, BranchAgg>,
+  zoneSectors: Map<PriceZone, Map<Sector, BranchAgg>>,
+): MatchSalesTreeNode[] {
+  const nodes: MatchSalesTreeNode[] = [];
+  for (const zone of ALL_PRICE_ZONES) {
+    const agg = zones.get(zone);
+    if (!agg) continue;
+    const children = sectorNodesFromBuckets(
+      matchId,
+      zone,
+      zoneSectors.get(zone),
+    );
+    nodes.push(
+      metricsFromAgg(agg, {
+        id: zoneKey(matchId, zone),
+        level: "priceZone",
+        matchId,
+        date: null,
+        label: PRICE_ZONE_LABELS[zone],
+        planRevenue: null,
+        capacity: null,
+        hasChildren: children.length > 0,
+        children,
       }),
     );
   }
@@ -444,13 +531,10 @@ function sectionNodesFromAggregate(
         ORDER_SOURCE_LABELS,
         sourceKey,
       ),
-      priceZone: leafNodesFromBuckets(
+      priceZone: priceZoneNodesFromAggregate(
         row.matchId,
-        "priceZone",
-        ALL_PRICE_ZONES,
         aggregate.zones,
-        PRICE_ZONE_LABELS,
-        zoneKey,
+        aggregate.zoneSectors,
       ),
     };
 

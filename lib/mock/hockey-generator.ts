@@ -45,6 +45,7 @@ import {
   getSubscriptionListPrice,
   subscriptionPlans,
 } from "@/lib/mock/subscription-catalog";
+import { MOCK_TODAY } from "@/lib/mock/constants";
 import { isMerchMatchTablePoint } from "@/lib/merch-filter-options";
 import {
   applyExplicitMatchMerchPlan,
@@ -83,7 +84,6 @@ import {
   TICKET_PLAN_PARKING_UNIT_PRICE,
 } from "@/lib/ticket-plan";
 const HOME_ARENA: ArenaId = "main";
-const KHL_MATCH_COUNT = 16;
 const VHL_MATCH_COUNT = 8;
 const MHL_MATCH_COUNT = 8;
 
@@ -91,7 +91,7 @@ export const PREV_SEASON_START = new Date(2024, 8, 1);
 export const PREV_SEASON_END = new Date(2025, 4, 31);
 export const SEASON_START = new Date(2025, 8, 1);
 export const SEASON_END = new Date(2026, 4, 31);
-export const MOCK_TODAY = new Date(2026, 4, 15);
+export { MOCK_TODAY };
 export const SUBSCRIPTIONS_PERIOD_START = new Date(2025, 7, 25);
 export const SUBSCRIPTIONS_PERIOD_END = new Date(2025, 8, 15);
 /** Analogous regular sales window one season earlier (for 2024/25 YoY). */
@@ -159,10 +159,6 @@ function getMatchDate(
   return startOfDay(addDays(seasonStart, offset));
 }
 
-function getCurrentSeasonMatchDate(index: number): Date {
-  return getMatchDate(index, KHL_MATCH_COUNT, SEASON_START, SEASON_END);
-}
-
 function isEventCompleted(matchDate: Date): boolean {
   return startOfDay(matchDate) < startOfDay(MOCK_TODAY);
 }
@@ -196,14 +192,8 @@ function randomDateInWindow(
   return randomDateInSeasonRange(start, end);
 }
 
-const OPPONENTS = [
-  "СКА",
-  "ЦСКА",
-  "Авангард",
-  "Ак Барс",
-  "Локомотив",
-  "Трактор",
-  "Металлург",
+/** Frozen 2024/25 KHL list so YoY is not derived from the 2025/26 calendar. */
+const PREV_SEASON_KHL_OPPONENTS = [
   "Салават Юлаев",
   "Динамо Минск",
   "Спартак",
@@ -213,11 +203,13 @@ const OPPONENTS = [
   "Торпедо",
   "Динамо Мск",
   "Шанхай",
-];
-
-const PREV_SEASON_OPPONENTS = [
-  ...OPPONENTS.slice(7),
-  ...OPPONENTS.slice(0, 7),
+  "СКА",
+  "ЦСКА",
+  "Авангард",
+  "Ак Барс",
+  "Локомотив",
+  "Трактор",
+  "Металлург",
 ];
 
 const VHL_OPPONENTS = [
@@ -242,21 +234,111 @@ const MHL_OPPONENTS = [
   "Молот",
 ];
 
+type MatchFixture = {
+  opponent: string;
+  date?: Date;
+  series?: string;
+  matchClass?: MatchClass;
+};
+
 type LeagueSchedule = {
   league: League;
   arena: ArenaId;
   capacity: number;
-  opponents: string[];
+  fixtures: MatchFixture[];
 };
 
+function calendarDay(year: number, month: number, day: number): Date {
+  return startOfDay(new Date(year, month - 1, day));
+}
+
+function opponentsToFixtures(opponents: string[]): MatchFixture[] {
+  return opponents.map((opponent) => ({ opponent }));
+}
+
+/**
+ * KHL 2025/26 regular-season home calendar (34 games).
+ * Dates and series labels follow the club regular-season tables.
+ */
+const CURRENT_SEASON_KHL_REGULAR_FIXTURES: MatchFixture[] = [
+  { opponent: "Локомотив", date: calendarDay(2025, 9, 15), series: "Сентябрь" },
+  { opponent: "Спартак", date: calendarDay(2025, 9, 18), series: "Сентябрь" },
+  { opponent: "Авангард", date: calendarDay(2025, 9, 20), series: "Сентябрь" },
+  { opponent: "СКА", date: calendarDay(2025, 9, 25), series: "Сентябрь" },
+  { opponent: "Амур", date: calendarDay(2025, 10, 6), series: "Октябрь - 1" },
+  { opponent: "Амур", date: calendarDay(2025, 10, 8), series: "Октябрь - 1" },
+  { opponent: "Сибирь", date: calendarDay(2025, 10, 10), series: "Октябрь - 1" },
+  { opponent: "Ак Барс", date: calendarDay(2025, 10, 23), series: "Октябрь - 2" },
+  { opponent: "Сибирь", date: calendarDay(2025, 10, 26), series: "Октябрь - 2" },
+  { opponent: "ЦСКА", date: calendarDay(2025, 11, 1), series: "Ноябрь - 1" },
+  { opponent: "Барыс", date: calendarDay(2025, 11, 4), series: "Ноябрь - 1" },
+  { opponent: "Ак Барс", date: calendarDay(2025, 11, 6), series: "Ноябрь - 1" },
+  { opponent: "Автомобилист", date: calendarDay(2025, 11, 8), series: "Ноябрь - 1" },
+  { opponent: "Шанхай Дрэгонс", date: calendarDay(2025, 11, 10), series: "Ноябрь - 1" },
+  { opponent: "Лада", date: calendarDay(2025, 11, 24), series: "Ноябрь - 2" },
+  { opponent: "Автомобилист", date: calendarDay(2025, 11, 26), series: "Ноябрь - 2" },
+  { opponent: "Металлург", date: calendarDay(2025, 11, 28), series: "Ноябрь - 2" },
+  { opponent: "Нефтехимик", date: calendarDay(2025, 12, 27), series: "Декабрь" },
+  { opponent: "Динамо Минск", date: calendarDay(2026, 1, 4), series: "Январь - 1" },
+  { opponent: "Салават Юлаев", date: calendarDay(2026, 1, 6), series: "Январь - 1" },
+  { opponent: "Нефтехимик", date: calendarDay(2026, 1, 10), series: "Январь - 1" },
+  { opponent: "Салават Юлаев", date: calendarDay(2026, 1, 19), series: "Январь - 2" },
+  { opponent: "Динамо Москва", date: calendarDay(2026, 1, 22), series: "Январь - 2" },
+  { opponent: "Барыс", date: calendarDay(2026, 1, 24), series: "Январь - 2" },
+  { opponent: "Металлург", date: calendarDay(2026, 1, 28), series: "Январь - 2" },
+  { opponent: "Адмирал", date: calendarDay(2026, 2, 11), series: "Февраль" },
+  { opponent: "Адмирал", date: calendarDay(2026, 2, 13), series: "Февраль" },
+  { opponent: "ХК Сочи", date: calendarDay(2026, 2, 16), series: "Февраль" },
+  { opponent: "Авангард", date: calendarDay(2026, 2, 28), series: "Февраль-Март" },
+  { opponent: "Северсталь", date: calendarDay(2026, 3, 2), series: "Февраль-Март" },
+  { opponent: "Автомобилист", date: calendarDay(2026, 3, 7), series: "Февраль-Март" },
+  { opponent: "Металлург", date: calendarDay(2026, 3, 9), series: "Февраль-Март" },
+  { opponent: "Торпедо", date: calendarDay(2026, 3, 11), series: "Февраль-Март" },
+  { opponent: "Авангард", date: calendarDay(2026, 3, 13), series: "Февраль-Март" },
+];
+
+/**
+ * Screenshot 2 playoff home games only — do not invent extra KHL playoff series.
+ */
+const CURRENT_SEASON_KHL_PLAYOFF_FIXTURES: MatchFixture[] = [
+  {
+    opponent: "Ак Барс",
+    date: calendarDay(2026, 3, 27),
+    series: "ПО. Ак Барс",
+    matchClass: "playoff",
+  },
+  {
+    opponent: "Ак Барс",
+    date: calendarDay(2026, 3, 29),
+    series: "ПО. Ак Барс",
+    matchClass: "playoff",
+  },
+];
+
+const CURRENT_SEASON_KHL_FIXTURES: MatchFixture[] = [
+  ...CURRENT_SEASON_KHL_REGULAR_FIXTURES,
+  ...CURRENT_SEASON_KHL_PLAYOFF_FIXTURES,
+];
+
+const CURRENT_SEASON_KHL_MATCH_COUNT = CURRENT_SEASON_KHL_FIXTURES.length;
+
 const KHL_MATCH_CLASS_BY_OPPONENT: Record<string, MatchClass> = {
+  "Шанхай Дрэгонс": "class_2",
   Шанхай: "class_2",
   Торпедо: "class_3",
+  "ХК Сочи": "class_3",
   Сочи: "class_3",
+  Лада: "class_3",
+  Адмирал: "class_3",
+  Нефтехимик: "class_2",
+  Барыс: "class_2",
+  Автомобилист: "class_2",
+  Северсталь: "class_2",
   Амур: "class_3",
   Сибирь: "class_2",
   Спартак: "class_2",
   "Динамо Минск": "class_1",
+  "Динамо Москва": "class_1",
   "Динамо Мск": "class_1",
   "Салават Юлаев": "class_2",
   Металлург: "class_1",
@@ -295,19 +377,19 @@ const CURRENT_SEASON_SCHEDULES: LeagueSchedule[] = [
     league: "KHL",
     arena: HOME_ARENA,
     capacity: MAIN_ARENA_CAPACITY,
-    opponents: OPPONENTS,
+    fixtures: CURRENT_SEASON_KHL_FIXTURES,
   },
   {
     league: "VHL",
     arena: "secondary",
     capacity: SECONDARY_ARENA_CAPACITY,
-    opponents: VHL_OPPONENTS,
+    fixtures: opponentsToFixtures(VHL_OPPONENTS),
   },
   {
     league: "MHL",
     arena: HOME_ARENA,
     capacity: MHL_ARENA_CAPACITY,
-    opponents: MHL_OPPONENTS,
+    fixtures: opponentsToFixtures(MHL_OPPONENTS),
   },
 ];
 
@@ -316,19 +398,19 @@ const PREV_SEASON_SCHEDULES: LeagueSchedule[] = [
     league: "KHL",
     arena: HOME_ARENA,
     capacity: MAIN_ARENA_CAPACITY,
-    opponents: PREV_SEASON_OPPONENTS,
+    fixtures: opponentsToFixtures(PREV_SEASON_KHL_OPPONENTS),
   },
   {
     league: "VHL",
     arena: "secondary",
     capacity: SECONDARY_ARENA_CAPACITY,
-    opponents: VHL_OPPONENTS,
+    fixtures: opponentsToFixtures(VHL_OPPONENTS),
   },
   {
     league: "MHL",
     arena: HOME_ARENA,
     capacity: MHL_ARENA_CAPACITY,
-    opponents: MHL_OPPONENTS,
+    fixtures: opponentsToFixtures(MHL_OPPONENTS),
   },
 ];
 
@@ -352,7 +434,7 @@ const SEASON_DEFINITIONS: SeasonDefinition[] = [
     season: "2024/25",
     start: PREV_SEASON_START,
     end: PREV_SEASON_END,
-    idOffset: 1 + KHL_MATCH_COUNT + VHL_MATCH_COUNT + MHL_MATCH_COUNT,
+    idOffset: 1 + CURRENT_SEASON_KHL_MATCH_COUNT + VHL_MATCH_COUNT + MHL_MATCH_COUNT,
     schedules: PREV_SEASON_SCHEDULES,
   },
 ];
@@ -477,6 +559,9 @@ function generateOffMatchMerchSales(
  */
 const PREV_SEASON_MERCH_VOLUME_FACTOR = 1.04;
 const MERCH_YOY_MAX_ABS_PCT = 10;
+/** Target ~1% returns KPI; RNG band stays at legacy 3.5% so shared seed is unchanged. */
+const MERCH_RETURN_CHANCE = 0.015;
+const MERCH_RETURN_RNG_BAND = 0.035;
 
 function merchTxNumericId(tx: Transaction): number {
   const parsed = Number.parseInt(String(tx.id).replace(/\D/g, ""), 10);
@@ -953,18 +1038,22 @@ function buildSeasonMatches({
   let nextId = idOffset;
 
   for (const schedule of schedules) {
-    const matchCount = schedule.opponents.length;
+    const matchCount = schedule.fixtures.length;
 
-    for (let i = 0; i < schedule.opponents.length; i += 1) {
-      const opponent = schedule.opponents[i];
-      const date = getMatchDate(i, matchCount, start, end);
+    for (let i = 0; i < schedule.fixtures.length; i += 1) {
+      const fixture = schedule.fixtures[i];
+      const opponent = fixture.opponent;
+      const date = fixture.date
+        ? startOfDay(fixture.date)
+        : getMatchDate(i, matchCount, start, end);
       const eventCompleted = isEventCompleted(date);
       const fillFactor = 0.55 + rand() * 0.4;
       const attendance = eventCompleted
         ? Math.round(schedule.capacity * fillFactor)
         : 0;
 
-      const matchClass = getBaseMatchClass(opponent, schedule.league);
+      const matchClass =
+        fixture.matchClass ?? getBaseMatchClass(opponent, schedule.league);
 
       seasonMatches.push({
         id: `match-${nextId++}`,
@@ -978,6 +1067,7 @@ function buildSeasonMatches({
         league: schedule.league,
         tournamentStage: getTournamentStageFromClass(matchClass),
         matchClass,
+        series: fixture.series,
         arena: schedule.arena,
         ticketSalesWindowDays: randomInt(
           TICKET_SALES_WINDOW_MIN_DAYS,
@@ -988,103 +1078,6 @@ function buildSeasonMatches({
   }
 
   return seasonMatches;
-}
-
-/** Fixed KHL match dates for the current season (2025/26). */
-const CURRENT_SEASON_KHL_MATCH_DATES: Record<string, Date> = {
-  "Ак Барс": new Date(2025, 8, 29),
-  "Локомотив": new Date(2025, 9, 5),
-  "Трактор": new Date(2025, 9, 29),
-  "Металлург": new Date(2025, 10, 7),
-  "Салават Юлаев": new Date(2025, 11, 1),
-};
-
-function applyCurrentSeasonKhlMatchDates(matches: Match[]): void {
-  for (const match of matches) {
-    if (match.season !== "2025/26" || match.league !== "KHL") continue;
-
-    const override = CURRENT_SEASON_KHL_MATCH_DATES[match.opponent];
-    if (!override) continue;
-
-    match.date = startOfDay(override);
-    match.eventCompleted = isEventCompleted(match.date);
-    if (!match.eventCompleted) {
-      match.attendance = 0;
-    }
-  }
-}
-
-/**
- * Upcoming playoff demo: two Динамо Мск home games on different dates.
- * match-16 (originally Shanghai) becomes Динамо Мск on 17.05.2026;
- * match-15 stays Динамо Мск on 15.05.2026.
- */
-function applyUpcomingDynamoPlayoffDates(matches: Match[]): void {
-  const season = "2025/26";
-  const isCurrentKhl = (match: Match) =>
-    match.season === season && match.league === "KHL";
-
-  const match16 = matches.find(
-    (match) => isCurrentKhl(match) && match.id === "match-16",
-  );
-  const match15 = matches.find(
-    (match) => isCurrentKhl(match) && match.id === "match-15",
-  );
-
-  if (match16) {
-    match16.opponent = "Динамо Мск";
-    match16.date = startOfDay(new Date(2026, 4, 17));
-    match16.eventCompleted = isEventCompleted(match16.date);
-    if (!match16.eventCompleted) {
-      match16.attendance = 0;
-    }
-    match16.matchClass = "playoff";
-    match16.tournamentStage = "playoff";
-  }
-
-  if (match15) {
-    match15.opponent = "Динамо Мск";
-    match15.date = startOfDay(new Date(2026, 4, 15));
-    match15.eventCompleted = isEventCompleted(match15.date);
-    if (!match15.eventCompleted) {
-      match15.attendance = 0;
-    }
-    match15.matchClass = "playoff";
-    match15.tournamentStage = "playoff";
-  }
-}
-
-/** Spacing between clustered match days so 10–16 day windows can share a start. */
-const COMPLETED_KHL_CLUSTER_DAY_SPACING = 2;
-
-/**
- * Pulls the earliest completed KHL matches in a season onto nearby calendar days
- * so their ticket sales windows can be aligned to the same start date.
- */
-function clusterCompletedKhlMatchDates(
-  matches: Match[],
-  season = "2025/26",
-  clusterSize = COMPLETED_MATCH_OVERLAP_COUNT,
-): void {
-  const cluster = matches
-    .filter(
-      (match) =>
-        match.league === "KHL" &&
-        match.season === season &&
-        match.eventCompleted,
-    )
-    .sort((left, right) => left.date.getTime() - right.date.getTime())
-    .slice(0, clusterSize);
-
-  if (cluster.length < 2) return;
-
-  const anchorDate = startOfDay(cluster[0].date);
-  for (let index = 0; index < cluster.length; index += 1) {
-    cluster[index].date = addDays(
-      anchorDate,
-      index * COMPLETED_KHL_CLUSTER_DAY_SPACING,
-    );
-  }
 }
 
 function applyTournamentStages(matches: Match[]): void {
@@ -1104,6 +1097,7 @@ function applySoldOutAttendance(matches: Match[]): void {
 
 function applyMatchClasses(matches: Match[]): void {
   for (const match of matches) {
+    if (match.matchClass === "playoff") continue;
     match.matchClass = getBaseMatchClass(match.opponent, match.league);
   }
   assignPlayoffClasses(matches);
@@ -1111,14 +1105,11 @@ function applyMatchClasses(matches: Match[]): void {
 
 function generateMatches(): Match[] {
   const allMatches = SEASON_DEFINITIONS.flatMap(buildSeasonMatches);
-  clusterCompletedKhlMatchDates(allMatches);
   applyMatchClasses(allMatches);
   applyTournamentStages(allMatches);
   applySoldOutAttendance(allMatches);
   alignCompletedMatchSalesWindows(allMatches);
   alignNearestUpcomingMatchSalesWindows(allMatches);
-  applyCurrentSeasonKhlMatchDates(allMatches);
-  applyUpcomingDynamoPlayoffDates(allMatches);
   applyTicketChartDemoProfiles(allMatches);
   return allMatches;
 }
@@ -1202,36 +1193,6 @@ function applyTicketChartDemoProfiles(matches: Match[]): void {
       match.ticketSalesProfile =
         otherCompletedKhlProfiles[index % otherCompletedKhlProfiles.length];
     });
-
-  const inSaleDemoMatch = matches.find(
-    (match) =>
-      match.id === "match-16" &&
-      match.season === "2025/26" &&
-      match.league === "KHL",
-  );
-  const secondUpcomingDemoMatch = matches.find(
-    (match) =>
-      match.id === "match-15" &&
-      match.season === "2025/26" &&
-      match.league === "KHL",
-  );
-
-  if (inSaleDemoMatch) {
-    // In-sale demo: sales window opens before MOCK_TODAY so presale txs exist
-    // through mock today (partial curve; match still upcoming).
-    inSaleDemoMatch.date = startOfDay(new Date(2026, 4, 17));
-    inSaleDemoMatch.ticketSalesWindowDays = TICKET_SALES_WINDOW_MAX_DAYS;
-    inSaleDemoMatch.ticketSalesProfile = {
-      fulfillmentFactor: 0.88,
-      tempo: "steady",
-    };
-  }
-  if (secondUpcomingDemoMatch) {
-    secondUpcomingDemoMatch.ticketSalesProfile = {
-      fulfillmentFactor: 1.03,
-      tempo: "front_loaded",
-    };
-  }
 }
 
 function pickOrderSource(): OrderSource {
@@ -1295,8 +1256,8 @@ function resolveTicketPaymentWithRate(
   };
 }
 
-const HIGH_DEMAND_OPPONENTS = new Set(["Ак Барс", "Локомотив", "Трактор"]);
-const LOW_DEMAND_OPPONENTS = new Set(["Сочи", "Торпедо"]);
+const HIGH_DEMAND_OPPONENTS = new Set(["Ак Барс", "Локомотив", "Трактор", "СКА"]);
+const LOW_DEMAND_OPPONENTS = new Set(["Сочи", "ХК Сочи", "Торпедо", "Лада", "Адмирал"]);
 
 /** Opponent variance around the ticket-count plan; revenue cap is applied after. */
 function getOpponentSalesFactor(opponent: string, matchClass: MatchClass): number {
@@ -1500,9 +1461,9 @@ function emitComboTicketSales(
 }
 
 /**
- * Class 1 and playoff matches sell out: arena issued equals sector capacities
- * (and therefore match.capacity when leftover is 0). Every allowed combo with
- * inventory gets tickets so occupancy is 100% with no empty 0% rows.
+ * Completed class 1 and playoff matches sell out: arena issued equals sector
+ * capacities (and therefore match.capacity when leftover is 0). Upcoming
+ * playoff/class_1 games use the partial curve instead of a forced 100% fill.
  */
 function generateSoldOutMatchTicketSales(
   match: Match,
@@ -1597,7 +1558,7 @@ function generateMatchTicketSales(
   match: Match,
   startId: number,
 ): { txs: Transaction[]; nextId: number } {
-  if (isSoldOutOccupancyMatch(match)) {
+  if (match.eventCompleted && isSoldOutOccupancyMatch(match)) {
     return generateSoldOutMatchTicketSales(match, startId);
   }
   return generatePartialMatchTicketSales(match, startId);
@@ -1733,23 +1694,28 @@ function generateMatchMerchSales(
       costAmount,
     });
 
-    if (rand() < 0.035) {
+    // Consume the legacy return RNG path always; only emit when under MERCH_RETURN_CHANCE.
+    const returnRoll = rand();
+    if (returnRoll < MERCH_RETURN_RNG_BAND) {
       const returnQty = randomInt(1, qty);
-      const returnAmount = Math.round((payment.amount / qty) * returnQty);
-      txs.push({
-        id: `tx-${id++}`,
-        date: addDays(match.date, randomInt(1, 5)),
-        stream: "merch",
-        description: `Возврат: ${item.desc}`,
-        matchId: match.id,
-        channel: "kiosk",
-        amount: returnAmount,
-        quantity: returnQty,
-        listUnitPrice: payment.listUnitPrice,
-        merchSalesPoint,
-        productCategory: item.category,
-        isReturn: true,
-      });
+      const returnDays = randomInt(1, 5);
+      if (returnRoll < MERCH_RETURN_CHANCE) {
+        const returnAmount = Math.round((payment.amount / qty) * returnQty);
+        txs.push({
+          id: `tx-${id++}`,
+          date: addDays(match.date, returnDays),
+          stream: "merch",
+          description: `Возврат: ${item.desc}`,
+          matchId: match.id,
+          channel: "kiosk",
+          amount: returnAmount,
+          quantity: returnQty,
+          listUnitPrice: payment.listUnitPrice,
+          merchSalesPoint,
+          productCategory: item.category,
+          isReturn: true,
+        });
+      }
     }
   }
 
@@ -2170,6 +2136,7 @@ function ensureZoneSectorMatchOccupancyBands(
   let id = startId;
 
   for (const match of allMatches) {
+    if (!match.eventCompleted) continue;
     if (!(match.capacity > 0)) continue;
     const current = arenaActualsForMatch(match.id, transactions.concat(txs));
     const arenaPlan = getMatchPlanArenaRevenue(match);
@@ -2352,6 +2319,7 @@ function ensureMidRevenueArenaOccupancy(
   let id = startId;
 
   for (const match of allMatches) {
+    if (!match.eventCompleted) continue;
     if (!(match.capacity > 0)) continue;
     const occupancyFloor = minMidRevenueOccupancyIssued(match.capacity);
     const occupancyCeil = maxMidRevenueOccupancyIssued(match.capacity);
@@ -2405,6 +2373,7 @@ function ensureHighRevenueArenaOccupancy(
   let id = startId;
 
   for (const match of allMatches) {
+    if (!match.eventCompleted) continue;
     if (!(match.capacity > 0)) continue;
     if (isRegularTicketPlanMatch(match)) continue;
     const occupancyFloor = minHighRevenueOccupancyIssued(match.capacity);
@@ -2448,7 +2417,7 @@ function isOverPlanRevenue(revenue: number, plan: number): boolean {
 }
 
 /**
- * Per row in «Продажи по ценовым зонам и секторам на арене»: if arena
+ * Per arena occupancy row (sales tree zone → sector): if arena
  * revenue / plan is at least 100%, fill remaining catalog seats so occupancy
  * is 100% (the display cap). Combo, then sector, then zone, then match.
  */
@@ -3814,6 +3783,7 @@ function applyTicketPlanFulfillmentCap(
     row.occupancyIssued += 1;
   }
   for (const match of matches) {
+    if (!match.eventCompleted) continue;
     const actual = actualByMatch.get(match.id);
     if (!actual) continue;
     applyMatchTicketPlanFulfillmentBand(match, actual);

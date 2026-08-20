@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -22,7 +23,9 @@ import {
 } from "@/lib/subscription-filter-options";
 import {
   buildMatchFilterOptions,
+  buildSeriesFilterOptions,
   DEFAULT_TICKET_FILTERS,
+  sanitizeSeriesForOptions,
 } from "@/lib/ticket-filter-options";
 import type {
   MatchSalesFilters,
@@ -52,6 +55,9 @@ type MobileFilterDraftContextValue = {
   ticketMatchOptions: ReturnType<typeof buildMatchFilterOptions>;
   merchMatchOptions: ReturnType<typeof buildMatchFilterOptions>;
   matchSalesMatchOptions: ReturnType<typeof buildMatchFilterOptions>;
+  ticketSeriesOptions: ReturnType<typeof buildSeriesFilterOptions>;
+  merchSeriesOptions: ReturnType<typeof buildSeriesFilterOptions>;
+  matchSalesSeriesOptions: ReturnType<typeof buildSeriesFilterOptions>;
   applyDraft: () => void;
 };
 
@@ -65,6 +71,7 @@ function snapshotDraftFilters(live: ReturnType<typeof useFilterState>): DraftFil
     ticketFilters: {
       ...live.ticketFilters,
       matchId: [...live.ticketFilters.matchId],
+      sector: [...live.ticketFilters.sector],
       transactionDateRange: { ...live.ticketFilters.transactionDateRange },
     },
     merchFilters: {
@@ -136,21 +143,25 @@ export function MobileFilterDraftProvider({
       ticketFilters: {
         ...DEFAULT_TICKET_FILTERS,
         matchId: [...DEFAULT_TICKET_FILTERS.matchId],
+        sector: [...DEFAULT_TICKET_FILTERS.sector],
         transactionDateRange: { ...DEFAULT_TICKET_FILTERS.transactionDateRange },
       },
     }));
   }, [live.resetTicketFilters]);
 
   const resetMerchFilters = useCallback(() => {
+    live.resetMerchFilters();
     setDraft((prev) => ({
       ...prev,
       merchFilters: {
         ...DEFAULT_MERCH_FILTERS,
         salesChannels: [...DEFAULT_MERCH_FILTERS.salesChannels],
         productCategories: [...DEFAULT_MERCH_FILTERS.productCategories],
+        matchId: [...DEFAULT_MERCH_FILTERS.matchId],
+        orderDateRange: { ...DEFAULT_MERCH_FILTERS.orderDateRange },
       },
     }));
-  }, []);
+  }, [live.resetMerchFilters]);
 
   const resetMatchSalesFilters = useCallback(() => {
     setDraft((prev) => ({
@@ -183,6 +194,26 @@ export function MobileFilterDraftProvider({
       draft.ticketFilters.league,
       draft.ticketFilters.tournamentStage,
       draft.ticketFilters.matchClass,
+      draft.ticketFilters.series,
+      draft.ticketFilters.arena,
+      draft.ticketFilters.eventCompleted,
+    ],
+  );
+
+  const ticketSeriesOptions = useMemo(
+    () =>
+      buildSeriesFilterOptions(
+        filterMatchesByTicketFilters({
+          ...draft.ticketFilters,
+          matchId: [],
+          series: "all",
+        }),
+      ),
+    [
+      draft.ticketFilters.season,
+      draft.ticketFilters.league,
+      draft.ticketFilters.tournamentStage,
+      draft.ticketFilters.matchClass,
       draft.ticketFilters.arena,
       draft.ticketFilters.eventCompleted,
     ],
@@ -192,6 +223,24 @@ export function MobileFilterDraftProvider({
     () =>
       buildMatchFilterOptions(
         filterMatchesByMerchFilters({ ...draft.merchFilters, matchId: [] }),
+      ),
+    [
+      draft.merchFilters.season,
+      draft.merchFilters.league,
+      draft.merchFilters.tournamentStage,
+      draft.merchFilters.matchClass,
+      draft.merchFilters.series,
+    ],
+  );
+
+  const merchSeriesOptions = useMemo(
+    () =>
+      buildSeriesFilterOptions(
+        filterMatchesByMerchFilters({
+          ...draft.merchFilters,
+          matchId: [],
+          series: "all",
+        }),
       ),
     [
       draft.merchFilters.season,
@@ -214,10 +263,64 @@ export function MobileFilterDraftProvider({
       draft.matchSalesFilters.league,
       draft.matchSalesFilters.tournamentStage,
       draft.matchSalesFilters.matchClass,
+      draft.matchSalesFilters.series,
       draft.matchSalesFilters.arena,
       draft.matchSalesFilters.eventCompleted,
     ],
   );
+
+  const matchSalesSeriesOptions = useMemo(
+    () =>
+      buildSeriesFilterOptions(
+        filterMatchesByMatchSalesFilters({
+          ...draft.matchSalesFilters,
+          matchId: [],
+          series: "all",
+        }),
+      ),
+    [
+      draft.matchSalesFilters.season,
+      draft.matchSalesFilters.league,
+      draft.matchSalesFilters.tournamentStage,
+      draft.matchSalesFilters.matchClass,
+      draft.matchSalesFilters.arena,
+      draft.matchSalesFilters.eventCompleted,
+    ],
+  );
+
+  useEffect(() => {
+    const next = sanitizeSeriesForOptions(
+      draft.ticketFilters.series,
+      ticketSeriesOptions,
+    );
+    if (next !== draft.ticketFilters.series) {
+      setTicketFilters({ series: next });
+    }
+  }, [draft.ticketFilters.series, setTicketFilters, ticketSeriesOptions]);
+
+  useEffect(() => {
+    const next = sanitizeSeriesForOptions(
+      draft.merchFilters.series,
+      merchSeriesOptions,
+    );
+    if (next !== draft.merchFilters.series) {
+      setMerchFilters({ series: next });
+    }
+  }, [draft.merchFilters.series, merchSeriesOptions, setMerchFilters]);
+
+  useEffect(() => {
+    const next = sanitizeSeriesForOptions(
+      draft.matchSalesFilters.series,
+      matchSalesSeriesOptions,
+    );
+    if (next !== draft.matchSalesFilters.series) {
+      setMatchSalesFilters({ series: next });
+    }
+  }, [
+    draft.matchSalesFilters.series,
+    matchSalesSeriesOptions,
+    setMatchSalesFilters,
+  ]);
 
   const applyDraft = useCallback(() => {
     if (live.activeTab === "tickets") {
@@ -247,6 +350,9 @@ export function MobileFilterDraftProvider({
       ticketMatchOptions,
       merchMatchOptions,
       matchSalesMatchOptions,
+      ticketSeriesOptions,
+      merchSeriesOptions,
+      matchSalesSeriesOptions,
       applyDraft,
     }),
     [
@@ -262,6 +368,9 @@ export function MobileFilterDraftProvider({
       ticketMatchOptions,
       merchMatchOptions,
       matchSalesMatchOptions,
+      ticketSeriesOptions,
+      merchSeriesOptions,
+      matchSalesSeriesOptions,
       applyDraft,
     ],
   );
@@ -298,5 +407,8 @@ export function useFilterBarState() {
     ticketMatchOptions: draft.ticketMatchOptions,
     merchMatchOptions: draft.merchMatchOptions,
     matchSalesMatchOptions: draft.matchSalesMatchOptions,
+    ticketSeriesOptions: draft.ticketSeriesOptions,
+    merchSeriesOptions: draft.merchSeriesOptions,
+    matchSalesSeriesOptions: draft.matchSalesSeriesOptions,
   };
 }
