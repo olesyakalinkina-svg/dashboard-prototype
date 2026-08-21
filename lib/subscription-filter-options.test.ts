@@ -10,9 +10,9 @@ import {
 } from "@/lib/subscription-filter-options";
 
 describe("subscription filter options", () => {
-  it("defaults KHL to the main arena and all product types", () => {
+  it("defaults KHL to all arenas and all product types", () => {
     expect(DEFAULT_SUBSCRIPTION_FILTERS.league).toBe("KHL");
-    expect(DEFAULT_SUBSCRIPTION_FILTERS.arena).toBe("main");
+    expect(DEFAULT_SUBSCRIPTION_FILTERS.arena).toBe("all");
     expect(DEFAULT_SUBSCRIPTION_FILTERS.priceCategory).toBe("all");
     expect(DEFAULT_SUBSCRIPTION_FILTERS.tournamentStage).toBe("all");
   });
@@ -26,14 +26,14 @@ describe("subscription filter options", () => {
     ]);
   });
 
-  it("locks arena to the league home venue and leaves it free for Все лиги", () => {
-    expect(isSubscriptionArenaLocked("KHL")).toBe(true);
+  it("locks VHL and MHL arenas and leaves KHL and Все лиги free", () => {
+    expect(isSubscriptionArenaLocked("KHL")).toBe(false);
     expect(isSubscriptionArenaLocked("VHL")).toBe(true);
     expect(isSubscriptionArenaLocked("MHL")).toBe(true);
     expect(isSubscriptionArenaLocked("all")).toBe(false);
 
-    expect(sanitizeSubscriptionArena("KHL", "all")).toBe("main");
-    expect(sanitizeSubscriptionArena("KHL", "secondary")).toBe("main");
+    expect(sanitizeSubscriptionArena("KHL", "all")).toBe("all");
+    expect(sanitizeSubscriptionArena("KHL", "secondary")).toBe("secondary");
     expect(sanitizeSubscriptionArena("VHL", "all")).toBe("secondary");
     expect(sanitizeSubscriptionArena("VHL", "main")).toBe("secondary");
     expect(sanitizeSubscriptionArena("MHL", "secondary")).toBe("main");
@@ -41,7 +41,7 @@ describe("subscription filter options", () => {
     expect(sanitizeSubscriptionArena("all", "secondary")).toBe("secondary");
   });
 
-  it("forces the locked arena when patching to a single league", () => {
+  it("defaults KHL to all arenas when patching from VHL, MHL, or Все лиги", () => {
     const vhl = applySubscriptionFilterPatch(DEFAULT_SUBSCRIPTION_FILTERS, {
       league: "VHL",
     });
@@ -53,17 +53,31 @@ describe("subscription filter options", () => {
     const backToKhl = applySubscriptionFilterPatch(vhl, {
       league: "KHL",
     });
-    expect(backToKhl.arena).toBe("main");
+    expect(backToKhl.arena).toBe("all");
+    expect(isSubscriptionArenaLocked(backToKhl.league)).toBe(false);
+
+    const khlFromMhl = applySubscriptionFilterPatch(mhl, { league: "KHL" });
+    expect(khlFromMhl.arena).toBe("all");
 
     const allLeagues = applySubscriptionFilterPatch(vhl, {
       league: "all",
     });
     expect(allLeagues.arena).toBe("secondary");
+
+    const khlFromAll = applySubscriptionFilterPatch(allLeagues, {
+      league: "KHL",
+    });
+    expect(khlFromAll.arena).toBe("all");
+
+    const khlKeep = applySubscriptionFilterPatch(backToKhl, {
+      arena: "secondary",
+    });
+    expect(khlKeep.arena).toBe("secondary");
   });
 });
 
 describe("subscription category share chart layout", () => {
-  it("places Что покупают under the count campaign-pace chart, half width, outside renewal", () => {
+  it("places Что покупают under the equal-height pace row, half width, outside renewal", () => {
     const dashboard = readFileSync(
       join(process.cwd(), "app/dashboard-app.tsx"),
       "utf8",
@@ -80,10 +94,13 @@ describe("subscription category share chart layout", () => {
     );
 
     expect(subscriptionsBlock).toMatch(
-      /<SubscriptionCampaignPaceWidget>[\s\S]*SubscriptionPriceCategoryShareChart[\s\S]*<\/SubscriptionCampaignPaceWidget>[\s\S]*<SubscriptionRenewalWidget \/>/,
+      /<SubscriptionCampaignPaceWidget>[\s\S]*SubscriptionPriceCategoryShareChart[\s\S]*<\/SubscriptionCampaignPaceWidget>[\s\S]*<SubscriptionRenewalWidget \/>[\s\S]*<MatchComparisonWidget \/>/,
     );
     expect(subscriptionsBlock).not.toMatch(
       /SubscriptionRenewalWidget[\s\S]*SubscriptionPriceCategoryShareChart/,
+    );
+    expect(subscriptionsBlock).not.toMatch(
+      /MatchComparisonWidget[\s\S]*SubscriptionRenewalWidget/,
     );
     expect(subscriptionsBlock).not.toMatch(
       /grid-cols-1 items-stretch gap-4 min-\[1024px\]:grid-cols-2">[\s\S]*SubscriptionCampaignPaceWidget/,
@@ -94,10 +111,17 @@ describe("subscription category share chart layout", () => {
       "utf8",
     );
     expect(paceWidget).toMatch(
-      /grid min-w-0 grid-cols-1 gap-4 min-\[1024px\]:grid-cols-2/,
+      /grid min-w-0 grid-cols-1 items-stretch gap-4 min-\[1024px\]:grid-cols-2/,
+    );
+    expect(paceWidget).toContain('className="flex h-full min-w-0 flex-col"');
+    expect(paceWidget).toMatch(
+      /COUNT_TITLE[\s\S]*REVENUE_TITLE[\s\S]*\{children \?/,
+    );
+    expect(paceWidget).not.toMatch(
+      /<div className="flex min-w-0 flex-col gap-4">[\s\S]*COUNT_TITLE[\s\S]*\{children\}/,
     );
     expect(paceWidget).toMatch(
-      /<div className="flex min-w-0 flex-col gap-4">[\s\S]*COUNT_TITLE[\s\S]*\{children\}[\s\S]*REVENUE_TITLE/,
+      /grid min-w-0 grid-cols-1 items-start gap-4 min-\[1024px\]:grid-cols-2">[\s\S]*\{children\}/,
     );
 
     const renewalWidget = readFileSync(
@@ -106,6 +130,9 @@ describe("subscription category share chart layout", () => {
     );
     expect(renewalWidget).toContain("RenewalProductChart");
     expect(renewalWidget).not.toContain("{children}");
+    expect(renewalWidget).toMatch(
+      /grid min-w-0 grid-cols-1 items-start gap-4 min-\[1024px\]:grid-cols-2">[\s\S]*<RenewalProductChart/,
+    );
     expect(renewalWidget).not.toMatch(
       /grid-cols-1 items-stretch gap-4 min-\[1024px\]:grid-cols-2/,
     );

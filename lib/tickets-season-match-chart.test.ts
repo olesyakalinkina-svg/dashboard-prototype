@@ -21,6 +21,7 @@ import {
   getSeasonMatchChartWidth,
   getSeasonMatchAxisTickOffsets,
   isSeasonMatchCurrentlyOnSale,
+  isSpecificSeasonSeriesFilter,
   SEASON_MATCH_CHART_DAY_WIDTH,
   SEASON_MATCH_CHART_MIN_WIDTH,
   SEASON_MATCH_CHART_MOBILE_MAX_WIDTH,
@@ -363,6 +364,54 @@ describe("tickets season match chart — current sales selection", () => {
     expect(viewIds(selected)).toEqual(["done"]);
   });
 
+  it("plots every incoming match when a specific calendar series is selected", () => {
+    const series = [1, 2, 3, 4, 5].map((index) =>
+      makeSeries({
+        matchId: `sep-${index}`,
+        matchDateKey: Date.UTC(2025, 8, index + 10),
+        eventCompleted: true,
+        currentDaysBeforeMatch: null,
+        label: `Клуб ${index} · ${String(index + 10).padStart(2, "0")}.09.25`,
+      }),
+    );
+    const views = buildSeasonMatchSeriesViews(series);
+
+    expect(isSpecificSeasonSeriesFilter("Сентябрь")).toBe(true);
+    expect(isSpecificSeasonSeriesFilter("all")).toBe(false);
+    expect(isSpecificSeasonSeriesFilter(undefined)).toBe(false);
+
+    const selected = selectSeasonMatchChartViews(views, {
+      seriesFilter: "Сентябрь",
+    });
+    expect(viewIds(selected)).toEqual([
+      "sep-1",
+      "sep-2",
+      "sep-3",
+      "sep-4",
+      "sep-5",
+    ]);
+
+    const capped = selectSeasonMatchChartViews(views, { seriesFilter: "all" });
+    expect(viewIds(capped)).toEqual(["sep-3", "sep-4", "sep-5"]);
+  });
+
+  it("lets a widget match filter still override a selected calendar series", () => {
+    const series = [1, 2, 3, 4].map((index) =>
+      makeSeries({
+        matchId: `sep-${index}`,
+        matchDateKey: Date.UTC(2025, 8, index + 10),
+        eventCompleted: true,
+        currentDaysBeforeMatch: null,
+        label: `Клуб ${index} · ${String(index + 10).padStart(2, "0")}.09.25`,
+      }),
+    );
+    const selected = selectSeasonMatchChartViews(
+      buildSeasonMatchSeriesViews(series),
+      { seriesFilter: "Сентябрь", selectedMatchIds: ["sep-1", "sep-4"] },
+    );
+    expect(viewIds(selected)).toEqual(["sep-1", "sep-4"]);
+  });
+
   it("no longer exports the removed status chips", () => {
     expect(seasonMatchChart).not.toHaveProperty("SEASON_MATCH_QUICK_FILTERS");
     expect(seasonMatchChart).not.toHaveProperty("filterSeasonMatchSeriesViews");
@@ -590,7 +639,7 @@ describe("tickets season match chart — helpers", () => {
     expect(widget).toContain("timeGrouping");
     expect(dashboard).toContain("TicketsMatchDynamicsSection");
     expect(dashboard).toMatch(
-      /TicketsSeasonMatchDynamicsWidget[\s\S]*timeGrouping=\{ticketChartTimeGrouping\}/,
+      /TicketsSeasonMatchDynamicsWidget[\s\S]*seriesFilter=\{appliedTicketFilters.series\}[\s\S]*timeGrouping=\{ticketChartTimeGrouping\}/,
     );
     expect(filterContext).toContain("timeGrouping: grouping");
   });
@@ -614,6 +663,27 @@ describe("tickets season match chart — helpers", () => {
     expect(ticketsBlock).not.toMatch(
       /grid-cols-\[minmax\(0,1\.2fr\)_minmax\(0,1fr\)\]/,
     );
+  });
+
+  it("narrows tickets Продажи to 80% and centers it on desktop only", () => {
+    const dashboard = readFileSync(
+      join(process.cwd(), "app/dashboard-app.tsx"),
+      "utf8",
+    );
+    const sectionStart = dashboard.indexOf("const TicketsSalesSection");
+    const nextSection = dashboard.indexOf("const TicketsMatchDynamicsSection");
+    expect(sectionStart).toBeGreaterThan(-1);
+    expect(nextSection).toBeGreaterThan(sectionStart);
+    const salesSection = dashboard.slice(sectionStart, nextSection);
+
+    expect(salesSection).toContain('className="min-w-0 w-full xl:mx-auto xl:w-4/5"');
+    expect(salesSection).toContain("ResponsiveMatchSalesTable");
+    expect(salesSection).not.toContain("TicketsMatchDynamicsSection");
+    expect(salesSection).not.toContain("TicketsPlanFactWidget");
+    expect(salesSection).not.toContain("min-[768px]");
+    expect(salesSection).not.toContain("min-[1024px]");
+    expect(salesSection).not.toContain("md:mx-auto");
+    expect(salesSection).not.toContain("lg:mx-auto");
   });
 
   it("keeps the hover tooltip from being clipped by the chart scroll box", () => {
@@ -758,6 +828,75 @@ describe("tickets season match chart — mock series", () => {
       buildSeasonMatchSeriesViews(series),
     );
     expect(viewIds(selected)).toEqual(series.map((item) => item.matchId));
+  });
+
+  it("plots every September match when that series is selected and class is all", () => {
+    const series = computeTicketsMatchCumulativeSeries(
+      DEFAULT_DASHBOARD_FILTERS,
+      { ...DEFAULT_TICKET_FILTERS, series: "Сентябрь", matchClass: "all" },
+    );
+    expect(series.length).toBeGreaterThan(SEASON_MATCH_LAST_COMPLETED_FALLBACK_COUNT);
+
+    const views = buildSeasonMatchSeriesViews(series);
+    const selected = selectSeasonMatchChartViews(views, {
+      seriesFilter: "Сентябрь",
+    });
+    expect(viewIds(selected)).toEqual(series.map((item) => item.matchId));
+    expect(selected).toHaveLength(series.length);
+
+    const rows = buildSeasonMatchChartRows(selected, series);
+    for (const view of selected) {
+      expect(
+        rows.some((row) => row[seasonMatchFactKey(view.matchId)] != null),
+        `${view.legendLabel} should have a fact line`,
+      ).toBe(true);
+    }
+
+    const capped = selectSeasonMatchChartViews(views);
+    expect(capped.length).toBeLessThan(selected.length);
+    expect(capped).toHaveLength(SEASON_MATCH_LAST_COMPLETED_FALLBACK_COUNT);
+  });
+
+  it("keeps only September matches that pass the match-class filter", () => {
+    const allClasses = computeTicketsMatchCumulativeSeries(
+      DEFAULT_DASHBOARD_FILTERS,
+      { ...DEFAULT_TICKET_FILTERS, series: "Сентябрь", matchClass: "all" },
+    );
+    const class2 = computeTicketsMatchCumulativeSeries(
+      DEFAULT_DASHBOARD_FILTERS,
+      {
+        ...DEFAULT_TICKET_FILTERS,
+        series: "Сентябрь",
+        matchClass: "class_2",
+      },
+    );
+
+    expect(allClasses.length).toBeGreaterThan(0);
+    expect(class2.length).toBeGreaterThan(0);
+    expect(class2.length).toBeLessThan(allClasses.length);
+    expect(class2.every((item) => item.matchClass === "class_2")).toBe(true);
+
+    const excluded = allClasses.filter((item) => item.matchClass !== "class_2");
+    expect(excluded.length).toBeGreaterThan(0);
+
+    const selected = selectSeasonMatchChartViews(
+      buildSeasonMatchSeriesViews(class2),
+      { seriesFilter: "Сентябрь" },
+    );
+    expect(viewIds(selected)).toEqual(class2.map((item) => item.matchId));
+    expect(
+      selected.every((view) => view.matchClass === "class_2"),
+    ).toBe(true);
+
+    const rows = buildSeasonMatchChartRows(selected, class2);
+    for (const view of selected) {
+      expect(
+        rows.some((row) => row[seasonMatchFactKey(view.matchId)] != null),
+      ).toBe(true);
+    }
+    for (const item of excluded) {
+      expect(viewIds(selected)).not.toContain(item.matchId);
+    }
   });
 });
 

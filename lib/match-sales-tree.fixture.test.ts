@@ -192,7 +192,9 @@ describe("§3 tree shape — three parallel cuts", () => {
       ALL_ORDER_SOURCES.map((source) => ORDER_SOURCE_LABELS[source]),
     );
     expect(section(current, "priceZone")?.children.map((c) => c.label)).toEqual(
-      ALL_PRICE_ZONES.map((zone) => PRICE_ZONE_LABELS[zone]),
+      ALL_PRICE_ZONES.filter((zone) => expectedByPriceZone[zone]).map(
+        (zone) => PRICE_ZONE_LABELS[zone],
+      ),
     );
 
     const prev = tree.find((node) => node.matchId === FIXTURE_PREV_MATCH_ID)!;
@@ -206,8 +208,8 @@ describe("§3 tree shape — three parallel cuts", () => {
       ),
     ).toBe(false);
     expect(section(prev, "priceZone")?.children.map((c) => c.label)).toEqual([
-      PRICE_ZONE_LABELS.from_1500_to_2500,
-      PRICE_ZONE_LABELS.from_2500_to_4000,
+      PRICE_ZONE_LABELS.from_1500_to_2000,
+      PRICE_ZONE_LABELS.from_2500_to_3000,
     ]);
 
     const incomplete = tree.find(
@@ -246,24 +248,23 @@ describe("§3 tree shape — three parallel cuts", () => {
     const { tree } = buildDefaultFixtureTree();
     const match = currentMatch(tree);
     const priceZone = section(match, "priceZone")!;
-    const cheap = leaf(priceZone, PRICE_ZONE_LABELS.up_to_1500);
-    const mid = leaf(priceZone, PRICE_ZONE_LABELS.from_1500_to_2500);
-    const upper = leaf(priceZone, PRICE_ZONE_LABELS.from_2500_to_4000);
-    const vip = leaf(priceZone, PRICE_ZONE_LABELS.from_4000_to_6000);
+    const cheap = leaf(priceZone, PRICE_ZONE_LABELS.up_to_500);
+    const mid = leaf(priceZone, PRICE_ZONE_LABELS.from_1500_to_2000);
+    const upper = leaf(priceZone, PRICE_ZONE_LABELS.from_2500_to_3000);
 
     expect(cheap.children.map((child) => child.label)).toEqual(["A", "D1"]);
     expect(mid.children.map((child) => child.label)).toEqual(["B1"]);
-    expect(upper.children.map((child) => child.label)).toEqual(["C1"]);
-    expect(vip.children.map((child) => child.label)).toEqual(["VIP"]);
-    expect(vip.hasChildren).toBe(true);
+    expect(upper.children.map((child) => child.label)).toEqual(["C1", "VIP"]);
+    expect(upper.hasChildren).toBe(true);
     expect(cheap.children.reduce((sum, child) => sum + child.revenue, 0)).toBe(
       cheap.revenue,
     );
-    expect(vip.children[0]?.revenue).toBe(vip.revenue);
-    expect(vip.children[0]?.avgPrice).toBe(vip.revenue / vip.ticketsSold);
-    expect(vip.children[0]?.planRevenue).toBeNull();
-    expect(vip.children[0]?.id).toBe(
-      `m:${FIXTURE_CURRENT_MATCH_ID}|z:from_4000_to_6000|sec:VIP`,
+    const vipLeaf = upper.children.find((child) => child.label === "VIP");
+    expect(vipLeaf?.revenue).toBe(10_000);
+    expect(vipLeaf?.avgPrice).toBe(10_000 / 2);
+    expect(vipLeaf?.planRevenue).toBeNull();
+    expect(vipLeaf?.id).toBe(
+      `m:${FIXTURE_CURRENT_MATCH_ID}|z:from_2500_to_3000|sec:VIP`,
     );
 
     const parking = leaf(section(match, "ticketType"), TICKET_TYPE_LABELS.parking);
@@ -395,9 +396,11 @@ describe("§4 metrics", () => {
       );
     }
     for (const zone of ALL_PRICE_ZONES) {
+      const expected = expectedByPriceZone[zone];
+      if (!expected) continue;
       expectMetrics(
         leaf(section(match, "priceZone"), PRICE_ZONE_LABELS[zone]),
-        expectedByPriceZone[zone],
+        expected,
       );
     }
   });
@@ -482,7 +485,7 @@ describe("§4 metrics", () => {
       freeQuantity: 1,
       ticketType: "arena",
       orderSource: "box_office",
-      priceZone: "up_to_1500",
+      priceZone: "up_to_500",
     };
     expect(getTicketIssuedQuantity(mixed)).toBe(3);
     expect(getTicketFreeQuantity(mixed)).toBe(1);
@@ -514,7 +517,7 @@ describe("§5–6 expand, independent branches, several matches", () => {
     expect(arena.children).toHaveLength(0);
     const cheapZone = leaf(
       section(match, "priceZone"),
-      PRICE_ZONE_LABELS.up_to_1500,
+      PRICE_ZONE_LABELS.up_to_500,
     );
     expect(cheapZone.hasChildren).toBe(true);
     expect(cheapZone.children.length).toBeGreaterThan(0);

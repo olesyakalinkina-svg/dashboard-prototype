@@ -1,6 +1,9 @@
 /** Shared sales-table column widths: name flexes, metrics stay rem-locked. */
 
 export const SALES_COL_NAME = "w-auto min-w-0";
+/** Tablet (to xl): lock a wide sticky name col so labels like «Автомобилист» fit. */
+export const SALES_COL_NAME_TABLET_STICKY =
+  "w-[14rem] min-w-[14rem] max-w-[14rem] xl:w-auto xl:min-w-0 xl:max-w-none";
 export const SALES_COL_DATE = "w-[7rem] max-w-[7rem]";
 export const SALES_COL_MONEY = "w-[10.5rem] max-w-[10.5rem]";
 export const SALES_COL_PERCENT = "w-[10.5rem] max-w-[10.5rem]";
@@ -23,7 +26,7 @@ export const COMBINED_MATCH_SALES_COLUMN_WIDTHS: Record<string, string> = {
 };
 
 export const MATCH_SALES_COLUMN_WIDTHS: Record<string, string> = {
-  eventLabel: SALES_COL_NAME,
+  eventLabel: SALES_COL_NAME_TABLET_STICKY,
   date: SALES_COL_DATE,
   revenue: SALES_COL_MONEY,
   planFulfillment: SALES_COL_PERCENT,

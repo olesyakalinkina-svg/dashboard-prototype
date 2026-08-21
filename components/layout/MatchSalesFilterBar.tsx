@@ -9,7 +9,10 @@ import {
   ARENA_OPTIONS,
   EVENT_COMPLETED_OPTIONS,
   getMatchClassOptionsForStage,
+  arenaForSelectedLeague,
+  isLeagueArenaLocked,
   LEAGUE_OPTIONS,
+  sanitizeLeagueArena,
   sanitizeMatchClassForStage,
   SEASON_OPTIONS,
   TOURNAMENT_STAGE_OPTIONS,
@@ -60,6 +63,11 @@ export function MatchSalesFilterBar() {
     () => getPurchaseDateBounds(matchSalesFilters.season),
     [matchSalesFilters.season],
   );
+  const arenaLocked = isLeagueArenaLocked(matchSalesFilters.league);
+  const arenaValue = sanitizeLeagueArena(
+    matchSalesFilters.league,
+    matchSalesFilters.arena,
+  );
 
   return (
     <ResponsiveFilterBar
@@ -91,7 +99,13 @@ export function MatchSalesFilterBar() {
         <Select
           label="Лига"
           value={matchSalesFilters.league}
-          onChange={(e) => update("league", e.target.value as League | "all")}
+          onChange={(e) => {
+            const league = e.target.value as League | "all";
+            setMatchSalesFilters({
+              league,
+              arena: arenaForSelectedLeague(league, matchSalesFilters.arena),
+            });
+          }}
         >
           {LEAGUE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -150,9 +164,10 @@ export function MatchSalesFilterBar() {
 
         <Select
           label="Арена"
-          value={matchSalesFilters.arena}
+          value={arenaValue}
           onChange={(e) => update("arena", e.target.value as ArenaId | "all")}
-          className="xl:min-w-[180px]"
+          disabled={arenaLocked}
+          className="xl:min-w-[180px] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {ARENA_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>

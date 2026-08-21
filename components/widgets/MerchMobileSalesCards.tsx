@@ -29,7 +29,7 @@ const MERCH_SALES_EXCEL_HEADERS = [
   "Мероприятие",
   "Дата",
   "Выручка",
-  "% выполнения плана",
+  "Выполнение плана",
   "Средний чек",
   "Чеки",
   "Товары",
@@ -54,7 +54,7 @@ function CompactKpis({ row }: { row: MerchSalesTreeNode | MerchSalesFlatRow }) {
         </dd>
       </div>
       <div className="col-span-2">
-        <dt className="text-[var(--muted)]">% выполнения плана</dt>
+        <dt className="text-[var(--muted)]">Выполнение плана</dt>
         <dd className="text-[var(--foreground)]">{planPctLabel}</dd>
       </div>
       <div>

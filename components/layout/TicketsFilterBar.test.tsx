@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TicketsFilterBar } from "@/components/layout/TicketsFilterBar";
+import { applyTicketFilterPatch } from "@/lib/ticket-filter-options";
 import type { TicketFilters } from "@/types/dashboard";
 
 const layoutState = vi.hoisted(() => ({
@@ -38,7 +39,7 @@ const harness = vi.hoisted(() => {
 });
 
 harness.setTicketFilters = (patch) => {
-  harness.state.filters = { ...harness.state.filters, ...patch };
+  harness.state.filters = applyTicketFilterPatch(harness.state.filters, patch);
 };
 harness.resetTicketFilters = () => {
   harness.state.filters = {
@@ -155,12 +156,12 @@ describe("TicketsFilterBar", () => {
     );
   });
 
-  it("limits sector options to VIP when the 4000–6000 price zone is selected", async () => {
+  it("hides VIP when a lower price zone is selected", async () => {
     const user = userEvent.setup();
     const { rerender } = render(<TicketsFilterBar />);
 
     fireEvent.change(screen.getByLabelText("Ценовая зона"), {
-      target: { value: "from_4000_to_6000" },
+      target: { value: "up_to_500" },
     });
     rerender(<TicketsFilterBar />);
 
@@ -168,7 +169,8 @@ describe("TicketsFilterBar", () => {
     const optionLabels = [
       ...screen.getByTestId("multi-select-menu").querySelectorAll("label span"),
     ].map((node) => node.textContent);
-    expect(optionLabels).toEqual(["Все секторы", "VIP"]);
+    expect(optionLabels).not.toContain("VIP");
+    expect(optionLabels).toContain("A");
   });
 
   it("disables price zone and sector when ticket type is parking", () => {
@@ -186,5 +188,37 @@ describe("TicketsFilterBar", () => {
       screen.getByRole("button", { name: "Все секторы" }).hasAttribute("disabled"),
     ).toBe(true);
     expect(harness.state.filters.sector).toEqual([]);
+  });
+
+  it("locks Arena to Второстепенная when VHL is selected", () => {
+    const { rerender } = render(<TicketsFilterBar />);
+
+    expect(screen.getByLabelText("Лига")).toHaveProperty("value", "KHL");
+    expect(screen.getByLabelText("Арена")).toHaveProperty("value", "all");
+    expect(screen.getByLabelText("Арена").hasAttribute("disabled")).toBe(false);
+
+    fireEvent.change(screen.getByLabelText("Лига"), { target: { value: "VHL" } });
+    rerender(<TicketsFilterBar />);
+    expect(screen.getByLabelText("Арена")).toHaveProperty("value", "secondary");
+    expect(screen.getByLabelText("Арена").hasAttribute("disabled")).toBe(true);
+    expect(harness.state.filters.arena).toBe("secondary");
+
+    fireEvent.change(screen.getByLabelText("Лига"), { target: { value: "MHL" } });
+    rerender(<TicketsFilterBar />);
+    expect(screen.getByLabelText("Арена")).toHaveProperty("value", "main");
+    expect(screen.getByLabelText("Арена").hasAttribute("disabled")).toBe(true);
+
+    fireEvent.change(screen.getByLabelText("Лига"), { target: { value: "KHL" } });
+    rerender(<TicketsFilterBar />);
+    expect(screen.getByLabelText("Арена").hasAttribute("disabled")).toBe(false);
+    expect(screen.getByLabelText("Арена")).toHaveProperty("value", "all");
+    expect(harness.state.filters.arena).toBe("all");
+
+    fireEvent.change(screen.getByLabelText("Арена"), {
+      target: { value: "secondary" },
+    });
+    rerender(<TicketsFilterBar />);
+    expect(screen.getByLabelText("Арена")).toHaveProperty("value", "secondary");
+    expect(screen.getByLabelText("Арена").hasAttribute("disabled")).toBe(false);
   });
 });

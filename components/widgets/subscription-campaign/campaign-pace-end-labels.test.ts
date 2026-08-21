@@ -1,7 +1,11 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  END_LABEL_CHART_RIGHT_MARGIN,
   END_LABEL_DEFAULT_NUDGE,
   END_LABEL_DX,
+  END_LABEL_EDGE_PAD,
   END_LABEL_MIN_GAP,
   estimateLabelWidth,
   lastPointForDataKey,
@@ -146,5 +150,70 @@ describe("placeEndLabels", () => {
 
     expect(current.y).toBeLessThan(benchmark.y);
     expect(benchmark.y - current.y).toBeGreaterThanOrEqual(END_LABEL_MIN_GAP);
+  });
+
+  it("keeps a revenue-sized label to the right of the last point when the chart margin has room", () => {
+    const chartWidth = 400;
+    const lastX = chartWidth - END_LABEL_CHART_RIGHT_MARGIN;
+    const [label] = placeEndLabels(
+      [{ id: "revenue", cx: lastX, cy: 80, text: "42,8 млн ₽", fill: "#5282FF" }],
+      {
+        left: END_LABEL_EDGE_PAD,
+        right: chartWidth - END_LABEL_EDGE_PAD,
+        top: 12,
+        bottom: 260,
+      },
+    );
+
+    expect(label.textAnchor).toBe("start");
+    expect(label.x).toBe(lastX + END_LABEL_DX);
+    expect(label.x).toBeGreaterThan(lastX);
+  });
+
+  it("keeps both revenue totals to the right and packed vertically", () => {
+    const chartWidth = 400;
+    const lastX = chartWidth - END_LABEL_CHART_RIGHT_MARGIN;
+    const placed = placeEndLabels(
+      [
+        { id: "currentSeasonRevenue", cx: lastX, cy: 50, text: "42,8 млн ₽", fill: "#5282FF" },
+        { id: "benchmarkSeasonRevenue", cx: lastX, cy: 50, text: "41,2 млн ₽", fill: "#6B7280" },
+      ],
+      {
+        left: END_LABEL_EDGE_PAD,
+        right: chartWidth - END_LABEL_EDGE_PAD,
+        top: 12,
+        bottom: 260,
+      },
+    );
+
+    const current = placed.find((label) => label.id === "currentSeasonRevenue")!;
+    const benchmark = placed.find((label) => label.id === "benchmarkSeasonRevenue")!;
+
+    expect(current.textAnchor).toBe("start");
+    expect(benchmark.textAnchor).toBe("start");
+    expect(current.x).toBe(lastX + END_LABEL_DX);
+    expect(benchmark.x).toBe(lastX + END_LABEL_DX);
+    expect(benchmark.y - current.y).toBeGreaterThanOrEqual(END_LABEL_MIN_GAP);
+  });
+});
+
+describe("CampaignPaceChart caption and end-label margin", () => {
+  it("keeps the X-axis title and legend close to the axis", () => {
+    const source = readFileSync(
+      join(process.cwd(), "components/widgets/subscription-campaign/CampaignPaceChart.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain('className="mt-0.5 text-center text-[11px] text-[#8B8B8E]"');
+    expect(source).toContain(
+      'className="mt-1 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-[var(--foreground)]"',
+    );
+    expect(source).not.toContain(
+      'className="mt-2 text-center text-[11px] text-[#8B8B8E]"',
+    );
+    expect(source).not.toContain(
+      'className="mt-4 flex flex-wrap items-center justify-center',
+    );
+    expect(source).toContain("END_LABEL_CHART_RIGHT_MARGIN");
   });
 });

@@ -15,6 +15,7 @@ import {
   pruneExpandedKeys,
   pruneExpandedKeysForMatches,
   sortMatchSalesNodes,
+  matchSalesIssuedOccupancyPercent,
   matchSalesPlanFulfillmentPct,
   toggleExpandedKey,
   type MatchSalesTreeNode,
@@ -29,7 +30,9 @@ import {
   isAllowedSectorPriceZone,
   priceZoneFromUnitPrice,
 } from "@/lib/ticket-filter-options";
-import { getMatches, getTicketTransactionsByMatchId } from "@/lib/mock/data-store";
+import { getSectorCapacity } from "@/lib/arena-sector-inventory";
+import { occupancyMassCapacity } from "@/lib/ticket-plan";
+import { getMatchById, getMatches, getTicketTransactionsByMatchId } from "@/lib/mock/data-store";
 import type { PriceZone, Sector, TicketFilters, Transaction } from "@/types/dashboard";
 
 const filters = DEFAULT_DASHBOARD_FILTERS;
@@ -76,19 +79,25 @@ function findParallelCuts(tree: MatchSalesTreeNode[]) {
 }
 
 describe("price zone buckets", () => {
-  it("maps unit prices onto the four cost buckets", () => {
-    expect(priceZoneFromUnitPrice(0)).toBe("up_to_1500");
-    expect(priceZoneFromUnitPrice(1499.99)).toBe("up_to_1500");
-    expect(priceZoneFromUnitPrice(1500)).toBe("from_1500_to_2500");
-    expect(priceZoneFromUnitPrice(2499)).toBe("from_1500_to_2500");
-    expect(priceZoneFromUnitPrice(2500)).toBe("from_2500_to_4000");
-    expect(priceZoneFromUnitPrice(3999)).toBe("from_2500_to_4000");
-    expect(priceZoneFromUnitPrice(4000)).toBe("from_4000_to_6000");
-    expect(priceZoneFromUnitPrice(6000)).toBe("from_4000_to_6000");
-    expect(priceZoneFromUnitPrice(9000)).toBe("from_4000_to_6000");
+  it("maps unit prices onto the six cost buckets", () => {
+    expect(priceZoneFromUnitPrice(0)).toBe("up_to_500");
+    expect(priceZoneFromUnitPrice(499.99)).toBe("up_to_500");
+    expect(priceZoneFromUnitPrice(500)).toBe("from_500_to_1000");
+    expect(priceZoneFromUnitPrice(999)).toBe("from_500_to_1000");
+    expect(priceZoneFromUnitPrice(1000)).toBe("from_1000_to_1500");
+    expect(priceZoneFromUnitPrice(1499)).toBe("from_1000_to_1500");
+    expect(priceZoneFromUnitPrice(1500)).toBe("from_1500_to_2000");
+    expect(priceZoneFromUnitPrice(1999)).toBe("from_1500_to_2000");
+    expect(priceZoneFromUnitPrice(2000)).toBe("from_2000_to_2500");
+    expect(priceZoneFromUnitPrice(2499)).toBe("from_2000_to_2500");
+    expect(priceZoneFromUnitPrice(2500)).toBe("from_2500_to_3000");
+    expect(priceZoneFromUnitPrice(2999)).toBe("from_2500_to_3000");
+    expect(priceZoneFromUnitPrice(3000)).toBe("from_2500_to_3000");
+    expect(priceZoneFromUnitPrice(4500)).toBe("from_2500_to_3000");
+    expect(priceZoneFromUnitPrice(9000)).toBe("from_2500_to_3000");
   });
 
-  it("gives every match with arena tickets all four price zones", () => {
+  it("gives every match with arena tickets all six price zones", () => {
     const byMatch = getTicketTransactionsByMatchId();
     const matchesWithArena = getMatches().filter((match) =>
       (byMatch.get(match.id) ?? []).some((tx) => tx.ticketType === "arena"),
@@ -126,6 +135,29 @@ describe("price zone buckets", () => {
 });
 
 describe("match sales tree", () => {
+  it("computes sector occupancy as issued/sectorCapacity, not qty/matchTotal", () => {
+    const sector = {
+      level: "sector" as const,
+      issuedTickets: 240,
+      occupancyIssuedTickets: 240,
+      capacity: 800,
+    };
+    const match = {
+      level: "match" as const,
+      issuedTickets: 11_952,
+      occupancyIssuedTickets: 11_952,
+      capacity: 12_000,
+    };
+    expect(matchSalesIssuedOccupancyPercent(sector)).toBeCloseTo(30);
+    expect(matchSalesIssuedOccupancyPercent(sector)).not.toBeCloseTo(
+      (240 / 11_952) * 100,
+    );
+    expect(matchSalesIssuedOccupancyPercent(match)).toBeCloseTo(
+      (11_952 / occupancyMassCapacity(12_000)) * 100,
+    );
+    expect(matchSalesIssuedOccupancyPercent({ ...sector, capacity: null })).toBeNull();
+  });
+
   it("builds match → three parallel sections, not a nested drill-down", () => {
     const { matchRows, tree } = buildTree();
     expect(tree.length).toBe(matchRows.length);
@@ -347,7 +379,7 @@ describe("match sales tree", () => {
     expect(vhl.matchRows.length).toBeGreaterThan(0);
     expect(vhl.matchRows.length).toBeLessThan(allRows.length);
 
-    const zone: PriceZone = "up_to_1500";
+    const zone: PriceZone = "up_to_500";
     const zoneFilters: TicketFilters = { ...ticketFilters, priceZone: zone };
     const zoneRows = computeMatchSalesTable(filters, zoneFilters);
     const zoneTxs = getMatchSalesTreeTransactions(filters, zoneFilters);
@@ -591,13 +623,12 @@ describe("match sales tree", () => {
         expect(zone.children.every((child) => child.planRevenue === null)).toBe(
           true,
         );
-        expect(zone.children.every((child) => child.capacity === null)).toBe(
-          true,
-        );
+        expect(zone.capacity).toBeNull();
         for (const sector of zone.children) {
           expect(
             isAllowedSectorPriceZone(sector.label as Sector, zoneId!),
           ).toBe(true);
+          expect(sector.capacity).toBeGreaterThan(0);
           expect(
             sector.ticketsSold > 0 ||
               sector.freeTickets > 0 ||
@@ -616,10 +647,10 @@ describe("match sales tree", () => {
     }
 
     const vipZone = sample!.priceZone.children.find(
-      (child) => child.label === PRICE_ZONE_LABELS.from_4000_to_6000,
+      (child) => child.label === PRICE_ZONE_LABELS.from_2500_to_3000,
     );
     expect(vipZone).toBeDefined();
-    expect(vipZone!.children.map((child) => child.label)).toEqual(["VIP"]);
+    expect(vipZone!.children.some((child) => child.label === "VIP")).toBe(true);
 
     expect(sample!.parking?.children ?? []).toEqual([]);
     expect(sample!.arena.children).toEqual([]);
@@ -648,5 +679,40 @@ describe("match sales tree", () => {
         ).toBe(false);
       }
     }
+  });
+
+  it("scales sector occupancy to issued/sectorCapacity, not qty/matchTotal", () => {
+    const { tree } = buildTree();
+    const matchesById = getMatchById();
+    let checked = 0;
+
+    for (const match of tree.slice(0, 12)) {
+      const catalog = matchesById.get(match.matchId);
+      const priceZone = findSection(match, MATCH_SALES_SECTION_LABELS.priceZone);
+      if (!catalog || !priceZone) continue;
+
+      for (const zone of priceZone.children) {
+        for (const sector of zone.children) {
+          const sectorCap = getSectorCapacity(catalog, sector.label as Sector);
+          expect(sector.capacity).toBe(sectorCap);
+          expect(sectorCap).toBeGreaterThan(0);
+
+          const occupancy = Math.min(100, (sector.issuedTickets / sectorCap) * 100);
+          const matchShare = (sector.issuedTickets / match.issuedTickets) * 100;
+          expect(matchSalesIssuedOccupancyPercent(sector)).toBeCloseTo(
+            occupancy,
+            10,
+          );
+          if (Math.abs(occupancy - matchShare) > 0.5) {
+            expect(matchSalesIssuedOccupancyPercent(sector)).not.toBeCloseTo(
+              matchShare,
+            );
+          }
+          checked += 1;
+        }
+      }
+    }
+
+    expect(checked).toBeGreaterThan(0);
   });
 });

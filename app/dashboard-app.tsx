@@ -127,6 +127,17 @@ const SubscriptionRenewalWidget = dynamic(
   },
 );
 
+const MatchComparisonWidget = dynamic(
+  () =>
+    import("@/components/widgets/MatchComparisonWidget").then((mod) => ({
+      default: mod.MatchComparisonWidget,
+    })),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton height={360} />,
+  },
+);
+
 const SubscriptionPriceCategoryShareChart = dynamic(
   () =>
     import("@/components/widgets/Charts").then((mod) => ({
@@ -205,11 +216,13 @@ const TicketsSalesSection = memo(function TicketsSalesSection({
   ticketFilters: TicketFilters;
 }) {
   return (
-    <ResponsiveMatchSalesTable
-      data={matchSales}
-      filters={filters}
-      ticketFilters={ticketFilters}
-    />
+    <div className="min-w-0 w-full xl:mx-auto xl:w-4/5">
+      <ResponsiveMatchSalesTable
+        data={matchSales}
+        filters={filters}
+        ticketFilters={ticketFilters}
+      />
+    </div>
   );
 });
 
@@ -231,6 +244,7 @@ const TicketsMatchDynamicsSection = memo(function TicketsMatchDynamicsSection() 
         <TicketsSeasonMatchDynamicsWidget
           series={ticketsMatchCumulativeSeries}
           matchIds={appliedTicketFilters.matchId}
+          seriesFilter={appliedTicketFilters.series}
           timeGrouping={ticketChartTimeGrouping}
         />
       )}
@@ -286,6 +300,7 @@ function DashboardPanels() {
               />
             </SubscriptionCampaignPaceWidget>
             <SubscriptionRenewalWidget />
+            <MatchComparisonWidget />
           </>
         )}
 

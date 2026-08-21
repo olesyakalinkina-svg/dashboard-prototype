@@ -84,24 +84,30 @@ const SECTORS = [
 ];
 
 const PRICE_ZONE_CODES = [
-  "up_to_1500",
-  "from_1500_to_2500",
-  "from_2500_to_4000",
-  "from_4000_to_6000",
+  "up_to_500",
+  "from_500_to_1000",
+  "from_1000_to_1500",
+  "from_1500_to_2000",
+  "from_2000_to_2500",
+  "from_2500_to_3000",
 ];
 
 const PRICE_ZONE_SEEDS = {
-  up_to_1500: { price: 900, sectorId: 13, productId: 13 },
-  from_1500_to_2500: { price: 2000, sectorId: 2, productId: 2 },
-  from_2500_to_4000: { price: 3200, sectorId: 1, productId: 1 },
-  from_4000_to_6000: { price: 5000, sectorId: 14, productId: 14 },
+  up_to_500: { price: 400, sectorId: 13, productId: 13 },
+  from_500_to_1000: { price: 750, sectorId: 12, productId: 12 },
+  from_1000_to_1500: { price: 1250, sectorId: 11, productId: 11 },
+  from_1500_to_2000: { price: 1750, sectorId: 2, productId: 2 },
+  from_2000_to_2500: { price: 2250, sectorId: 1, productId: 1 },
+  from_2500_to_3000: { price: 2750, sectorId: 14, productId: 14 },
 };
 
 function priceZoneFromUnitPrice(unitPrice) {
-  if (unitPrice < 1500) return "up_to_1500";
-  if (unitPrice < 2500) return "from_1500_to_2500";
-  if (unitPrice < 4000) return "from_2500_to_4000";
-  return "from_4000_to_6000";
+  if (unitPrice < 500) return "up_to_500";
+  if (unitPrice < 1000) return "from_500_to_1000";
+  if (unitPrice < 1500) return "from_1000_to_1500";
+  if (unitPrice < 2000) return "from_1500_to_2000";
+  if (unitPrice < 2500) return "from_2000_to_2500";
+  return "from_2500_to_3000";
 }
 
 const sectorIdByCode = Object.fromEntries(

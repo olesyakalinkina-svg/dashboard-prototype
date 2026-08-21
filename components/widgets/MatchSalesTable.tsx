@@ -27,6 +27,7 @@ import {
   flattenExpandedMatchSalesTree,
   paginateTopLevel,
   sortMatchSalesNodes,
+  matchSalesIssuedOccupancyPercent,
   matchSalesPlanFulfillmentPct,
   type MatchSalesFlatRow,
   type MatchSalesTreeNode,
@@ -38,7 +39,7 @@ import {
   formatNumber,
   formatPercent,
 } from "@/lib/format";
-import { issuedOccupancyPercent, occupancyMassCapacity } from "@/lib/ticket-plan";
+import { occupancyMassCapacity } from "@/lib/ticket-plan";
 import type { DashboardFilters, MatchSalesRow, TicketFilters } from "@/types/dashboard";
 
 const PAGE_SIZE = 15;
@@ -140,7 +141,7 @@ const MATCH_SALES_COLUMNS: ColumnDef<MatchSalesFlatRow, unknown>[] = [
           />
           <span
             className={clsx(
-              "min-w-0 break-words md:whitespace-nowrap",
+              "min-w-0 break-words xl:whitespace-nowrap",
               item.level === "match" || item.level === "section"
                 ? "font-medium"
                 : "text-[var(--muted)]",
@@ -161,13 +162,18 @@ const MATCH_SALES_COLUMNS: ColumnDef<MatchSalesFlatRow, unknown>[] = [
   {
     accessorKey: "revenue",
     header: "Выручка",
-    cell: ({ row, table }) => {
+    cell: ({ row }) => {
       const item = row.original;
-      const { barMax } = table.options.meta as MatchSalesTableMeta;
+      const planPct = matchSalesPlanFulfillmentPct(
+        item.revenue,
+        item.planRevenue,
+      );
       return (
         <InlineBarCell
           value={item.revenue}
-          max={barMax.revenue}
+          max={100}
+          share={planPct ?? undefined}
+          showFill={planPct !== null}
           formatted={formatCurrency(item.revenue)}
           barClassName={getBarClass(item.level, "bg-rose-400", "bg-rose-300", "bg-rose-200")}
         />
@@ -178,7 +184,7 @@ const MATCH_SALES_COLUMNS: ColumnDef<MatchSalesFlatRow, unknown>[] = [
     accessorKey: "planFulfillment",
     accessorFn: (row) =>
       matchSalesPlanFulfillmentPct(row.revenue, row.planRevenue),
-    header: "% выполнения плана",
+    header: "Выполнение плана",
     cell: ({ row }) => {
       const pct = matchSalesPlanFulfillmentPct(
         row.original.revenue,
@@ -197,7 +203,7 @@ const MATCH_SALES_COLUMNS: ColumnDef<MatchSalesFlatRow, unknown>[] = [
           value={row.original.avgPrice}
           max={barMax.avgPrice}
           formatted={formatCurrency(row.original.avgPrice)}
-          barClassName={getBarClass(row.original.level, "bg-blue-500", "bg-blue-300", "bg-blue-200")}
+          barClassName={getBarClass(row.original.level, "bg-blue-400", "bg-blue-200", "bg-blue-100")}
         />
       );
     },
@@ -224,14 +230,26 @@ const MATCH_SALES_COLUMNS: ColumnDef<MatchSalesFlatRow, unknown>[] = [
   },
   {
     accessorKey: "issuedTickets",
-    header: "Оформлено",
+    header: "Заполняемость",
     cell: ({ row, table }) => {
-      const { issuedTickets, occupancyIssuedTickets, capacity } = row.original;
+      const item = row.original;
+      const { issuedTickets, occupancyIssuedTickets, capacity } = item;
       const { barMax } = table.options.meta as MatchSalesTableMeta;
-      const issuedBarClass = getBarClass(row.original.level, "bg-emerald-500", "bg-emerald-300", "bg-emerald-200");
+      const issuedBarClass = getBarClass(item.level, "bg-emerald-500", "bg-emerald-300", "bg-emerald-200");
+      const fillPct = matchSalesIssuedOccupancyPercent(item);
+      if (item.level === "sector" && capacity != null && capacity > 0) {
+        return (
+          <InlineBarCell
+            value={issuedTickets}
+            max={capacity}
+            share={fillPct ?? undefined}
+            formatted={`${formatNumber(issuedTickets)} шт${fillPct != null ? ` (${formatPercent(fillPct)})` : ""}`}
+            barClassName={issuedBarClass}
+          />
+        );
+      }
       if (capacity != null && capacity > 0) {
         const occupancyCap = occupancyMassCapacity(capacity);
-        const fillPct = issuedOccupancyPercent(occupancyIssuedTickets, capacity);
         return (
           <InlineBarCell
             value={occupancyIssuedTickets}
@@ -402,7 +420,7 @@ export const MatchSalesTable = memo(function MatchSalesTable({
         </div>
       )}
       <StickyScrollTable>
-      <table className="w-full min-w-[80rem] table-fixed text-sm leading-snug" data-testid="desktop-sales-table">
+      <table className="w-full min-w-[85rem] table-fixed text-sm leading-snug xl:min-w-[80rem]" data-testid="desktop-sales-table">
         <colgroup>
           {table.getAllLeafColumns().map((column) => (
             <col key={column.id} className={COLUMN_WIDTH_CLASS[column.id]} />
@@ -415,12 +433,13 @@ export const MatchSalesTable = memo(function MatchSalesTable({
                 <th
                   key={header.id}
                   className={clsx(
-                    "cursor-pointer overflow-hidden px-3 py-2 text-left text-xs font-medium leading-tight text-[var(--muted)]",
+                    "cursor-pointer px-3 py-2 text-left text-xs font-medium leading-tight text-[var(--muted)]",
+                    header.column.id !== "eventLabel" && "overflow-hidden",
                     COLUMN_WIDTH_CLASS[header.column.id],
                   )}
                   onClick={header.column.getToggleSortingHandler()}
                 >
-                  <span className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap">
+                  <span className="inline-flex min-w-0 items-center gap-1 whitespace-normal xl:whitespace-nowrap">
                     {flexRender(
                       header.column.columnDef.header,
                       header.getContext(),
@@ -447,7 +466,6 @@ export const MatchSalesTable = memo(function MatchSalesTable({
                   className={clsx(
                     "px-3 py-2.5 text-[var(--foreground)]",
                     COLUMN_WIDTH_CLASS[cell.column.id],
-                    cell.column.id === "eventLabel" && "relative z-[2]",
                   )}
                   onClick={
                     cell.column.id === "eventLabel"

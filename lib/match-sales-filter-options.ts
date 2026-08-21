@@ -7,6 +7,10 @@ import {
   ALL_MERCH_PRODUCT_CATEGORIES,
   ALL_MERCH_SALES_POINTS,
 } from "@/lib/merch-filter-options";
+import {
+  arenaForSelectedLeague,
+  sanitizeLeagueArena,
+} from "@/lib/ticket-filter-options";
 
 export const DEFAULT_MATCH_SALES_PURCHASE_DATE_RANGE: MatchSalesFilters["purchaseDateRange"] =
   {
@@ -25,6 +29,19 @@ export const DEFAULT_MATCH_SALES_FILTERS: MatchSalesFilters = {
   matchId: [],
   purchaseDateRange: DEFAULT_MATCH_SALES_PURCHASE_DATE_RANGE,
 };
+
+export function applyMatchSalesFilterPatch(
+  current: MatchSalesFilters,
+  patch: Partial<MatchSalesFilters>,
+): MatchSalesFilters {
+  const next = { ...current, ...patch };
+  if (patch.league !== undefined && patch.arena === undefined) {
+    next.arena = arenaForSelectedLeague(next.league, current.arena);
+  } else {
+    next.arena = sanitizeLeagueArena(next.league, next.arena);
+  }
+  return next;
+}
 
 export function matchSalesFiltersToTicketFilters(
   filters: MatchSalesFilters,

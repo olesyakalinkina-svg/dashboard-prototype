@@ -41,6 +41,7 @@ import {
 import { yieldToEventLoop, yieldUntilIdle } from "@/lib/idle";
 import { beginTicketsUiTurn, noteTicketsCompute } from "@/lib/tickets-compute-trace";
 import {
+  applyTicketFilterPatch,
   buildMatchFilterOptions,
   buildSeriesFilterOptions,
   DEFAULT_TICKET_FILTERS,
@@ -51,7 +52,10 @@ import {
   DEFAULT_MERCH_FILTERS,
   getEffectiveMerchTimeGrouping,
 } from "@/lib/merch-filter-options";
-import { DEFAULT_MATCH_SALES_FILTERS } from "@/lib/match-sales-filter-options";
+import {
+  applyMatchSalesFilterPatch,
+  DEFAULT_MATCH_SALES_FILTERS,
+} from "@/lib/match-sales-filter-options";
 import {
   applySubscriptionFilterPatch,
   DEFAULT_SUBSCRIPTION_FILTERS,
@@ -228,6 +232,9 @@ const EMPTY_SUBSCRIPTIONS_KPIS: SubscriptionsKpiData = {
   uniqueCustomersChange: 0,
   avgCheck: 0,
   avgCheckChange: 0,
+  planCompletionPct: 0,
+  planSold: 0,
+  planRevenue: 0,
   revenueSparkline: [],
   soldSparkline: [],
 };
@@ -487,7 +494,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
   const setTicketFilters = useCallback((patch: Partial<TicketFilters>) => {
     beginTicketsUiTurn();
     setTicketFiltersState((prev) => {
-      const next = { ...prev, ...patch };
+      const next = applyTicketFilterPatch(prev, patch);
       const effectiveTimeGrouping = getEffectiveTicketTimeGrouping(next);
       if (effectiveTimeGrouping === "day" && next.timeGrouping === "month") {
         next.timeGrouping = "day";
@@ -501,7 +508,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setMatchSalesFilters = useCallback((patch: Partial<MatchSalesFilters>) => {
-    setMatchSalesFiltersState((prev) => ({ ...prev, ...patch }));
+    setMatchSalesFiltersState((prev) => applyMatchSalesFilterPatch(prev, patch));
   }, []);
 
   const setSubscriptionFilters = useCallback((patch: Partial<SubscriptionFilters>) => {

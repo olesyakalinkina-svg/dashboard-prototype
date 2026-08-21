@@ -36,51 +36,57 @@ export const SECTOR_OPTIONS: { value: Sector; label: string }[] = ALL_SECTORS.ma
 );
 
 export const ALL_PRICE_ZONES: PriceZone[] = [
-  "up_to_1500",
-  "from_1500_to_2500",
-  "from_2500_to_4000",
-  "from_4000_to_6000",
+  "up_to_500",
+  "from_500_to_1000",
+  "from_1000_to_1500",
+  "from_1500_to_2000",
+  "from_2000_to_2500",
+  "from_2500_to_3000",
 ];
 
 export const NON_VIP_SECTORS: Sector[] = ALL_SECTORS.filter(
   (sector): sector is Exclude<Sector, "VIP"> => sector !== "VIP",
 );
 
-export const NON_VIP_PRICE_ZONES: PriceZone[] = [
-  "up_to_1500",
-  "from_1500_to_2500",
-  "from_2500_to_4000",
-];
+/** Ordinary sectors may sell in every remaining zone, including the top band. */
+export const NON_VIP_PRICE_ZONES: PriceZone[] = [...ALL_PRICE_ZONES];
 
-export const VIP_PRICE_ZONES: PriceZone[] = ["from_4000_to_6000"];
+/** VIP seats use only the highest remaining band (3000). */
+export const VIP_PRICE_ZONES: PriceZone[] = ["from_2500_to_3000"];
 
 export const PRICE_ZONE_LABELS: Record<PriceZone, string> = {
-  up_to_1500: "до 1500",
-  from_1500_to_2500: "от 1500 до 2500",
-  from_2500_to_4000: "от 2500 до 4000",
-  from_4000_to_6000: "от 4000 до 6000",
+  up_to_500: "500",
+  from_500_to_1000: "1000",
+  from_1000_to_1500: "1500",
+  from_1500_to_2000: "2000",
+  from_2000_to_2500: "2500",
+  from_2500_to_3000: "3000",
 };
 
-/** Max unit price for ordinary sectors so they never enter 4000–6000. */
-export const NON_VIP_MAX_UNIT_PRICE = 3999;
+/** Ordinary catalog prices stay at or below the top band. */
+export const NON_VIP_MAX_UNIT_PRICE = 2999;
 /** Inclusive VIP price band — the only allowed zone for that sector. */
-export const VIP_MIN_UNIT_PRICE = 4000;
-export const VIP_MAX_UNIT_PRICE = 6000;
+export const VIP_MIN_UNIT_PRICE = 2500;
+export const VIP_MAX_UNIT_PRICE = 3000;
+
+function isVipPriceZone(zone: PriceZone): boolean {
+  return VIP_PRICE_ZONES.includes(zone);
+}
 
 export function allowedPriceZonesForSector(sector: Sector): PriceZone[] {
   return sector === "VIP" ? [...VIP_PRICE_ZONES] : [...NON_VIP_PRICE_ZONES];
 }
 
 export function allowedSectorsForPriceZone(zone: PriceZone): Sector[] {
-  return zone === "from_4000_to_6000" ? ["VIP"] : [...NON_VIP_SECTORS];
+  return isVipPriceZone(zone) ? [...ALL_SECTORS] : [...NON_VIP_SECTORS];
 }
 
 export function isAllowedSectorPriceZone(
   sector: Sector,
   zone: PriceZone,
 ): boolean {
-  if (sector === "VIP") return zone === "from_4000_to_6000";
-  return zone !== "from_4000_to_6000";
+  if (sector === "VIP") return isVipPriceZone(zone);
+  return NON_VIP_PRICE_ZONES.includes(zone);
 }
 
 /** Sentinel: explicit "no sectors selected" (distinct from [] = all sectors). */
@@ -193,11 +199,20 @@ export function mergeTicketSectorFilters(
   return next.length > 0 ? next : [NO_SECTORS_FILTER_VALUE];
 }
 
+const PRICE_ZONE_MAX_EXCLUSIVE: Array<{ zone: PriceZone; maxExclusive: number }> =
+  [
+    { zone: "up_to_500", maxExclusive: 500 },
+    { zone: "from_500_to_1000", maxExclusive: 1000 },
+    { zone: "from_1000_to_1500", maxExclusive: 1500 },
+    { zone: "from_1500_to_2000", maxExclusive: 2000 },
+    { zone: "from_2000_to_2500", maxExclusive: 2500 },
+  ];
+
 export function priceZoneFromUnitPrice(unitPrice: number): PriceZone {
-  if (unitPrice < 1500) return "up_to_1500";
-  if (unitPrice < 2500) return "from_1500_to_2500";
-  if (unitPrice < 4000) return "from_2500_to_4000";
-  return "from_4000_to_6000";
+  for (const row of PRICE_ZONE_MAX_EXCLUSIVE) {
+    if (unitPrice < row.maxExclusive) return row.zone;
+  }
+  return "from_2500_to_3000";
 }
 
 export const DEFAULT_TICKET_TRANSACTION_DATE_RANGE: TicketFilters["transactionDateRange"] =
@@ -443,6 +458,56 @@ export const ARENA_OPTIONS: { value: ArenaId | "all"; label: string }[] = [
   { value: "secondary", label: "Второстепенная" },
 ];
 
+/**
+ * Single-league home venue for ticket / match-sales / subscription filters.
+ * VHL always plays on the secondary arena; MHL on the main arena.
+ * KHL stays unlocked; selecting it defaults Arena to «Все арены».
+ */
+const LOCKED_LEAGUE_ARENA: Partial<Record<League, ArenaId>> = {
+  VHL: "secondary",
+  MHL: "main",
+};
+
+export function getLockedLeagueArena(
+  league: League | "all",
+): ArenaId | null {
+  if (league === "all") return null;
+  return LOCKED_LEAGUE_ARENA[league] ?? null;
+}
+
+export function isLeagueArenaLocked(league: League | "all"): boolean {
+  return getLockedLeagueArena(league) !== null;
+}
+
+export function sanitizeLeagueArena(
+  league: League | "all",
+  arena: ArenaId | "all",
+): ArenaId | "all" {
+  return getLockedLeagueArena(league) ?? arena;
+}
+
+/** Arena to apply when the user (or a league-only patch) selects a league. */
+export function arenaForSelectedLeague(
+  league: League | "all",
+  currentArena: ArenaId | "all",
+): ArenaId | "all" {
+  if (league === "KHL") return "all";
+  return sanitizeLeagueArena(league, currentArena);
+}
+
+export function applyTicketFilterPatch(
+  current: TicketFilters,
+  patch: Partial<TicketFilters>,
+): TicketFilters {
+  const next = { ...current, ...patch };
+  if (patch.league !== undefined && patch.arena === undefined) {
+    next.arena = arenaForSelectedLeague(next.league, current.arena);
+  } else {
+    next.arena = sanitizeLeagueArena(next.league, next.arena);
+  }
+  return next;
+}
+
 export const EVENT_COMPLETED_OPTIONS = [
   { value: "all", label: "Все" },
   { value: "yes", label: "Да" },
@@ -508,10 +573,12 @@ export const ORDER_SOURCE_COLORS: Record<OrderSource, string> = {
 };
 
 export const PRICE_ZONE_COLORS: Record<PriceZone, string> = {
-  up_to_1500: "#93C5FD",
-  from_1500_to_2500: "#3B82F6",
-  from_2500_to_4000: "#1D4ED8",
-  from_4000_to_6000: "#7C3AED",
+  up_to_500: "#DBEAFE",
+  from_500_to_1000: "#93C5FD",
+  from_1000_to_1500: "#60A5FA",
+  from_1500_to_2000: "#3B82F6",
+  from_2000_to_2500: "#2563EB",
+  from_2500_to_3000: "#7C3AED",
 };
 
 export const SECTOR_COLORS: Record<Sector, string> = {

@@ -81,5 +81,8 @@ describe("CombinedMatchSalesTable", () => {
     expect(css).toMatch(
       /\.sticky-scroll-table-row-hover tbody tr:hover > td:first-child/,
     );
+    expect(css).toMatch(
+      /\.sticky-scroll-table tbody td:first-child,[\s\S]*z-index:\s*12;[\s\S]*background-color:\s*var\(--card\)/,
+    );
   });
 });

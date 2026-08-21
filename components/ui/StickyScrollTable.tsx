@@ -19,7 +19,7 @@ export function StickyScrollTable({
   return (
     <div
       className={clsx(
-        "sticky-scroll-table min-w-0",
+        "sticky-scroll-table relative min-w-0",
         overflowX ? "overflow-x-auto" : "overflow-x-hidden",
         rowHover && STICKY_TABLE_ROW_HOVER_CLASS,
         className,

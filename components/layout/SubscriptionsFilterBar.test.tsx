@@ -14,7 +14,7 @@ const harness = vi.hoisted(() => {
       season: "2025/26",
       league: "KHL",
       tournamentStage: "all",
-      arena: "main",
+      arena: "all",
       priceCategory: "all",
       timeGrouping: "week",
     },
@@ -80,13 +80,13 @@ describe("SubscriptionsFilterBar", () => {
     ).toEqual(["Все", "Все включено", "Выходного дня", "Сезонный"]);
   });
 
-  it("locks Arena to the league venue and only enables it for Все лиги", () => {
+  it("defaults KHL to Все арены unlocked and still locks VHL/MHL", () => {
     const { rerender } = render(<SubscriptionsFilterBar />);
     const arena = getSelectByLabel("Арена");
 
     expect(getSelectByLabel("Лига").value).toBe("KHL");
-    expect(arena.value).toBe("main");
-    expectSelectDisabled("Арена", true);
+    expect(arena.value).toBe("all");
+    expectSelectDisabled("Арена", false);
 
     fireEvent.change(getSelectByLabel("Лига"), { target: { value: "VHL" } });
     rerender(<SubscriptionsFilterBar />);
@@ -110,11 +110,19 @@ describe("SubscriptionsFilterBar", () => {
 
     fireEvent.change(getSelectByLabel("Лига"), { target: { value: "KHL" } });
     rerender(<SubscriptionsFilterBar />);
+    expect(getSelectByLabel("Арена").value).toBe("all");
+    expectSelectDisabled("Арена", false);
+    expect(harness.state.filters.arena).toBe("all");
+
+    fireEvent.change(getSelectByLabel("Арена"), {
+      target: { value: "main" },
+    });
+    rerender(<SubscriptionsFilterBar />);
     expect(getSelectByLabel("Арена").value).toBe("main");
-    expectSelectDisabled("Арена", true);
+    expectSelectDisabled("Арена", false);
   });
 
-  it("restores KHL + Основная on reset", () => {
+  it("restores KHL + Все арены on reset", () => {
     const { rerender } = render(<SubscriptionsFilterBar />);
 
     fireEvent.change(getSelectByLabel("Лига"), { target: { value: "all" } });
@@ -126,7 +134,7 @@ describe("SubscriptionsFilterBar", () => {
     rerender(<SubscriptionsFilterBar />);
 
     expect(getSelectByLabel("Лига").value).toBe("KHL");
-    expect(getSelectByLabel("Арена").value).toBe("main");
-    expectSelectDisabled("Арена", true);
+    expect(getSelectByLabel("Арена").value).toBe("all");
+    expectSelectDisabled("Арена", false);
   });
 });

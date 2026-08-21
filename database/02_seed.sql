@@ -97,7 +97,7 @@ INSERT INTO product_category (id, stream_id, name) VALUES
     (6, 3, 'Сезонные абонементы'),
     (7, 3, 'Пакетные абонементы');
 
--- Ticket list prices span the four cost buckets (до 1500 … от 4000 до 6000).
+-- Ticket list prices span the six cost buckets (до 500 … от 2500 до 3000).
 INSERT INTO product (id, category_id, sku, name, base_price, sector_id) VALUES
     (1,  1, 'TKT-A',      'Билет сектор A',    2800.00, 1),
     (2,  1, 'TKT-B1',     'Билет сектор B1',   2200.00, 2),

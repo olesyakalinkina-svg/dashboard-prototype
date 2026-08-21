@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import {
   CartesianGrid,
+  Customized,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -32,20 +33,100 @@ import {
   seasonMatchPlanKey,
   SEASON_MATCH_AXIS_MIN_TICK_GAP_PX,
   SEASON_MATCH_AXIS_TICK_HEIGHT,
+  SEASON_MATCH_CHART_MARGIN,
   SEASON_MATCH_CHART_MOBILE_MAX_WIDTH,
 } from "@/lib/tickets-season-match-chart";
+import {
+  placeSeasonMatchEndMarkers,
+  placeSeasonMatchHoverMarkers,
+  SEASON_MATCH_MARKER_RADIUS,
+  SEASON_MATCH_MARKER_STROKE,
+  type HoverMarkerSeries,
+  type SeasonMatchGraphicalItem,
+} from "./season-match-marker-offset";
 import type {
   TicketsSeasonMatchChartRow,
   TicketsSeasonMatchSeriesView,
   TimeGrouping,
 } from "@/types/dashboard";
-import { TicketsSeasonMatchPlanMarker } from "./TicketsSeasonMatchPlanMarker";
+import { SeasonMatchPlanDot } from "./TicketsSeasonMatchPlanMarker";
 import { TicketsSeasonMatchTooltip } from "./TicketsSeasonMatchTooltip";
 
 type ChartZoomControl = {
   isZoomed: boolean;
   resetZoom: () => void;
 };
+
+type ChartOffset = {
+  top?: number;
+  height?: number;
+};
+
+function SeasonMatchChartMarkers({
+  endSeries,
+  hoverSeries,
+  formattedGraphicalItems,
+  activeTooltipIndex,
+  isTooltipActive,
+  offset,
+}: {
+  endSeries: readonly HoverMarkerSeries[];
+  hoverSeries: readonly HoverMarkerSeries[];
+  formattedGraphicalItems?: readonly SeasonMatchGraphicalItem[];
+  activeTooltipIndex?: number;
+  isTooltipActive?: boolean;
+  offset?: ChartOffset;
+}) {
+  const minY =
+    offset?.top != null ? offset.top + SEASON_MATCH_MARKER_RADIUS : undefined;
+  const maxY =
+    offset?.top != null && offset.height != null
+      ? offset.top + offset.height - SEASON_MATCH_MARKER_RADIUS
+      : undefined;
+  const bounds = { minY, maxY };
+
+  const endMarkers = placeSeasonMatchEndMarkers(
+    formattedGraphicalItems,
+    endSeries,
+    bounds,
+  );
+  const hoverMarkers =
+    isTooltipActive && activeTooltipIndex != null && activeTooltipIndex >= 0
+      ? placeSeasonMatchHoverMarkers(
+          formattedGraphicalItems,
+          activeTooltipIndex,
+          hoverSeries,
+          bounds,
+        )
+      : [];
+
+  if (endMarkers.length === 0 && hoverMarkers.length === 0) return null;
+
+  return (
+    <g className="recharts-season-match-markers" pointerEvents="none">
+      {endMarkers.map((marker) => (
+        <SeasonMatchPlanDot
+          key={marker.id}
+          cx={marker.cx}
+          cy={marker.cy}
+          color={marker.color}
+          markerId={marker.id}
+        />
+      ))}
+      {hoverMarkers.map((marker) => (
+        <circle
+          key={`hover-${marker.id}`}
+          cx={marker.cx}
+          cy={marker.cy}
+          r={SEASON_MATCH_MARKER_RADIUS}
+          fill={marker.color}
+          stroke="#fff"
+          strokeWidth={SEASON_MATCH_MARKER_STROKE}
+        />
+      ))}
+    </g>
+  );
+}
 
 function SeasonMatchXAxisTick({
   x = 0,
@@ -197,7 +278,34 @@ export function TicketsSeasonMatchChart({
     () => getSeasonMatchAxisTickOffsets(xTicks, displayData, chartWidth),
     [xTicks, displayData, chartWidth],
   );
-  const showFactDots = displayData.length < 2;
+  const hoverMarkerSeries = useMemo(
+    () =>
+      visibleViews
+        .filter((view) => view.hasFactSales || view.isOnSale)
+        .map((view) => ({
+          dataKey: seasonMatchFactKey(view.matchId),
+          color: view.color,
+        })),
+    [visibleViews],
+  );
+  const endMarkerSeries = useMemo(
+    () =>
+      visibleViews
+        .filter((view) => {
+          const opacity = getSeasonMatchLineOpacity(view, {
+            hidden: false,
+            hoveredMatchId: hoveredSeries,
+            brightMatchIds,
+            comparisonMode,
+          });
+          return opacity > 0.15;
+        })
+        .map((view) => ({
+          dataKey: seasonMatchPlanKey(view.matchId),
+          color: view.color,
+        })),
+    [visibleViews, hoveredSeries, brightMatchIds, comparisonMode],
+  );
 
   const formatTooltipLabel = (value: number) => {
     const dateKey = Number(value);
@@ -283,7 +391,7 @@ export function TicketsSeasonMatchChart({
         <ResponsiveContainer width="100%" height={chartHeight}>
           <LineChart
             data={displayData}
-            margin={{ top: 20, right: 20, left: 4, bottom: 12 }}
+            margin={{ ...SEASON_MATCH_CHART_MARGIN }}
             {...chartHandlers}
           >
             <CartesianGrid strokeDasharray="3 3" stroke="#E5E5E7" />
@@ -345,7 +453,8 @@ export function TicketsSeasonMatchChart({
                     stroke={view.color}
                     strokeWidth={strokeWidth}
                     strokeOpacity={opacity}
-                    dot={showFactDots}
+                    dot={false}
+                    activeDot={false}
                     connectNulls={false}
                     isAnimationActive={false}
                     legendType="none"
@@ -360,15 +469,7 @@ export function TicketsSeasonMatchChart({
                   dataKey={planKey}
                   name={view.legendLabel}
                   stroke="none"
-                  dot={({ key, ...props }) => (
-                    <TicketsSeasonMatchPlanMarker
-                      key={key}
-                      {...props}
-                      color={view.color}
-                      matchId={view.matchId}
-                      visible={opacity > 0.15}
-                    />
-                  )}
+                  dot={false}
                   activeDot={false}
                   connectNulls={false}
                   isAnimationActive={false}
@@ -378,6 +479,23 @@ export function TicketsSeasonMatchChart({
 
               return elements;
             })}
+            <Customized
+              component={(chartProps: {
+                formattedGraphicalItems?: readonly SeasonMatchGraphicalItem[];
+                activeTooltipIndex?: number;
+                isTooltipActive?: boolean;
+                offset?: ChartOffset;
+              }) => (
+                <SeasonMatchChartMarkers
+                  endSeries={endMarkerSeries}
+                  hoverSeries={hoverMarkerSeries}
+                  formattedGraphicalItems={chartProps.formattedGraphicalItems}
+                  activeTooltipIndex={chartProps.activeTooltipIndex}
+                  isTooltipActive={chartProps.isTooltipActive}
+                  offset={chartProps.offset}
+                />
+              )}
+            />
           </LineChart>
         </ResponsiveContainer>
       </div>

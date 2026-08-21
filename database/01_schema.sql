@@ -184,10 +184,12 @@ CREATE TABLE sale (
         CHECK (
             price_zone IS NULL
             OR price_zone IN (
-                'up_to_1500',
-                'from_1500_to_2500',
-                'from_2500_to_4000',
-                'from_4000_to_6000'
+                'up_to_500',
+                'from_500_to_1000',
+                'from_1000_to_1500',
+                'from_1500_to_2000',
+                'from_2000_to_2500',
+                'from_2500_to_3000'
             )
         ),
     quantity        INTEGER NOT NULL CHECK (quantity > 0),

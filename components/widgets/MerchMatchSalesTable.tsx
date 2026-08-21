@@ -175,18 +175,19 @@ const MERCH_SALES_COLUMNS: ColumnDef<MerchSalesFlatRow, unknown>[] = [
   {
     accessorKey: "revenue",
     header: "Выручка",
-    cell: ({ row, table }) => {
+    cell: ({ row }) => {
       const item = row.original;
-      const { barMax } = table.options.meta as MerchSalesTableMeta;
+      const planPct = merchSalesPlanFulfillmentPct(
+        item.revenue,
+        item.planRevenue,
+      );
       return (
         <InlineBarCell
           value={item.revenue}
-          max={barMax.revenue}
+          max={100}
+          share={planPct ?? undefined}
           formatted={formatCurrency(item.revenue)}
-          showFill={
-            merchSalesPlanFulfillmentPct(item.revenue, item.planRevenue) !==
-            null
-          }
+          showFill={planPct !== null}
           barClassName={getBarClass(item.level, "bg-rose-400", "bg-rose-300", "bg-rose-200")}
         />
       );
@@ -196,7 +197,7 @@ const MERCH_SALES_COLUMNS: ColumnDef<MerchSalesFlatRow, unknown>[] = [
     accessorKey: "planFulfillment",
     accessorFn: (row) =>
       merchSalesPlanFulfillmentPct(row.revenue, row.planRevenue),
-    header: "% выполнения плана",
+    header: "Выполнение плана",
     cell: ({ row }) => {
       const pct = merchSalesPlanFulfillmentPct(
         row.original.revenue,
@@ -289,9 +290,9 @@ const MERCH_SALES_COLUMNS: ColumnDef<MerchSalesFlatRow, unknown>[] = [
           compactLabels
           barClassName={getBarClass(
             row.original.level,
-            "bg-blue-500",
-            "bg-blue-300",
+            "bg-blue-400",
             "bg-blue-200",
+            "bg-blue-100",
           )}
         />
       );
@@ -496,7 +497,6 @@ export const MerchSalesTableView = memo(function MerchSalesTableView({
                     className={clsx(
                       "px-3 py-2.5 text-[var(--foreground)]",
                       COLUMN_WIDTH_CLASS[cell.column.id],
-                      cell.column.id === "eventLabel" && "relative z-[2]",
                     )}
                     onClick={
                       cell.column.id === "eventLabel"

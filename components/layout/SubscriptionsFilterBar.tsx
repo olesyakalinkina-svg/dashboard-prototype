@@ -9,6 +9,7 @@ import {
   SEASON_OPTIONS,
   SUBSCRIPTION_PRICE_CATEGORY_OPTIONS,
   TREND_TIME_GROUPING_OPTIONS,
+  arenaForSelectedLeague,
   isSubscriptionArenaLocked,
   sanitizeSubscriptionArena,
 } from "@/lib/subscription-filter-options";
@@ -71,7 +72,7 @@ export function SubscriptionsFilterBar() {
             const league = e.target.value as League | "all";
             setSubscriptionFilters({
               league,
-              arena: sanitizeSubscriptionArena(league, subscriptionFilters.arena),
+              arena: arenaForSelectedLeague(league, subscriptionFilters.arena),
             });
           }}
         >

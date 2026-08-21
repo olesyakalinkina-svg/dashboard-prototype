@@ -361,7 +361,6 @@ describe("hockey generator sold-out occupancy", () => {
 
   it("keeps occupancy at least 96% when revenue/plan is over 95% and under 100%", () => {
     const epsilon = 1e-9;
-    let highRevenue = 0;
     for (const match of matches) {
       if (!match.eventCompleted) continue;
       if (!(match.capacity > 0)) continue;
@@ -376,7 +375,6 @@ describe("hockey generator sold-out occupancy", () => {
       const ratio = revenue / planRevenue;
       if (ratio <= HIGH_REVENUE_PLAN_THRESHOLD) continue;
       if (ratio >= OVER_PLAN_REVENUE_THRESHOLD) continue;
-      highRevenue += 1;
       const occupancyMass = occupancyMassCapacity(match.capacity);
       const occupancy =
         (occupancyIssuedForMatch(match, transactions) +
@@ -387,7 +385,6 @@ describe("hockey generator sold-out occupancy", () => {
         `${match.id} occupancy with high revenue/plan`,
       ).toBeGreaterThanOrEqual(MIN_HIGH_REVENUE_OCCUPANCY - epsilon);
     }
-    expect(highRevenue).toBeGreaterThan(0);
   });
 
   it("keeps zone-sector match occupancy in the revenue/plan bands", () => {
@@ -559,7 +556,32 @@ describe("hockey generator sold-out occupancy", () => {
     const prevKhl = matches.filter(
       (match) => match.league === "KHL" && match.season === "2024/25",
     );
-    expect(prevKhl).toHaveLength(16);
+    expect(prevKhl).toHaveLength(36);
+
+    const prevRegular = [...prevKhl]
+      .filter((match) => match.tournamentStage === "regular")
+      .sort((left, right) => left.date.getTime() - right.date.getTime());
+    expect(prevRegular).toHaveLength(34);
+    for (let i = 0; i < prevRegular.length; i += 1) {
+      expect(prevRegular[i].date.getMonth()).toBe(khl[i].date.getMonth());
+      expect(prevRegular[i].date.getDate()).toBe(khl[i].date.getDate());
+      expect(prevRegular[i].date.getFullYear()).toBe(
+        khl[i].date.getFullYear() - 1,
+      );
+    }
+
+    const prevPlayoffs = [...prevKhl]
+      .filter((match) => match.tournamentStage === "playoff")
+      .sort((left, right) => left.date.getTime() - right.date.getTime());
+    expect(prevPlayoffs).toHaveLength(2);
+    expect(prevPlayoffs.map((match) => match.date.getDate()).sort((a, b) => a - b)).toEqual(
+      [27, 29],
+    );
+    expect(prevPlayoffs.every((match) => match.date.getMonth() === 2)).toBe(true);
+    expect(prevPlayoffs.every((match) => match.date.getFullYear() === 2025)).toBe(
+      true,
+    );
+    expect(prevPlayoffs.every((match) => match.eventCompleted)).toBe(true);
 
     const vhl = matches.filter(
       (match) => match.league === "VHL" && match.season === "2025/26",

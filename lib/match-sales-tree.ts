@@ -11,6 +11,7 @@ import {
   ticketSalesLoyaltyDiscountPct,
   type TicketSalesAgg,
 } from "@/lib/ticket-sales-metrics";
+import { getSectorCapacity } from "@/lib/arena-sector-inventory";
 import {
   ALL_ORDER_SOURCES,
   ALL_PRICE_ZONES,
@@ -20,8 +21,14 @@ import {
   PRICE_ZONE_LABELS,
   TICKET_TYPE_LABELS,
 } from "@/lib/ticket-filter-options";
+import {
+  issuedOccupancyPercent,
+  MHL_ARENA_CAPACITY,
+  SECONDARY_ARENA_CAPACITY,
+} from "@/lib/ticket-plan";
 import type {
   DashboardFilters,
+  Match,
   MatchSalesRow,
   OrderSource,
   PriceZone,
@@ -89,6 +96,38 @@ export function matchSalesPlanFulfillmentPct(
   return (revenue / planRevenue) * 100;
 }
 
+/**
+ * «Оформлено» occupancy for the green bar.
+ * Match / section / zone groups: (arena+parking issued) / occupancy mass.
+ * Sector leaves: this row's issued / that sector's seat capacity (no parking,
+ * not a share of match-level issued).
+ */
+export function matchSalesIssuedOccupancyPercent(
+  row: Pick<
+    MatchSalesTreeNode,
+    "level" | "issuedTickets" | "occupancyIssuedTickets" | "capacity"
+  >,
+): number | null {
+  if (row.capacity == null || !(row.capacity > 0)) return null;
+  if (row.level === "sector") {
+    return Math.min(100, (row.issuedTickets / row.capacity) * 100);
+  }
+  return issuedOccupancyPercent(row.occupancyIssuedTickets, row.capacity);
+}
+
+function inventoryMatchFromCapacity(
+  capacity: number,
+): Pick<Match, "arena" | "league" | "capacity"> | null {
+  if (!(capacity > 0)) return null;
+  if (capacity === SECONDARY_ARENA_CAPACITY) {
+    return { arena: "secondary", league: "VHL", capacity };
+  }
+  if (capacity === MHL_ARENA_CAPACITY) {
+    return { arena: "main", league: "MHL", capacity };
+  }
+  return { arena: "main", league: "KHL", capacity };
+}
+
 type BranchAgg = TicketSalesAgg & { issuedTickets: number };
 
 function createBranchAgg(): BranchAgg {
@@ -109,6 +148,7 @@ function metricsFromAgg(
     date: Date | null;
     label: string;
     planRevenue: number | null;
+    occupancyIssuedTickets?: number;
     capacity: number | null;
     hasChildren: boolean;
     children: MatchSalesTreeNode[];
@@ -121,7 +161,7 @@ function metricsFromAgg(
     ticketsSold: agg.ticketsSold,
     freeTickets: agg.freeTickets,
     issuedTickets: agg.issuedTickets,
-    occupancyIssuedTickets: 0,
+    occupancyIssuedTickets: extras.occupancyIssuedTickets ?? 0,
     loyaltyDiscountPct: ticketSalesLoyaltyDiscountPct(agg),
   };
 }
@@ -428,12 +468,16 @@ function sectorNodesFromBuckets(
   matchId: string,
   zone: PriceZone,
   buckets: Map<Sector, BranchAgg> | undefined,
+  inventoryMatch: Pick<Match, "arena" | "league" | "capacity"> | null,
 ): MatchSalesTreeNode[] {
   if (!buckets || buckets.size === 0) return [];
   const nodes: MatchSalesTreeNode[] = [];
   for (const sector of allowedSectorsForPriceZone(zone)) {
     const agg = buckets.get(sector);
     if (!agg || isEmptyTicketSalesAgg(agg, agg.issuedTickets)) continue;
+    const sectorCapacity = inventoryMatch
+      ? getSectorCapacity(inventoryMatch, sector)
+      : 0;
     nodes.push(
       metricsFromAgg(agg, {
         id: sectorKey(matchId, zone, sector),
@@ -442,7 +486,8 @@ function sectorNodesFromBuckets(
         date: null,
         label: sector,
         planRevenue: null,
-        capacity: null,
+        occupancyIssuedTickets: agg.issuedTickets,
+        capacity: sectorCapacity > 0 ? sectorCapacity : null,
         hasChildren: false,
         children: [],
       }),
@@ -455,6 +500,7 @@ function priceZoneNodesFromAggregate(
   matchId: string,
   zones: Map<PriceZone, BranchAgg>,
   zoneSectors: Map<PriceZone, Map<Sector, BranchAgg>>,
+  inventoryMatch: Pick<Match, "arena" | "league" | "capacity"> | null,
 ): MatchSalesTreeNode[] {
   const nodes: MatchSalesTreeNode[] = [];
   for (const zone of ALL_PRICE_ZONES) {
@@ -464,6 +510,7 @@ function priceZoneNodesFromAggregate(
       matchId,
       zone,
       zoneSectors.get(zone),
+      inventoryMatch,
     );
     nodes.push(
       metricsFromAgg(agg, {
@@ -535,6 +582,7 @@ function sectionNodesFromAggregate(
         row.matchId,
         aggregate.zones,
         aggregate.zoneSectors,
+        inventoryMatchFromCapacity(row.capacity),
       ),
     };
 

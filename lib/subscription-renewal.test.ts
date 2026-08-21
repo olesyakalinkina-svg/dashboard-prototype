@@ -398,4 +398,42 @@ describe("subscription renewal compute", () => {
     expect(result.kpis.previousUnique).toBe(1);
     expect(result.kpis.renewed).toBe(1);
   });
+
+  it("excludes purchases outside the sold-KPI sales window", () => {
+    const result = computeSubscriptionRenewal({
+      filters: FILTERS,
+      subscriptions: [
+        sub({
+          id: "in-prev",
+          customerId: "cust-in",
+          season: RENEWAL_BASE_SEASON,
+          purchasedAt: new Date(2024, 8, 1),
+        }),
+        sub({
+          id: "out-prev",
+          customerId: "cust-out",
+          season: RENEWAL_BASE_SEASON,
+          purchasedAt: new Date(2024, 9, 1),
+        }),
+        sub({
+          id: "in-next",
+          customerId: "cust-in",
+          season: RENEWAL_NEXT_SEASON,
+          purchasedAt: new Date(2025, 8, 1),
+        }),
+        sub({
+          id: "out-next",
+          customerId: "cust-new-out",
+          season: RENEWAL_NEXT_SEASON,
+          purchasedAt: new Date(2025, 9, 1),
+        }),
+      ],
+    });
+
+    expect(result.kpis.previousUnique).toBe(1);
+    expect(result.kpis.nextUnique).toBe(1);
+    expect(result.kpis.renewed).toBe(1);
+    expect(result.kpis.notRenewed).toBe(0);
+    expect(result.kpis.newClients).toBe(0);
+  });
 });

@@ -32,10 +32,12 @@ export const TicketsSeasonMatchDynamicsWidget = memo(
     series,
     matchIds,
     timeGrouping,
+    seriesFilter = "all",
   }: {
     series: TicketMatchCumulativeSeries[];
     matchIds: string[];
     timeGrouping: TimeGrouping;
+    seriesFilter?: string | "all";
   }) {
   const [selectedMatchIds, setSelectedMatchIds] = useState<string[]>([]);
   const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(
@@ -79,8 +81,9 @@ export const TicketsSeasonMatchDynamicsWidget = memo(
       selectSeasonMatchChartViews(allViews, {
         selectedMatchIds,
         preserveIncomingViews: globalMatchFilterActive,
+        seriesFilter,
       }),
-    [allViews, selectedMatchIds, globalMatchFilterActive],
+    [allViews, selectedMatchIds, globalMatchFilterActive, seriesFilter],
   );
 
   const dailyChartRows = useMemo(

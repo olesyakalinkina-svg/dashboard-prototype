@@ -142,10 +142,11 @@ describe("SubscriptionRenewalWidget", () => {
     );
     expect(kpiGrid).not.toBeNull();
 
-    const companionGrid = container.querySelector(
-      "div.grid.min-w-0.grid-cols-1.items-stretch.gap-4.min-\\[1024px\\]\\:grid-cols-2",
+    const productChartGrid = container.querySelector(
+      "div.grid.min-w-0.grid-cols-1.items-start.gap-4.min-\\[1024px\\]\\:grid-cols-2",
     );
-    expect(companionGrid).toBeNull();
+    expect(productChartGrid).not.toBeNull();
+    expect(productChartGrid?.textContent).toContain("Продление по продукту");
   });
 
   it("shows product / base / renewed / share columns when the table is expanded", async () => {
@@ -181,6 +182,9 @@ describe("SubscriptionRenewalWidget", () => {
     expect(widget).toContain("min-w-0");
     expect(widget).toContain("grid-cols-1");
     expect(widget).toContain("sm:grid-cols-3");
+    expect(widget).toMatch(
+      /grid min-w-0 grid-cols-1 items-start gap-4 min-\[1024px\]:grid-cols-2">[\s\S]*<RenewalProductChart/,
+    );
     expect(widget).not.toContain("лояльности");
   });
 });

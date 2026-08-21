@@ -15,13 +15,17 @@ import {
   filterMatchesByMerchFilters,
   filterMatchesByTicketFilters,
 } from "@/lib/filters";
-import { DEFAULT_MATCH_SALES_FILTERS } from "@/lib/match-sales-filter-options";
+import {
+  applyMatchSalesFilterPatch,
+  DEFAULT_MATCH_SALES_FILTERS,
+} from "@/lib/match-sales-filter-options";
 import { DEFAULT_MERCH_FILTERS } from "@/lib/merch-filter-options";
 import {
   applySubscriptionFilterPatch,
   DEFAULT_SUBSCRIPTION_FILTERS,
 } from "@/lib/subscription-filter-options";
 import {
+  applyTicketFilterPatch,
   buildMatchFilterOptions,
   buildSeriesFilterOptions,
   DEFAULT_TICKET_FILTERS,
@@ -102,7 +106,7 @@ export function MobileFilterDraftProvider({
   const setTicketFilters = useCallback((patch: Partial<TicketFilters>) => {
     setDraft((prev) => ({
       ...prev,
-      ticketFilters: { ...prev.ticketFilters, ...patch },
+      ticketFilters: applyTicketFilterPatch(prev.ticketFilters, patch),
     }));
   }, []);
 
@@ -117,7 +121,10 @@ export function MobileFilterDraftProvider({
     (patch: Partial<MatchSalesFilters>) => {
       setDraft((prev) => ({
         ...prev,
-        matchSalesFilters: { ...prev.matchSalesFilters, ...patch },
+        matchSalesFilters: applyMatchSalesFilterPatch(
+          prev.matchSalesFilters,
+          patch,
+        ),
       }));
     },
     [],

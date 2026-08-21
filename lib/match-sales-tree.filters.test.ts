@@ -212,7 +212,7 @@ describe("§7, §9 global filters (local widget filters removed)", () => {
       sectorA.tree,
       FIXTURE_CURRENT_MATCH_ID,
       "priceZone",
-    )?.children.find((child) => child.label === PRICE_ZONE_LABELS.up_to_1500);
+    )?.children.find((child) => child.label === PRICE_ZONE_LABELS.up_to_500);
     expect(cheapZone?.children.map((child) => child.label)).toEqual(["A"]);
     expect(cheapZone?.children.some((child) => child.label === "D1")).toBe(
       false,
@@ -311,14 +311,14 @@ describe("filter combinations (AND across dimensions, OR within matchId)", () =>
       {
         matchId: [FIXTURE_CURRENT_MATCH_ID],
         orderSource: "official_site",
-        priceZone: "from_1500_to_2500",
+        priceZone: "from_1500_to_2000",
       },
     ],
     [
       "priceZone+date",
       {
         matchId: [FIXTURE_CURRENT_MATCH_ID],
-        priceZone: "up_to_1500",
+        priceZone: "up_to_500",
         transactionDateRange: { from: "2025-10-01", to: "2025-10-02" },
       },
     ],
@@ -326,7 +326,7 @@ describe("filter combinations (AND across dimensions, OR within matchId)", () =>
       "priceZone+sector",
       {
         matchId: [FIXTURE_CURRENT_MATCH_ID],
-        priceZone: "up_to_1500",
+        priceZone: "up_to_500",
         sector: ["A"],
       },
     ],
@@ -412,7 +412,7 @@ describe("global mock computeMatchSalesTable (grouping / reset / empty)", () => 
     const all = computeMatchSalesTable(DEFAULT_DASHBOARD_FILTERS, DEFAULT_TICKET_FILTERS);
     const zoned = computeMatchSalesTable(DEFAULT_DASHBOARD_FILTERS, {
       ...DEFAULT_TICKET_FILTERS,
-      priceZone: "from_1500_to_2500",
+      priceZone: "from_1500_to_2000",
     });
     expect(zoned.length).toBeGreaterThan(0);
     const allRevenue = all.reduce((sum, row) => sum + row.revenue, 0);
@@ -470,8 +470,8 @@ describe("global mock computeMatchSalesTable (grouping / reset / empty)", () => 
 });
 
 describe("frozen confirm scenario", () => {
-  it("match СКА + зона от 1500 до 2500 = 16000 / 8 sold", () => {
-    expect(expectedByPriceZone.from_1500_to_2500.revenue).toBe(16_000);
+  it("match СКА + зона 2000 = 16000 / 8 sold", () => {
+    expect(expectedByPriceZone.from_1500_to_2000.revenue).toBe(16_000);
     expect(CONFIRM_SCENARIO.expected.sold).toBe(8);
     const result = computeFixtureMatchSalesTable(
       FIXTURE_DASHBOARD_FILTERS,

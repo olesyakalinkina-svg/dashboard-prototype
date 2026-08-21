@@ -81,34 +81,32 @@ describe("arena sector inventory", () => {
 
   it("enlarges an oversold zone from unused zones in the same sector", () => {
     const planned = splitSectorCapacity("A", 800);
-    expect(planned.from_1500_to_2500).toBe(320);
+    expect(planned.from_1500_to_2000).toBe(160);
     const split = splitSectorCapacityForDemand("A", 800, {
-      from_1500_to_2500: 500,
+      from_1500_to_2000: 500,
     });
-    expect(split.from_1500_to_2500).toBeGreaterThanOrEqual(500);
+    expect(split.from_1500_to_2000).toBeGreaterThanOrEqual(500);
     expect(
-      (split.up_to_1500 ?? 0) +
-        (split.from_1500_to_2500 ?? 0) +
-        (split.from_2500_to_4000 ?? 0),
+      Object.values(split).reduce((sum, value) => sum + value, 0),
     ).toBe(800);
-    expect(split.up_to_1500).toBeGreaterThan(0);
-    expect(split.from_2500_to_4000).toBeGreaterThan(0);
+    expect(split.from_2500_to_3000).toBeGreaterThan(0);
+    expect(split.from_2000_to_2500).toBeGreaterThan(0);
   });
 
   it("cannot exceed sector capacity when issued overflows the bowl", () => {
     const split = splitSectorCapacityForDemand("A", 800, {
-      from_1500_to_2500: 900,
+      from_1500_to_2000: 900,
     });
-    expect(split.from_1500_to_2500).toBe(800);
-    expect(split.up_to_1500).toBe(0);
-    expect(split.from_2500_to_4000).toBe(0);
+    expect(split.from_1500_to_2000).toBe(800);
+    expect(split.up_to_500).toBe(0);
+    expect(split.from_2500_to_3000).toBe(0);
   });
 
   it("keeps the planned split when issued fits inside it", () => {
     const planned = splitSectorCapacity("A", 800);
     const split = splitSectorCapacityForDemand("A", 800, {
-      from_1500_to_2500: 3,
-      up_to_1500: 1,
+      from_1500_to_2000: 3,
+      up_to_500: 1,
     });
     expect(split).toEqual(planned);
   });

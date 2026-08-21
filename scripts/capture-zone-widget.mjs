@@ -72,10 +72,10 @@ await page.screenshot({
 
 await widget.getByRole("button", { name: "По ценовым зонам" }).click();
 await page.waitForTimeout(120);
-await widget.locator("[data-parent-zone='from_4000_to_6000'] button").first().click();
+await widget.locator("[data-parent-zone='from_2500_to_3000'] button").first().click();
 await page.waitForTimeout(150);
 await page.screenshot({
-  path: join(outDir, "tickets-zone-expanded-4000-6000.png"),
+  path: join(outDir, "tickets-zone-expanded-2500-3000.png"),
   fullPage: true,
 });
 
@@ -122,10 +122,10 @@ await page.evaluate(() => {
 });
 
 await widget.getByRole("button", { name: "Все зоны" }).click();
-for (const label of ["до 1500", "от 2500 до 4000", "от 4000 до 6000"]) {
+for (const label of ["до 500", "от 500 до 1000", "от 2500 до 3000"]) {
   await clickOpenMenuLabel(label);
 }
-await widget.getByRole("button", { name: /от 1500 до 2500/ }).click();
+await widget.getByRole("button", { name: /от 1500 до 2000/ }).click();
 await widget.getByRole("button", { name: "Все секторы" }).click();
 for (const sector of ["A", "B1", "B2", "B3", "B4", "C1", "C2", "C3", "C4", "D1", "D2", "D3", "D4"]) {
   await clickOpenMenuLabel(sector);

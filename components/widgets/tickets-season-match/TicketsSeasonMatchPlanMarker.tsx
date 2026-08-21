@@ -11,21 +11,25 @@ type PlanMarkerProps = {
   visible?: boolean;
 };
 
-export function TicketsSeasonMatchPlanMarker({
+export function SeasonMatchPlanDot({
   cx,
   cy,
-  payload,
   color,
-  matchId,
-  visible = true,
-}: PlanMarkerProps) {
-  if (!visible || cx == null || cy == null) return null;
-
-  const value = payload?.[seasonMatchPlanKey(matchId)];
-  if (value == null) return null;
-
+  markerId,
+}: {
+  cx: number;
+  cy: number;
+  color: string;
+  markerId?: string;
+}) {
   return (
-    <g>
+    <g
+      className="season-match-end-dot"
+      data-testid="season-match-end-dot"
+      data-marker-id={markerId}
+      data-cx={cx}
+      data-cy={cy}
+    >
       <circle
         cx={cx}
         cy={cy}
@@ -44,4 +48,20 @@ export function TicketsSeasonMatchPlanMarker({
       />
     </g>
   );
+}
+
+export function TicketsSeasonMatchPlanMarker({
+  cx,
+  cy,
+  payload,
+  color,
+  matchId,
+  visible = true,
+}: PlanMarkerProps) {
+  if (!visible || cx == null || cy == null) return null;
+
+  const value = payload?.[seasonMatchPlanKey(matchId)];
+  if (value == null) return null;
+
+  return <SeasonMatchPlanDot cx={cx} cy={cy} color={color} markerId={matchId} />;
 }

@@ -9,10 +9,13 @@ import {
   EVENT_COMPLETED_OPTIONS,
   getMatchClassOptionsForStage,
   getSectorOptionsForPriceZone,
+  arenaForSelectedLeague,
+  isLeagueArenaLocked,
   LEAGUE_OPTIONS,
   NO_SECTORS_FILTER_VALUE,
   ORDER_SOURCE_OPTIONS,
   PRICE_ZONE_OPTIONS,
+  sanitizeLeagueArena,
   sanitizeMatchClassForStage,
   sanitizeSectorsForPriceZone,
   SEASON_OPTIONS,
@@ -98,6 +101,11 @@ export function TicketsFilterBar() {
     () => getSectorOptionsForPriceZone(ticketFilters.priceZone),
     [ticketFilters.priceZone],
   );
+  const arenaLocked = isLeagueArenaLocked(ticketFilters.league);
+  const arenaValue = sanitizeLeagueArena(
+    ticketFilters.league,
+    ticketFilters.arena,
+  );
 
   return (
     <ResponsiveFilterBar
@@ -130,7 +138,13 @@ export function TicketsFilterBar() {
         <Select
           label="Лига"
           value={ticketFilters.league}
-          onChange={(e) => update("league", e.target.value as League | "all")}
+          onChange={(e) => {
+            const league = e.target.value as League | "all";
+            setTicketFilters({
+              league,
+              arena: arenaForSelectedLeague(league, ticketFilters.arena),
+            });
+          }}
         >
           {LEAGUE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -189,9 +203,10 @@ export function TicketsFilterBar() {
 
         <Select
           label="Арена"
-          value={ticketFilters.arena}
+          value={arenaValue}
           onChange={(e) => update("arena", e.target.value as ArenaId | "all")}
-          className="xl:min-w-[180px]"
+          disabled={arenaLocked}
+          className="xl:min-w-[180px] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {ARENA_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>

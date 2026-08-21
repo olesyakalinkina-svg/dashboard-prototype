@@ -1,7 +1,8 @@
 /** @vitest-environment jsdom */
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MatchSalesFilterBar } from "@/components/layout/MatchSalesFilterBar";
+import { applyMatchSalesFilterPatch } from "@/lib/match-sales-filter-options";
 import type { MatchSalesFilters } from "@/types/dashboard";
 
 const harness = vi.hoisted(() => {
@@ -28,7 +29,10 @@ const harness = vi.hoisted(() => {
 });
 
 harness.setMatchSalesFilters = (patch) => {
-  harness.state.filters = { ...harness.state.filters, ...patch };
+  harness.state.filters = applyMatchSalesFilterPatch(
+    harness.state.filters,
+    patch,
+  );
 };
 harness.resetMatchSalesFilters = () => {
   harness.state.filters = {
@@ -79,5 +83,37 @@ describe("MatchSalesFilterBar", () => {
     const classIndex = labels.indexOf("Класс матча");
     expect(classIndex).toBeGreaterThanOrEqual(0);
     expect(labels[classIndex + 1]).toBe("Серия");
+  });
+
+  it("locks Arena to Второстепенная when VHL is selected", () => {
+    const { rerender } = render(<MatchSalesFilterBar />);
+
+    expect(screen.getByLabelText("Лига")).toHaveProperty("value", "KHL");
+    expect(screen.getByLabelText("Арена")).toHaveProperty("value", "all");
+    expect(screen.getByLabelText("Арена").hasAttribute("disabled")).toBe(false);
+
+    fireEvent.change(screen.getByLabelText("Лига"), { target: { value: "VHL" } });
+    rerender(<MatchSalesFilterBar />);
+    expect(screen.getByLabelText("Арена")).toHaveProperty("value", "secondary");
+    expect(screen.getByLabelText("Арена").hasAttribute("disabled")).toBe(true);
+    expect(harness.state.filters.arena).toBe("secondary");
+
+    fireEvent.change(screen.getByLabelText("Лига"), { target: { value: "MHL" } });
+    rerender(<MatchSalesFilterBar />);
+    expect(screen.getByLabelText("Арена")).toHaveProperty("value", "main");
+    expect(screen.getByLabelText("Арена").hasAttribute("disabled")).toBe(true);
+
+    fireEvent.change(screen.getByLabelText("Лига"), { target: { value: "KHL" } });
+    rerender(<MatchSalesFilterBar />);
+    expect(screen.getByLabelText("Арена").hasAttribute("disabled")).toBe(false);
+    expect(screen.getByLabelText("Арена")).toHaveProperty("value", "all");
+    expect(harness.state.filters.arena).toBe("all");
+
+    fireEvent.change(screen.getByLabelText("Арена"), {
+      target: { value: "main" },
+    });
+    rerender(<MatchSalesFilterBar />);
+    expect(screen.getByLabelText("Арена")).toHaveProperty("value", "main");
+    expect(screen.getByLabelText("Арена").hasAttribute("disabled")).toBe(false);
   });
 });

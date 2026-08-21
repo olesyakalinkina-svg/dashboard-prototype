@@ -11,7 +11,6 @@ import {
   startOfQuarter,
   startOfWeek,
   subDays,
-  subYears,
 } from "date-fns";
 import { ru } from "date-fns/locale";
 import {
@@ -21,8 +20,6 @@ import {
 import { yieldToMain } from "@/lib/idle";
 import { MOCK_TODAY } from "@/lib/mock/constants";
 import {
-  getFirstPlayoffMatchDate,
-  getPlayoffSubscriptionSalesWindow,
   getMatchById,
   getMatches,
   getMerchTransactions,
@@ -31,8 +28,6 @@ import {
   getTicketTransactionsByMatchId,
   getTransactions,
   PREV_SEASON_START,
-  SUBSCRIPTIONS_PERIOD_END,
-  SUBSCRIPTIONS_PERIOD_START,
 } from "@/lib/mock/hockey";
 import {
   ORDER_SOURCE_LABELS,
@@ -92,6 +87,12 @@ import {
   SUBSCRIPTION_PRICE_CATEGORY_LABELS,
   subscriptionMatchesPriceCategory,
 } from "@/lib/subscription-filter-options";
+import {
+  getPlayoffSubscriptionPeriod,
+  getRegularSubscriptionPeriod,
+  subscriptionMatchesSalesWindow,
+  type SubscriptionDateRange,
+} from "@/lib/subscription-sales-window";
 import {
   applyTicketSalesTransaction,
   createTicketSalesAgg,
@@ -275,36 +276,7 @@ function getDateCutoff(days: number): Date {
   return startOfDay(subDays(MOCK_TODAY, days));
 }
 
-type SubscriptionDateRange = { start: Date; end: Date };
-
 const CURRENT_SEASON = "2025/26";
-
-function regularSalesWindowOffsetYears(season?: string): number {
-  if (!season || season === "all") return 0;
-  const currentYear = Number.parseInt(CURRENT_SEASON.slice(0, 4), 10);
-  const seasonYear = Number.parseInt(season.slice(0, 4), 10);
-  if (!Number.isFinite(currentYear) || !Number.isFinite(seasonYear)) return 0;
-  return Math.max(0, currentYear - seasonYear);
-}
-
-function getRegularSubscriptionPeriod(season?: string): SubscriptionDateRange {
-  const yearsBack = regularSalesWindowOffsetYears(season);
-  return {
-    start: startOfDay(subYears(SUBSCRIPTIONS_PERIOD_START, yearsBack)),
-    end: endOfDay(subYears(SUBSCRIPTIONS_PERIOD_END, yearsBack)),
-  };
-}
-
-function getPlayoffSubscriptionPeriod(season: string): SubscriptionDateRange | null {
-  const firstPlayoffMatch = getFirstPlayoffMatchDate(getMatches(), season);
-  if (!firstPlayoffMatch) return null;
-
-  const window = getPlayoffSubscriptionSalesWindow(firstPlayoffMatch);
-  return {
-    start: startOfDay(window.start),
-    end: endOfDay(window.end),
-  };
-}
 
 function getSubscriptionsDisplayPeriod(
   subscriptionFilters?: SubscriptionFilters,
@@ -356,48 +328,6 @@ function getSubscriptionsPeriodDays(
 ): number {
   const { start, end } = getSubscriptionsDisplayPeriod(subscriptionFilters);
   return differenceInCalendarDays(end, start) + 1;
-}
-
-function isDateInSubscriptionPeriod(
-  date: Date,
-  range: SubscriptionDateRange,
-): boolean {
-  return date >= range.start && date <= range.end;
-}
-
-function subscriptionMatchesSalesWindow(
-  sub: Subscription,
-  subscriptionFilters?: SubscriptionFilters,
-): boolean {
-  if (subscriptionFilters?.tournamentStage === "playoff") {
-    const season =
-      subscriptionFilters.season !== "all" ? subscriptionFilters.season : sub.season;
-    const playoffPeriod = getPlayoffSubscriptionPeriod(season);
-    if (!playoffPeriod) return false;
-    return isDateInSubscriptionPeriod(sub.purchasedAt, playoffPeriod);
-  }
-
-  if (subscriptionFilters?.tournamentStage === "regular") {
-    return isDateInSubscriptionPeriod(
-      sub.purchasedAt,
-      getRegularSubscriptionPeriod(
-        subscriptionFilters.season !== "all"
-          ? subscriptionFilters.season
-          : sub.season,
-      ),
-    );
-  }
-
-  if (sub.tournamentStage === "playoff") {
-    const playoffPeriod = getPlayoffSubscriptionPeriod(sub.season);
-    if (!playoffPeriod) return false;
-    return isDateInSubscriptionPeriod(sub.purchasedAt, playoffPeriod);
-  }
-
-  return isDateInSubscriptionPeriod(
-    sub.purchasedAt,
-    getRegularSubscriptionPeriod(sub.season),
-  );
 }
 
 function buildSubscriptionsSparkline<T>(
@@ -1577,12 +1507,22 @@ function countUniqueSubscriptionCustomers(subs: Subscription[]): number {
   return ids.size;
 }
 
+const SUBSCRIPTION_PLAN_EXECUTION_RATE = 0.94;
+
 type SubscriptionsKpiMetrics = {
   revenue: number;
   sold: number;
   uniqueCustomers: number;
   avgCheck: number;
+  planRevenue: number;
+  planSold: number;
+  planCompletionPct: number;
 };
+
+function subscriptionPlanFromFact(fact: number): number {
+  if (fact <= 0) return 0;
+  return Math.round(fact / SUBSCRIPTION_PLAN_EXECUTION_RATE);
+}
 
 function computeSubscriptionsKpiMetrics(
   filters: DashboardFilters,
@@ -1593,8 +1533,20 @@ function computeSubscriptionsKpiMetrics(
   const sold = current.length;
   const uniqueCustomers = countUniqueSubscriptionCustomers(current);
   const avgCheck = sold > 0 ? revenue / sold : 0;
+  const planRevenue = subscriptionPlanFromFact(revenue);
+  const planSold = subscriptionPlanFromFact(sold);
+  const planCompletionPct =
+    planRevenue > 0 ? (revenue / planRevenue) * 100 : 0;
 
-  return { revenue, sold, uniqueCustomers, avgCheck };
+  return {
+    revenue,
+    sold,
+    uniqueCustomers,
+    avgCheck,
+    planRevenue,
+    planSold,
+    planCompletionPct,
+  };
 }
 
 function buildSubscriptionsSeasonComparison(
@@ -1624,6 +1576,10 @@ function buildSubscriptionsSeasonComparison(
       prevMetrics.uniqueCustomers,
     ),
     avgCheckChange: pctChange(current.avgCheck, prevMetrics.avgCheck),
+    planCompletionChange: pctChange(
+      current.planCompletionPct,
+      prevMetrics.planCompletionPct,
+    ),
   };
 }
 
@@ -1700,8 +1656,6 @@ export function periodKeyAndSort(
     sortKey: week.getTime(),
   };
 }
-
-const SUBSCRIPTION_PLAN_EXECUTION_RATE = 0.94;
 
 function matchHasEligibleTicketSaleDay(
   match: { date: Date; ticketSalesWindowDays?: number },

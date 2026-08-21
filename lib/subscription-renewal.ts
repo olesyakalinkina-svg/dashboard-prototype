@@ -7,6 +7,7 @@ import {
   isValidSoldSubscription,
   subscriptionMatchesCampaignFilters,
 } from "@/lib/subscription-campaign/compute";
+import { subscriptionMatchesSalesWindow } from "@/lib/subscription-sales-window";
 import {
   ALL_SUBSCRIPTION_PRICE_CATEGORIES,
   formatSubscriptionSeasonShort,
@@ -62,7 +63,9 @@ export type SubscriptionRenewalResult = {
  *
  * Filters: league / arena / tournamentStage / priceCategory apply to both
  * seasons. Season is fixed to 2024/25 → 2025/26. Cancelled rows are excluded
- * via `isValidSoldSubscription`.
+ * via `isValidSoldSubscription`. Purchase dates must fall in the same sales
+ * window as the sold KPI (`subscriptionMatchesSalesWindow`), using each row's
+ * own season — not the season dropdown.
  */
 export function computeSubscriptionRenewal({
   subscriptions,
@@ -81,6 +84,14 @@ export function computeSubscriptionRenewal({
   for (const sub of subscriptions) {
     if (!isValidSoldSubscription(sub)) continue;
     if (!subscriptionMatchesCampaignFilters(sub, filters)) continue;
+    if (
+      !subscriptionMatchesSalesWindow(sub, {
+        season: "all",
+        tournamentStage: filters.tournamentStage,
+      })
+    ) {
+      continue;
+    }
 
     if (sub.season === RENEWAL_BASE_SEASON) {
       previousOwners.add(sub.customerId);

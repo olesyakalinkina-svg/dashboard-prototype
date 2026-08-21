@@ -1,14 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Bar, BarChart, LabelList, ResponsiveContainer, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, Cell, LabelList, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { AdaptiveTooltip } from "@/components/charts/AdaptiveTooltip";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { formatNumber, formatPercent } from "@/lib/format";
+import { getSubscriptionPriceCategoryColor } from "@/lib/subscription-price-category-colors";
+import { SUBSCRIPTION_PRODUCT_CHART_TEXT } from "@/lib/subscription-product-chart-style";
 import type { SubscriptionRenewalProductShare } from "@/lib/subscription-renewal";
 
-const BAR_FILL = "#5282FF";
 const ROW_HEIGHT = 28;
 const MIN_CHART_HEIGHT = 118;
 const LABEL_MAX = 22;
@@ -87,7 +88,7 @@ export function RenewalProductChart({
                   dataKey="categoryKey"
                   width={158}
                   interval={0}
-                  tick={{ fontSize: 12, fill: "#1A1A1A" }}
+                  tick={SUBSCRIPTION_PRODUCT_CHART_TEXT}
                   axisLine={false}
                   tickLine={false}
                   padding={{ top: 0, bottom: 0 }}
@@ -102,17 +103,22 @@ export function RenewalProductChart({
                 <Bar
                   dataKey="share"
                   name="Продление"
-                  fill={BAR_FILL}
                   barSize={18}
                   maxBarSize={18}
                   radius={[0, 4, 4, 0]}
                   isAnimationActive={false}
                 >
+                  {chartRows.map((item) => (
+                    <Cell
+                      key={item.categoryKey}
+                      fill={getSubscriptionPriceCategoryColor(item.categoryKey)}
+                    />
+                  ))}
                   <LabelList
                     dataKey="share"
                     position="right"
                     formatter={(value: number) => formatPercent(value)}
-                    style={{ fontSize: 12, fill: "#1A1A1A" }}
+                    style={SUBSCRIPTION_PRODUCT_CHART_TEXT}
                   />
                 </Bar>
               </BarChart>

@@ -4,6 +4,7 @@ import {
   NON_VIP_PRICE_ZONES,
   NON_VIP_SECTORS,
   NO_SECTORS_FILTER_VALUE,
+  VIP_PRICE_ZONES,
   allowedPriceZonesForSector,
   allowedSectorsForPriceZone,
   hasAllowedFilterIntersection,
@@ -108,14 +109,14 @@ function fillMatchInventory(match: Match): Transaction[] {
 }
 
 const TXS: Transaction[] = [
-  tx("t1", "A", "from_1500_to_2500", 3000, 2),
-  tx("t2", "B1", "from_2500_to_4000", 8000, 2),
-  tx("t3", "VIP", "from_4000_to_6000", 5000, 1),
-  tx("t4", "A", "from_1500_to_2500", 0, 1, { freeQuantity: 1, description: "free" }),
-  tx("t5", "A", "up_to_1500", 1200, 1),
-  tx("t6", "A", "from_2500_to_4000", 3200, 1),
-  tx("t7", "C2", "up_to_1500", 900, 1),
-  tx("t8", "D4", "from_1500_to_2500", 2000, 1),
+  tx("t1", "A", "from_1500_to_2000", 3000, 2),
+  tx("t2", "B1", "from_2500_to_3000", 8000, 2),
+  tx("t3", "VIP", "from_2500_to_3000", 5000, 1),
+  tx("t4", "A", "from_1500_to_2000", 0, 1, { freeQuantity: 1, description: "free" }),
+  tx("t5", "A", "up_to_500", 1200, 1),
+  tx("t6", "A", "from_2500_to_3000", 3200, 1),
+  tx("t7", "C2", "up_to_500", 900, 1),
+  tx("t8", "D4", "from_1500_to_2000", 2000, 1),
 ];
 
 const matchesById = new Map(MATCHES.map((m) => [m.id, m]));
@@ -125,41 +126,45 @@ afterEach(() => {
 });
 
 describe("sector × priceZone matrix membership", () => {
-  it("1. each ordinary sector contains the three zones below 4000", () => {
+  const ordinaryZones = NON_VIP_PRICE_ZONES.filter(
+    (zone) => !VIP_PRICE_ZONES.includes(zone),
+  );
+
+  it("1. each ordinary sector contains all six remaining zones", () => {
     for (const sector of NON_VIP_SECTORS) {
       expect(allowedPriceZonesForSector(sector)).toEqual(NON_VIP_PRICE_ZONES);
       expect(inferChildZonesForSector("m1", sector)).toEqual(NON_VIP_PRICE_ZONES);
     }
   });
 
-  it("2. ordinary sectors never include 4000–6000", () => {
+  it("2. ordinary sectors include the top 2500–3000 band", () => {
     for (const sector of NON_VIP_SECTORS) {
-      expect(allowedPriceZonesForSector(sector)).not.toContain("from_4000_to_6000");
-      expect(isAllowedSectorPriceZone(sector, "from_4000_to_6000")).toBe(false);
+      expect(allowedPriceZonesForSector(sector)).toContain("from_2500_to_3000");
+      expect(isAllowedSectorPriceZone(sector, "from_2500_to_3000")).toBe(true);
     }
   });
 
-  it("3. VIP contains only 4000–6000", () => {
-    expect(allowedPriceZonesForSector("VIP")).toEqual(["from_4000_to_6000"]);
-    expect(inferChildZonesForSector("m1", "VIP")).toEqual(["from_4000_to_6000"]);
+  it("3. VIP contains only 2500–3000", () => {
+    expect(allowedPriceZonesForSector("VIP")).toEqual(["from_2500_to_3000"]);
+    expect(inferChildZonesForSector("m1", "VIP")).toEqual(["from_2500_to_3000"]);
   });
 
-  it("4. VIP does not contain the three lower zones", () => {
-    for (const zone of NON_VIP_PRICE_ZONES) {
+  it("4. VIP does not contain the lower zones", () => {
+    for (const zone of ordinaryZones) {
       expect(isAllowedSectorPriceZone("VIP", zone)).toBe(false);
     }
     expect(inferChildZonesForSector("m1", "VIP")).not.toEqual(
-      expect.arrayContaining(NON_VIP_PRICE_ZONES),
+      expect.arrayContaining(ordinaryZones),
     );
   });
 
-  it("5. zone 4000–6000 expands only to VIP", () => {
-    expect(allowedSectorsForPriceZone("from_4000_to_6000")).toEqual(["VIP"]);
-    expect(inferChildSectorsForZone("m1", "from_4000_to_6000")).toEqual(["VIP"]);
+  it("5. zone 2500–3000 expands to every seating sector", () => {
+    expect(allowedSectorsForPriceZone("from_2500_to_3000")).toEqual(ALL_SECTORS);
+    expect(inferChildSectorsForZone("m1", "from_2500_to_3000")).toEqual(ALL_SECTORS);
   });
 
   it("6. lower zones expand to ordinary sectors without VIP", () => {
-    for (const zone of NON_VIP_PRICE_ZONES) {
+    for (const zone of ordinaryZones) {
       const sectors = inferChildSectorsForZone("m1", zone);
       expect(sectors).toEqual(NON_VIP_SECTORS);
       expect(sectors).not.toContain("VIP");
@@ -169,28 +174,28 @@ describe("sector × priceZone matrix membership", () => {
 });
 
 describe("filters against the allowed matrix", () => {
-  it("7. filter 4000–6000 leaves only VIP", () => {
-    expect(visibleSectorsForFilters(["from_4000_to_6000"], [])).toEqual(["VIP"]);
-    expect(visiblePriceZonesForFilters(["from_4000_to_6000"], [])).toEqual([
-      "from_4000_to_6000",
+  it("7. filter 2500–3000 keeps VIP and ordinary seats in that band", () => {
+    expect(visibleSectorsForFilters(["from_2500_to_3000"], [])).toEqual(ALL_SECTORS);
+    expect(visiblePriceZonesForFilters(["from_2500_to_3000"], [])).toEqual([
+      "from_2500_to_3000",
     ]);
     const rows = buildMatrixRows({
       transactions: TXS,
       matchesById,
       localMatchIds: [],
-      localPriceZones: ["from_4000_to_6000"],
+      localPriceZones: ["from_2500_to_3000"],
       localSectors: [],
     });
-    expect(rows[0]!.zones.from_4000_to_6000.sold).toBe(1);
-    expect(rows[0]!.totals.sold).toBe(1);
-    expect(rows[0]!.totals.revenue).toBe(5000);
+    expect(rows[0]!.zones.from_2500_to_3000.sold).toBe(4);
+    expect(rows[0]!.totals.sold).toBe(4);
+    expect(rows[0]!.totals.revenue).toBe(16_200);
   });
 
-  it("8. filter VIP leaves only 4000–6000", () => {
-    expect(visiblePriceZonesForFilters([], ["VIP"])).toEqual(["from_4000_to_6000"]);
+  it("8. filter VIP leaves only 2500–3000", () => {
+    expect(visiblePriceZonesForFilters([], ["VIP"])).toEqual(["from_2500_to_3000"]);
     expect(visibleSectorsForFilters([], ["VIP"])).toEqual(["VIP"]);
     expect(inferChildZonesForSector("m1", "VIP", undefined, [])).toEqual([
-      "from_4000_to_6000",
+      "from_2500_to_3000",
     ]);
     const rows = buildMatrixRows({
       transactions: TXS,
@@ -199,23 +204,23 @@ describe("filters against the allowed matrix", () => {
       localPriceZones: [],
       localSectors: ["VIP"],
     });
-    expect(rows[0]!.zones.from_4000_to_6000.sold).toBe(1);
+    expect(rows[0]!.zones.from_2500_to_3000.sold).toBe(1);
     expect(rows[0]!.totals.sold).toBe(1);
-    expect(rows[0]!.zones.up_to_1500.sold).toBe(0);
+    expect(rows[0]!.zones.up_to_500.sold).toBe(0);
   });
 
   it("9. illegal filter combo has no allowed intersection", () => {
     expect(
-      hasAllowedFilterIntersection(["from_1500_to_2500"], ["VIP"]),
+      hasAllowedFilterIntersection(["from_1500_to_2000"], ["VIP"]),
     ).toBe(false);
     expect(
-      hasAllowedFilterIntersection(["up_to_1500"], ["VIP"]),
+      hasAllowedFilterIntersection(["up_to_500"], ["VIP"]),
     ).toBe(false);
     const rows = buildMatrixRows({
       transactions: TXS,
       matchesById,
       localMatchIds: [],
-      localPriceZones: ["from_1500_to_2500"],
+      localPriceZones: ["from_1500_to_2000"],
       localSectors: ["VIP"],
     });
     expect(rows).toEqual([]);
@@ -235,7 +240,7 @@ describe("empty allowed vs illegal combos", () => {
     const empty = resolveAllowedCell(
       "m1",
       "B2",
-      "from_2500_to_4000",
+      "from_2500_to_3000",
       emptySlice,
       availability,
     );
@@ -254,7 +259,7 @@ describe("empty allowed vs illegal combos", () => {
     const empty = resolveAllowedCell(
       "m0",
       "C4",
-      "from_2500_to_4000",
+      "from_2500_to_3000",
       new Map(),
       availability,
     );
@@ -265,19 +270,14 @@ describe("empty allowed vs illegal combos", () => {
   });
 
   it("11. illegal combos are never created even at zero", () => {
-    expect(inferChildZonesForSector("m1", "A")).not.toContain("from_4000_to_6000");
-    expect(inferChildZonesForSector("m1", "VIP")).not.toEqual(
-      expect.arrayContaining(NON_VIP_PRICE_ZONES),
-    );
-    expect(inferChildSectorsForZone("m1", "from_4000_to_6000")).toEqual(["VIP"]);
+    expect(inferChildZonesForSector("m1", "VIP")).toEqual(["from_2500_to_3000"]);
+    expect(inferChildSectorsForZone("m1", "up_to_500")).toEqual(NON_VIP_SECTORS);
     const invalid: Transaction[] = [
-      tx("bad-vip", "VIP", "from_1500_to_2500", 2000, 1),
-      tx("bad-a", "A", "from_4000_to_6000", 5000, 1),
+      tx("bad-vip", "VIP", "from_1500_to_2000", 2000, 1),
     ];
     const agg = preAggregateZoneSector(invalid, matchesById);
     expect(agg.size).toBe(0);
-    expect(agg.has("m1|VIP|from_1500_to_2500")).toBe(false);
-    expect(agg.has("m1|A|from_4000_to_6000")).toBe(false);
+    expect(agg.has("m1|VIP|from_1500_to_2000")).toBe(false);
   });
 });
 
@@ -318,7 +318,7 @@ describe("match totals and hierarchy invariance", () => {
     const zoneView = sumMatchByZones("m1", agg);
     expect(sectorView).toEqual(zoneView);
     const vipOnlySectors = sumMatchBySectors("m1", agg, [], ["VIP"]);
-    const vipOnlyZones = sumMatchByZones("m1", agg, ["from_4000_to_6000"], []);
+    const vipOnlyZones = sumMatchByZones("m1", agg, ["from_2500_to_3000"], ["VIP"]);
     expect(vipOnlySectors).toEqual(vipOnlyZones);
   });
 
@@ -326,45 +326,36 @@ describe("match totals and hierarchy invariance", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const mixed: Transaction[] = [
       ...TXS,
-      tx("illegal-vip-low", "VIP", "up_to_1500", 800, 1),
-      tx("illegal-a-top", "A", "from_4000_to_6000", 4500, 1),
+      tx("illegal-vip-low", "VIP", "up_to_500", 800, 1),
     ];
     const invalid = collectInvalidSectorPriceZoneRecords(mixed);
-    expect(invalid).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: "illegal-vip-low",
-          sector: "VIP",
-          priceZone: "up_to_1500",
-        }),
-        expect.objectContaining({
-          id: "illegal-a-top",
-          sector: "A",
-          priceZone: "from_4000_to_6000",
-        }),
-      ]),
-    );
-    expect(invalid).toHaveLength(2);
+    expect(invalid).toEqual([
+      expect.objectContaining({
+        id: "illegal-vip-low",
+        sector: "VIP",
+        priceZone: "up_to_500",
+      }),
+    ]);
+    expect(invalid).toHaveLength(1);
 
     const agg = preAggregateZoneSector(mixed, matchesById);
-    expect(agg.has("m1|VIP|up_to_1500")).toBe(false);
-    expect(agg.has("m1|A|from_4000_to_6000")).toBe(false);
-    expect(agg.get("m1|VIP|from_4000_to_6000")?.revenue).toBe(5000);
+    expect(agg.has("m1|VIP|up_to_500")).toBe(false);
+    expect(agg.get("m1|VIP|from_2500_to_3000")?.revenue).toBe(5000);
     expect(warn).toHaveBeenCalled();
-    expect(String(warn.mock.calls[0]![0])).toMatch(/2 invalid sector×priceZone/);
+    expect(String(warn.mock.calls[0]![0])).toMatch(/1 invalid sector×priceZone/);
   });
 });
 
 describe("tickets-zone-sector analytics", () => {
   it("aggregates match×sector×zone and computes averages", () => {
     const map = preAggregateZoneSector(TXS, matchesById);
-    expect(map.get("m1|A|from_1500_to_2500")).toMatchObject({
+    expect(map.get("m1|A|from_1500_to_2000")).toMatchObject({
       revenue: 3000,
       sold: 2,
       free: 1,
       issued: 3,
     });
-    expect(map.get("m1|VIP|from_4000_to_6000")?.revenue).toBe(5000);
+    expect(map.get("m1|VIP|from_2500_to_3000")?.revenue).toBe(5000);
   });
 
   it("builds matrix and preserves totals invariants", () => {
@@ -385,15 +376,15 @@ describe("tickets-zone-sector analytics", () => {
 
   it("computes three occupancy formulas and em dash conditions", () => {
     const availability = {
-      zoneInMatch: new Map([["m1|from_1500_to_2500", 10]]),
+      zoneInMatch: new Map([["m1|from_1500_to_2000", 10]]),
       sectorInMatch: new Map([["m1|A", 6]]),
-      zoneInSector: new Map([["m1|A|from_1500_to_2500", 4]]),
+      zoneInSector: new Map([["m1|A|from_1500_to_2000", 4]]),
       leftoverByMatch: new Map([["m1", 0]]),
     };
     const aOcc = computeOccupancy(
       "m1",
       "A",
-      "from_1500_to_2500",
+      "from_1500_to_2000",
       { inZone: 3, inSector: 3, inCombo: 3 },
       availability,
     );
@@ -405,7 +396,7 @@ describe("tickets-zone-sector analytics", () => {
     const oversold = computeOccupancy(
       "m1",
       "A",
-      "from_1500_to_2500",
+      "from_1500_to_2000",
       { inZone: 20, inSector: 20, inCombo: 20 },
       availability,
     );
@@ -415,7 +406,7 @@ describe("tickets-zone-sector analytics", () => {
     const miss = computeOccupancy(
       "m1",
       "D4",
-      "up_to_1500",
+      "up_to_500",
       { inZone: 1, inSector: 1, inCombo: 1 },
       availability,
     );
@@ -432,8 +423,8 @@ describe("tickets-zone-sector analytics", () => {
       localPriceZones: [],
       localSectors: ["VIP"],
     });
-    expect(rows[0]!.zones.from_4000_to_6000.sold).toBe(1);
-    expect(rows[0]!.zones.up_to_1500.sold).toBe(0);
+    expect(rows[0]!.zones.from_2500_to_3000.sold).toBe(1);
+    expect(rows[0]!.zones.up_to_500.sold).toBe(0);
   });
 
   it("does not merge B/C/D groups — each sector is distinct", () => {
@@ -503,17 +494,17 @@ describe("automatic sales slice by match completion", () => {
 
   it("completed matches use final sales and drop post-match-day transactions", () => {
     const txs: Transaction[] = [
-      tx("done-before", "A", "from_1500_to_2500", 3000, 2, {
+      tx("done-before", "A", "from_1500_to_2000", 3000, 2, {
         matchId: "done",
         date: new Date(2026, 4, 9),
       }),
-      tx("done-after", "A", "from_1500_to_2500", 1500, 1, {
+      tx("done-after", "A", "from_1500_to_2000", 1500, 1, {
         matchId: "done",
         date: new Date(2026, 4, 12),
       }),
     ];
     const agg = preAggregateZoneSector(txs, mixedById);
-    expect(agg.get("done|A|from_1500_to_2500")).toMatchObject({
+    expect(agg.get("done|A|from_1500_to_2000")).toMatchObject({
       revenue: 3000,
       sold: 2,
     });
@@ -521,17 +512,17 @@ describe("automatic sales slice by match completion", () => {
 
   it("unfinished matches keep the current snapshot and are not forecasted", () => {
     const txs: Transaction[] = [
-      tx("open-before", "A", "from_1500_to_2500", 2000, 1, {
+      tx("open-before", "A", "from_1500_to_2000", 2000, 1, {
         matchId: "open",
         date: new Date(2026, 4, 5),
       }),
-      tx("open-after", "A", "from_1500_to_2500", 4000, 2, {
+      tx("open-after", "A", "from_1500_to_2000", 4000, 2, {
         matchId: "open",
         date: new Date(2026, 4, 12),
       }),
     ];
     const agg = preAggregateZoneSector(txs, mixedById);
-    expect(agg.get("open|A|from_1500_to_2500")).toMatchObject({
+    expect(agg.get("open|A|from_1500_to_2000")).toMatchObject({
       revenue: 6000,
       sold: 3,
     });
@@ -547,15 +538,15 @@ describe("automatic sales slice by match completion", () => {
 
   it("applies the per-match slice in a mixed completed/unfinished set", () => {
     const txs: Transaction[] = [
-      tx("done-before", "A", "from_1500_to_2500", 3000, 2, {
+      tx("done-before", "A", "from_1500_to_2000", 3000, 2, {
         matchId: "done",
         date: new Date(2026, 4, 9),
       }),
-      tx("done-after", "A", "from_1500_to_2500", 1500, 1, {
+      tx("done-after", "A", "from_1500_to_2000", 1500, 1, {
         matchId: "done",
         date: new Date(2026, 4, 12),
       }),
-      tx("open-now", "A", "from_1500_to_2500", 2000, 1, {
+      tx("open-now", "A", "from_1500_to_2000", 2000, 1, {
         matchId: "open",
         date: new Date(2026, 4, 5),
       }),
@@ -586,17 +577,16 @@ describe("zone-sector hierarchical tree", () => {
     expect(tree).toHaveLength(1);
     const match = tree[0]!;
     expect(match.children.map((child) => child.zoneId)).toEqual([
-      "up_to_1500",
-      "from_1500_to_2500",
-      "from_2500_to_4000",
-      "from_4000_to_6000",
+      "up_to_500",
+      "from_1500_to_2000",
+      "from_2500_to_3000",
     ]);
-    const topZone = match.children.find((child) => child.zoneId === "from_4000_to_6000")!;
-    expect(topZone.children.map((leaf) => leaf.sectorId)).toEqual(["VIP"]);
-    const lowZone = match.children.find((child) => child.zoneId === "up_to_1500")!;
+    const topZone = match.children.find((child) => child.zoneId === "from_2500_to_3000")!;
+    expect(topZone.children.map((leaf) => leaf.sectorId)).toEqual(["A", "B1", "VIP"]);
+    const lowZone = match.children.find((child) => child.zoneId === "up_to_500")!;
     expect(lowZone.children.map((leaf) => leaf.sectorId)).toEqual(["A", "C2"]);
     expect(lowZone.children.some((leaf) => leaf.sectorId === "VIP")).toBe(false);
-    const midZone = match.children.find((child) => child.zoneId === "from_1500_to_2500")!;
+    const midZone = match.children.find((child) => child.zoneId === "from_1500_to_2000")!;
     expect(midZone.children.map((leaf) => leaf.sectorId)).toEqual(["A", "D4"]);
     expect(
       midZone.children.every((leaf) => (leaf.issued ?? 0) > 0 || (leaf.revenue ?? 0) > 0),
@@ -614,10 +604,13 @@ describe("zone-sector hierarchical tree", () => {
       "VIP",
     ]);
     const sectorA = match.children.find((child) => child.sectorId === "A")!;
-    expect(sectorA.children.map((leaf) => leaf.zoneId)).toEqual(NON_VIP_PRICE_ZONES);
-    expect(sectorA.children.some((leaf) => leaf.zoneId === "from_4000_to_6000")).toBe(false);
+    expect(sectorA.children.map((leaf) => leaf.zoneId)).toEqual([
+      "up_to_500",
+      "from_1500_to_2000",
+      "from_2500_to_3000",
+    ]);
     const vip = match.children.find((child) => child.sectorId === "VIP")!;
-    expect(vip.children.map((leaf) => leaf.zoneId)).toEqual(["from_4000_to_6000"]);
+    expect(vip.children.map((leaf) => leaf.zoneId)).toEqual(["from_2500_to_3000"]);
   });
 
   it("zone and sector rollups equal the match total", () => {
@@ -693,8 +686,8 @@ describe("zone-sector hierarchical tree", () => {
     }));
     const extraById = new Map(extraMatches.map((match) => [match.id, match]));
     const extraTxs: Transaction[] = extraMatches.flatMap((match) => [
-      tx(`${match.id}-a`, "A", "from_1500_to_2500", 3000, 2, { matchId: match.id }),
-      tx(`${match.id}-vip`, "VIP", "from_4000_to_6000", 5000, 1, { matchId: match.id }),
+      tx(`${match.id}-a`, "A", "from_1500_to_2000", 3000, 2, { matchId: match.id }),
+      tx(`${match.id}-vip`, "VIP", "from_2500_to_3000", 5000, 1, { matchId: match.id }),
     ]);
     const agg = preAggregateZoneSector(extraTxs, extraById);
     const ctx = {
@@ -750,26 +743,26 @@ describe("zone-sector revenue plan (capacity fallback + composed children)", () 
     }
     expect(comboSum).toBe(matchPlan);
 
-    const d2Mid = planIndex.comboPlan.get(comboKey("m1", "D2", "from_1500_to_2500"))!;
-    const vip = planIndex.comboPlan.get(comboKey("m1", "VIP", "from_4000_to_6000"))!;
-    const aMid = planIndex.comboPlan.get(comboKey("m1", "A", "from_1500_to_2500"))!;
-    expect(getComboAvailableMass(MATCHES[0]!, "D2", "from_1500_to_2500")).toBe(329);
+    const d2Mid = planIndex.comboPlan.get(comboKey("m1", "D2", "from_1500_to_2000"))!;
+    const vip = planIndex.comboPlan.get(comboKey("m1", "VIP", "from_2500_to_3000"))!;
+    const aMid = planIndex.comboPlan.get(comboKey("m1", "A", "from_1500_to_2000"))!;
+    expect(getComboAvailableMass(MATCHES[0]!, "D2", "from_1500_to_2000")).toBe(169);
     expect(d2Mid).toBeGreaterThan(0);
     expect(d2Mid).toBeLessThan(matchPlan);
-    expect(Math.abs(d2Mid - (matchPlan * 329) / 12_000)).toBeLessThanOrEqual(1);
+    expect(Math.abs(d2Mid - (matchPlan * 169) / 12_000)).toBeLessThanOrEqual(1);
     expect(Math.abs(vip - (matchPlan * 400) / 12_000)).toBeLessThanOrEqual(1);
-    expect(Math.abs(aMid - (matchPlan * 320) / 12_000)).toBeLessThanOrEqual(1);
+    expect(Math.abs(aMid - (matchPlan * 160) / 12_000)).toBeLessThanOrEqual(1);
   });
 
   it("tree children use composed plans, not a D2-sized capacity share of the match", () => {
     const planIndex = buildPlanIndex(matchesById);
     const matchPlan = planIndex.matchPlan.get("m1")!;
-    const aMidCapacity = planIndex.comboPlan.get(comboKey("m1", "A", "from_1500_to_2500"))!;
+    const aMidCapacity = planIndex.comboPlan.get(comboKey("m1", "A", "from_1500_to_2000"))!;
 
     const tree = buildZoneSectorTree({ ...treeOptions, mode: "sectors_to_zones" });
     const match = tree[0]!;
     const sectorA = match.children.find((child) => child.sectorId === "A")!;
-    const mid = sectorA.children.find((leaf) => leaf.zoneId === "from_1500_to_2500")!;
+    const mid = sectorA.children.find((leaf) => leaf.zoneId === "from_1500_to_2000")!;
     expect(mid.planRevenue).toBeGreaterThan(0);
     expect(mid.planRevenue).toBeLessThan(match.planRevenue!);
     expect(mid.planRevenue).not.toBe(aMidCapacity);
@@ -786,7 +779,7 @@ describe("zone-sector revenue plan (capacity fallback + composed children)", () 
   it("visible leaf plans sum to the zone plan (hidden zero-sale sectors get no plan)", () => {
     const tree = buildZoneSectorTree({ ...treeOptions, mode: "zones_to_sectors" });
     const match = tree[0]!;
-    const mid = match.children.find((child) => child.zoneId === "from_1500_to_2500")!;
+    const mid = match.children.find((child) => child.zoneId === "from_1500_to_2000")!;
     const visibleLeafPlan = mid.children.reduce(
       (sum, leaf) => sum + (leaf.planRevenue ?? 0),
       0,
@@ -799,10 +792,10 @@ describe("zone-sector revenue plan (capacity fallback + composed children)", () 
 
   it("sector filter scales match plan to that sector's capacity share", () => {
     const planIndex = buildPlanIndex(matchesById);
-    const aPlan =
-      (planIndex.comboPlan.get(comboKey("m1", "A", "up_to_1500")) ?? 0) +
-      (planIndex.comboPlan.get(comboKey("m1", "A", "from_1500_to_2500")) ?? 0) +
-      (planIndex.comboPlan.get(comboKey("m1", "A", "from_2500_to_4000")) ?? 0);
+    const aPlan = allowedPriceZonesForSector("A").reduce(
+      (sum, zone) => sum + (planIndex.comboPlan.get(comboKey("m1", "A", zone)) ?? 0),
+      0,
+    );
     const tree = buildZoneSectorTree({
       ...treeOptions,
       localSectors: ["A"],
@@ -819,16 +812,14 @@ describe("zone-sector revenue plan (capacity fallback + composed children)", () 
 
 describe("composed zone/sector plan % (Динамо-like mix)", () => {
   const ZONE_REVENUE = {
-    up_to_1500: 4_424_265,
-    from_1500_to_2500: 7_977_500,
-    from_2500_to_4000: 7_459_840,
-    from_4000_to_6000: 1_984_250,
+    up_to_500: 4_424_265,
+    from_1500_to_2000: 7_977_500,
+    from_2500_to_3000: 9_444_090,
   } as const;
   const MATCH_REVENUE =
-    ZONE_REVENUE.up_to_1500 +
-    ZONE_REVENUE.from_1500_to_2500 +
-    ZONE_REVENUE.from_2500_to_4000 +
-    ZONE_REVENUE.from_4000_to_6000;
+    ZONE_REVENUE.up_to_500 +
+    ZONE_REVENUE.from_1500_to_2000 +
+    ZONE_REVENUE.from_2500_to_3000;
 
   function dynamoMatch(): Match {
     const match: Match = {
@@ -854,13 +845,13 @@ describe("composed zone/sector plan % (Динамо-like mix)", () => {
 
   function dynamoTxs(matchId: string): Transaction[] {
     return [
-      tx("dyn-low-c2", "C2", "up_to_1500", ZONE_REVENUE.up_to_1500, 4000, { matchId }),
-      tx("dyn-mid-a", "A", "from_1500_to_2500", 5_000_000, 2500, { matchId }),
-      tx("dyn-mid-d4", "D4", "from_1500_to_2500", 2_977_500, 1400, { matchId }),
-      tx("dyn-hi-b1", "B1", "from_2500_to_4000", ZONE_REVENUE.from_2500_to_4000, 2200, {
+      tx("dyn-low-c2", "C2", "up_to_500", ZONE_REVENUE.up_to_500, 4000, { matchId }),
+      tx("dyn-mid-a", "A", "from_1500_to_2000", 5_000_000, 2500, { matchId }),
+      tx("dyn-mid-d4", "D4", "from_1500_to_2000", 2_977_500, 1400, { matchId }),
+      tx("dyn-hi-b1", "B1", "from_2500_to_3000", 7_459_840, 2200, {
         matchId,
       }),
-      tx("dyn-vip", "VIP", "from_4000_to_6000", ZONE_REVENUE.from_4000_to_6000, 400, {
+      tx("dyn-vip", "VIP", "from_2500_to_3000", 1_984_250, 400, {
         matchId,
       }),
     ];
@@ -876,18 +867,18 @@ describe("composed zone/sector plan % (Динамо-like mix)", () => {
     let vipCapacityPlan = 0;
     let cheapCapacityPlan = 0;
     for (const [key, value] of planIndex.comboPlan) {
-      if (key.startsWith(`${match.id}|`) && key.endsWith("|from_4000_to_6000")) {
+      if (key === `${match.id}|VIP|from_2500_to_3000`) {
         vipCapacityPlan += value;
       }
-      if (key.startsWith(`${match.id}|`) && key.endsWith("|up_to_1500")) {
+      if (key.startsWith(`${match.id}|`) && key.endsWith("|up_to_500")) {
         cheapCapacityPlan += value;
       }
     }
-    expect(percentOneDecimal((ZONE_REVENUE.from_4000_to_6000 / vipCapacityPlan) * 100)).toBeGreaterThan(105);
+    expect(percentOneDecimal((1_984_250 / vipCapacityPlan) * 100)).toBeGreaterThan(105);
     expect(
-      percentOneDecimal((ZONE_REVENUE.from_4000_to_6000 / vipCapacityPlan) * 100),
+      percentOneDecimal((1_984_250 / vipCapacityPlan) * 100),
     ).toBeGreaterThan(200);
-    expect(percentOneDecimal((ZONE_REVENUE.up_to_1500 / cheapCapacityPlan) * 100)).toBeLessThan(60);
+    expect(percentOneDecimal((ZONE_REVENUE.up_to_500 / cheapCapacityPlan) * 100)).toBeGreaterThan(100);
   });
 
   it("expanded Динамо-like match: max zone % ≤ 105 and weighted avg ≈ match % (1 decimal)", () => {
@@ -909,7 +900,7 @@ describe("composed zone/sector plan % (Динамо-like mix)", () => {
     expect(matchPct).toBe(99);
 
     const zones = root.children;
-    expect(zones).toHaveLength(4);
+    expect(zones).toHaveLength(3);
     let maxZonePct = 0;
     let planWeightedPct = 0;
     let planSum = 0;
@@ -931,7 +922,7 @@ describe("composed zone/sector plan % (Динамо-like mix)", () => {
     expect(percentOneDecimal((revenueSum / planSum) * 100)).toBe(matchPct);
     expect(planWeightedPct / planSum).toBeCloseTo(matchPct, 1);
 
-    const mid = zones.find((zone) => zone.zoneId === "from_1500_to_2500")!;
+    const mid = zones.find((zone) => zone.zoneId === "from_1500_to_2000")!;
     expect(mid.children.map((leaf) => leaf.sectorId)).toEqual(["A", "D4"]);
     const zonePct = percentOneDecimal((mid.revenue! / mid.planRevenue!) * 100);
     let sectorPlanSum = 0;
@@ -970,7 +961,7 @@ describe("sector capacity occupancy (not issued/issued)", () => {
   const availability = buildAvailabilityIndex(matchesById, agg);
 
   it("does not use issued as the availability denominator", () => {
-    const combo = comboKey("m1", "A", "from_1500_to_2500");
+    const combo = comboKey("m1", "A", "from_1500_to_2000");
     const issued = agg.get(combo)!.issued;
     const mass = availability.zoneInSector.get(combo)!;
     expect(issued).toBe(3);
@@ -997,11 +988,11 @@ describe("sector capacity occupancy (not issued/issued)", () => {
     expect(new Set(occupancies.map((value) => value!.toFixed(4))).size).toBeGreaterThan(1);
 
     const sectorA = tree[0]!.children.find((child) => child.sectorId === "A")!;
-    const mid = sectorA.children.find((leaf) => leaf.zoneId === "from_1500_to_2500")!;
-    const aMass = getComboAvailableMass(MATCHES[0]!, "A", "from_1500_to_2500");
-    expect(aMass).toBe(320);
+    const mid = sectorA.children.find((leaf) => leaf.zoneId === "from_1500_to_2000")!;
+    const aMass = getComboAvailableMass(MATCHES[0]!, "A", "from_1500_to_2000");
+    expect(aMass).toBe(160);
     expect(mid.issued).toBe(3);
-    expect(mid.occupancy).toBeCloseTo((3 / 320) * 100);
+    expect(mid.occupancy).toBeCloseTo((3 / 160) * 100);
     expect(sectorA.occupancy).toBeCloseTo((5 / 800) * 100);
   });
 
@@ -1024,7 +1015,7 @@ describe("sector capacity occupancy (not issued/issued)", () => {
     expect(occupancyPercent(5, 0)).toBeNull();
     const noCap: Match = { ...MATCHES[0]!, id: "m0", capacity: 0 };
     const tree = buildZoneSectorTree({
-      transactions: [tx("zero-cap", "A", "from_1500_to_2500", 3000, 2, { matchId: "m0" })],
+      transactions: [tx("zero-cap", "A", "from_1500_to_2000", 3000, 2, { matchId: "m0" })],
       matchesById: new Map([[noCap.id, noCap]]),
       localMatchIds: [],
       localPriceZones: [],
@@ -1032,7 +1023,7 @@ describe("sector capacity occupancy (not issued/issued)", () => {
       mode: "zones_to_sectors",
     });
     expect(tree[0]!.occupancy).toBeNull();
-    const zone = tree[0]!.children.find((child) => child.zoneId === "from_1500_to_2500");
+    const zone = tree[0]!.children.find((child) => child.zoneId === "from_1500_to_2000");
     expect(zone?.occupancy).toBeNull();
   });
 
@@ -1048,20 +1039,15 @@ describe("sector capacity occupancy (not issued/issued)", () => {
     expect(sectorSum).toBe(sumSectorCapacities(MAIN_ARENA_SECTOR_CAPACITY));
   });
 
-  it("splits non-VIP sector capacity across three zones and VIP into 4000–6000 only", () => {
+  it("splits ordinary sector capacity across six zones and VIP into 2500–3000 only", () => {
     const splitA = splitSectorCapacity("A", 800);
-    expect(splitA.up_to_1500).toBe(240);
-    expect(splitA.from_1500_to_2500).toBe(320);
-    expect(splitA.from_2500_to_4000).toBe(240);
-    expect(
-      (splitA.up_to_1500 ?? 0) +
-        (splitA.from_1500_to_2500 ?? 0) +
-        (splitA.from_2500_to_4000 ?? 0),
-    ).toBe(800);
-    expect(splitA.from_4000_to_6000).toBeUndefined();
+    expect(splitA.up_to_500).toBe(80);
+    expect(splitA.from_1500_to_2000).toBe(160);
+    expect(splitA.from_2500_to_3000).toBe(240);
+    expect(Object.values(splitA).reduce((sum, value) => sum + value, 0)).toBe(800);
 
     const splitVip = splitSectorCapacity("VIP", 400);
-    expect(splitVip).toEqual({ from_4000_to_6000: 400 });
+    expect(splitVip).toEqual({ from_2500_to_3000: 400 });
     expect(leftoverSectorCapacity(MATCHES[0]!)).toBe(0);
   });
 
@@ -1088,11 +1074,11 @@ describe("sector capacity occupancy (not issued/issued)", () => {
 
   it("reallocates oversold zone mass so leaf occupancy is ≤ 100% and not issued/issued", () => {
     const oversold: Transaction[] = [
-      tx("os-a", "A", "from_1500_to_2500", 1_000_000, 540),
-      tx("os-b1", "B1", "from_1500_to_2500", 900_000, 500),
-      tx("os-b2", "B2", "from_1500_to_2500", 880_000, 490),
-      tx("os-b3", "B3", "from_1500_to_2500", 860_000, 480),
-      tx("os-b4", "B4", "from_1500_to_2500", 840_000, 470),
+      tx("os-a", "A", "from_1500_to_2000", 1_000_000, 540),
+      tx("os-b1", "B1", "from_1500_to_2000", 900_000, 500),
+      tx("os-b2", "B2", "from_1500_to_2000", 880_000, 490),
+      tx("os-b3", "B3", "from_1500_to_2000", 860_000, 480),
+      tx("os-b4", "B4", "from_1500_to_2000", 840_000, 470),
     ];
     const tree = buildZoneSectorTree({
       transactions: oversold,
@@ -1103,7 +1089,7 @@ describe("sector capacity occupancy (not issued/issued)", () => {
       mode: "zones_to_sectors",
     });
     const match = tree[0]!;
-    const mid = match.children.find((child) => child.zoneId === "from_1500_to_2500")!;
+    const mid = match.children.find((child) => child.zoneId === "from_1500_to_2000")!;
     expect(mid.children.map((leaf) => leaf.sectorId)).toEqual(["A", "B1", "B2", "B3", "B4"]);
     expect(mid.children.some((leaf) => leaf.sectorId?.startsWith("C"))).toBe(false);
     expect(mid.children.some((leaf) => leaf.sectorId?.startsWith("D"))).toBe(false);
@@ -1112,7 +1098,7 @@ describe("sector capacity occupancy (not issued/issued)", () => {
       expect(leaf.occupancy).not.toBeNull();
       expect(leaf.occupancy!).toBeLessThanOrEqual(100);
       expect(leaf.issued).toBeGreaterThan(0);
-      const combo = comboKey("m1", leaf.sectorId!, "from_1500_to_2500");
+      const combo = comboKey("m1", leaf.sectorId!, "from_1500_to_2000");
       const leafAgg = preAggregateZoneSector(oversold, matchesById);
       const availability = buildAvailabilityIndex(matchesById, leafAgg);
       const mass = availability.zoneInSector.get(combo)!;
@@ -1129,7 +1115,7 @@ describe("sector capacity occupancy (not issued/issued)", () => {
 
   it("caps occupancy at 100% when issued exceeds sector capacity", () => {
     const overflow: Transaction[] = [
-      tx("overflow-a", "A", "from_1500_to_2500", 2_000_000, 900),
+      tx("overflow-a", "A", "from_1500_to_2000", 2_000_000, 900),
     ];
     const tree = buildZoneSectorTree({
       transactions: overflow,
@@ -1142,18 +1128,18 @@ describe("sector capacity occupancy (not issued/issued)", () => {
     const sectorA = tree[0]!.children.find((child) => child.sectorId === "A")!;
     expect(sectorA.issued).toBe(900);
     expect(sectorA.occupancy).toBe(100);
-    const leaf = sectorA.children.find((child) => child.zoneId === "from_1500_to_2500")!;
+    const leaf = sectorA.children.find((child) => child.zoneId === "from_1500_to_2000")!;
     expect(leaf.occupancy).toBe(100);
     const overflowAgg = preAggregateZoneSector(overflow, matchesById);
     const overflowAvailability = buildAvailabilityIndex(matchesById, overflowAgg);
-    expect(overflowAvailability.zoneInSector.get(comboKey("m1", "A", "from_1500_to_2500"))).toBe(
+    expect(overflowAvailability.zoneInSector.get(comboKey("m1", "A", "from_1500_to_2000"))).toBe(
       800,
     );
   });
 
   it("caps zone occupancy at 100% when issued exceeds that zone's capacity", () => {
     const overflow: Transaction[] = [
-      tx("overflow-zone", "A", "from_1500_to_2500", 2_000_000, 20_000),
+      tx("overflow-zone", "A", "from_1500_to_2000", 2_000_000, 20_000),
     ];
     const tree = buildZoneSectorTree({
       transactions: overflow,
@@ -1164,7 +1150,7 @@ describe("sector capacity occupancy (not issued/issued)", () => {
       mode: "zones_to_sectors",
     });
     const midZone = tree[0]!.children.find(
-      (child) => child.zoneId === "from_1500_to_2500",
+      (child) => child.zoneId === "from_1500_to_2000",
     )!;
     expect(midZone.issued).toBe(20_000);
     expect(midZone.occupancy).toBe(100);
@@ -1282,7 +1268,7 @@ describe("class_1 and playoff sellout occupancy", () => {
     });
     const class3Tree = buildZoneSectorTree({
       transactions: [
-        tx("c3-a", "A", "from_1500_to_2500", 3000, 2, { matchId: "c3" }),
+        tx("c3-a", "A", "from_1500_to_2000", 3000, 2, { matchId: "c3" }),
       ],
       matchesById: new Map([[class3.id, class3]]),
       localMatchIds: [],

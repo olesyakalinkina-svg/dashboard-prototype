@@ -79,6 +79,7 @@ describe("subscriptions KPIs", () => {
         soldChange: expect.any(Number),
         uniqueCustomersChange: expect.any(Number),
         avgCheckChange: expect.any(Number),
+        planCompletionChange: expect.any(Number),
       }),
     );
 
@@ -91,6 +92,34 @@ describe("subscriptions KPIs", () => {
     expect(sc.soldChange).toBeLessThanOrEqual(yoyMax);
     expect(sc.uniqueCustomersChange).toBeGreaterThanOrEqual(yoyMin);
     expect(sc.uniqueCustomersChange).toBeLessThanOrEqual(yoyMax);
+  });
+
+  it("computes a non-zero «Выполнение плана» from derived subscription plan", () => {
+    const kpis = computeSubscriptionsKpis(
+      DEFAULT_DASHBOARD_FILTERS,
+      DEFAULT_SUBSCRIPTION_FILTERS,
+    );
+
+    expect(kpis.sold).toBe(4500);
+    expect(kpis.planSold).toBeGreaterThan(kpis.sold);
+    expect(kpis.planRevenue).toBeGreaterThan(kpis.revenue);
+    expect(kpis.planCompletionPct).toBeGreaterThan(80);
+    expect(kpis.planCompletionPct).toBeLessThanOrEqual(100);
+    expect(kpis.planCompletionPct).toBeCloseTo(
+      (kpis.revenue / kpis.planRevenue) * 100,
+    );
+    expect(kpis.seasonComparison?.planCompletionChange).toEqual(expect.any(Number));
+
+    const emptySeasonal = computeSubscriptionsKpis(
+      DEFAULT_DASHBOARD_FILTERS,
+      applySubscriptionFilterPatch(DEFAULT_SUBSCRIPTION_FILTERS, {
+        league: "VHL",
+        priceCategory: "seasonal",
+      }),
+    );
+    expect(emptySeasonal.sold).toBe(0);
+    expect(emptySeasonal.planSold).toBe(0);
+    expect(emptySeasonal.planCompletionPct).toBe(0);
   });
 
   it("computes sold shares for all three price categories", () => {

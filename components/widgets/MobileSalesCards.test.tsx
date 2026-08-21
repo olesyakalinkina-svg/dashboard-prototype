@@ -18,6 +18,7 @@ import {
   toggleExpandedKey,
   type MatchSalesTreeNode,
 } from "@/lib/match-sales-tree";
+import { PRICE_ZONE_LABELS } from "@/lib/ticket-filter-options";
 import type { MatchSalesTreeState } from "@/hooks/useMatchSalesTree";
 import type { DashboardFilters, MatchSalesRow, TicketFilters } from "@/types/dashboard";
 
@@ -91,7 +92,7 @@ describe("MobileSalesCards parallel structure", () => {
     expect(screen.getByText("Официальный сайт")).toBeTruthy();
     expect(screen.getByText("Яндекс-Афиша")).toBeTruthy();
     expect(screen.queryByText("Арена")).toBeNull();
-    expect(screen.queryByText("до 1500")).toBeNull();
+    expect(screen.queryByText(PRICE_ZONE_LABELS.up_to_500)).toBeNull();
   });
 
   it("shows empty state without an inner filter bar", () => {
@@ -138,11 +139,11 @@ describe("MobileSalesCards parallel structure", () => {
         name: `Развернуть: ${MATCH_SALES_SECTION_LABELS.priceZone}`,
       }),
     );
-    expect(screen.getByText("до 1500")).toBeTruthy();
+    expect(screen.getByText(PRICE_ZONE_LABELS.up_to_500)).toBeTruthy();
     expect(screen.queryByText("VIP")).toBeNull();
     await user.click(
       screen.getByRole("button", {
-        name: `Развернуть: от 4000 до 6000`,
+        name: `Развернуть: ${PRICE_ZONE_LABELS.from_2500_to_3000}`,
       }),
     );
     expect(screen.getByText("VIP")).toBeTruthy();
@@ -168,7 +169,7 @@ describe("MobileSalesCards parallel structure", () => {
     const card = screen.getByText(match.label).closest("article");
     expect(card).toBeTruthy();
     const pct = formatPercent((match.revenue / match.planRevenue!) * 100);
-    expect(card!.textContent).toContain("% выполнения плана");
+    expect(card!.textContent).toContain("Выполнение плана");
     expect(card!.textContent).toContain(pct);
 
     const revenueDt = [...card!.querySelectorAll("dt")].find(
@@ -180,7 +181,7 @@ describe("MobileSalesCards parallel structure", () => {
     expect(revenueDt?.nextElementSibling?.textContent).not.toContain(pct);
 
     const planDt = [...card!.querySelectorAll("dt")].find(
-      (el) => el.textContent === "% выполнения плана",
+      (el) => el.textContent === "Выполнение плана",
     );
     expect(planDt?.nextElementSibling?.textContent).toContain(pct);
   });

@@ -44,12 +44,14 @@ export type Sector =
 
 /** Seat inventory for the 14 arena sectors. Shared by matches at the same venue. */
 export type SectorCapacityMap = Record<Sector, number>;
-/** Ticket unit-price buckets. Tickets at or above 6000 stay in the last bucket. */
+/** Ticket unit-price buckets. Tickets at or above 2500 stay in the last bucket. */
 export type PriceZone =
-  | "up_to_1500"
-  | "from_1500_to_2500"
-  | "from_2500_to_4000"
-  | "from_4000_to_6000";
+  | "up_to_500"
+  | "from_500_to_1000"
+  | "from_1000_to_1500"
+  | "from_1500_to_2000"
+  | "from_2000_to_2500"
+  | "from_2500_to_3000";
 export type OrderSource = "box_office" | "official_site" | "yandex_afisha";
 export type TimeGrouping = "day" | "week" | "month" | "quarter";
 
@@ -540,6 +542,7 @@ export type SubscriptionsSeasonComparison = {
   soldChange: number;
   uniqueCustomersChange: number;
   avgCheckChange: number;
+  planCompletionChange: number;
 };
 
 export type SubscriptionsKpiData = {
@@ -551,6 +554,9 @@ export type SubscriptionsKpiData = {
   uniqueCustomersChange: number;
   avgCheck: number;
   avgCheckChange: number;
+  planCompletionPct: number;
+  planSold: number;
+  planRevenue: number;
   revenueSparkline: number[];
   soldSparkline: number[];
   seasonComparison?: SubscriptionsSeasonComparison;

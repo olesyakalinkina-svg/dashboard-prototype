@@ -17,6 +17,7 @@ import {
   formatCampaignMoneyAxis,
 } from "@/lib/subscription-campaign";
 import {
+  END_LABEL_CHART_RIGHT_MARGIN,
   END_LABEL_EDGE_PAD,
   END_LABEL_FONT_SIZE,
   lastPointForDataKey,
@@ -237,7 +238,7 @@ export function CampaignPaceChart({
         <ResponsiveContainer width="100%" height="100%">
           <LineChart
             data={points as CampaignPacePoint[]}
-            margin={{ top: 20, right: 56, left: 4, bottom: 8 }}
+            margin={{ top: 20, right: END_LABEL_CHART_RIGHT_MARGIN, left: 4, bottom: 4 }}
             onClick={handleChartClick}
           >
             <CartesianGrid strokeDasharray="3 3" stroke="#E5E5E7" />
@@ -247,9 +248,9 @@ export function CampaignPaceChart({
               domain={["dataMin", "dataMax"]}
               ticks={ticks}
               allowDecimals={false}
-              height={28}
+              height={22}
               tick={{ fontSize: 11, fill: "#8B8B8E" }}
-              tickMargin={6}
+              tickMargin={4}
             />
             <YAxis
               width={52}
@@ -335,8 +336,8 @@ export function CampaignPaceChart({
           </LineChart>
         </ResponsiveContainer>
       </div>
-      <p className="mt-2 text-center text-[11px] text-[#8B8B8E]">день кампании</p>
-      <ul className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-[var(--foreground)]">
+      <p className="mt-0.5 text-center text-[11px] text-[#8B8B8E]">день кампании</p>
+      <ul className="mt-1 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-[var(--foreground)]">
         <li className="inline-flex items-center gap-1.5">
           <span
             className="inline-block h-0.5 w-3.5 shrink-0"

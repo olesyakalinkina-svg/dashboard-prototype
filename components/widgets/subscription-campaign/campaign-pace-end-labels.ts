@@ -4,6 +4,8 @@ export const END_LABEL_MIN_GAP = 14;
 export const END_LABEL_DX = 8;
 export const END_LABEL_DEFAULT_NUDGE = 8;
 export const END_LABEL_EDGE_PAD = 4;
+/** Right plot margin so revenue totals like `42,8 млн ₽` fit to the right of the last dot. */
+export const END_LABEL_CHART_RIGHT_MARGIN = 96;
 
 export type EndLabelAnchor = {
   id: string;

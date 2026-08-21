@@ -158,6 +158,18 @@ describe("season renewal customer links", () => {
       subscriptions: getSubscriptions(),
       filters: DEFAULT_SUBSCRIPTION_FILTERS,
     });
+    expect(renewal.kpis.nextUnique).toBe(kpis.uniqueCustomers);
+    expect(renewal.kpis.renewed + renewal.kpis.newClients).toBe(
+      kpis.uniqueCustomers,
+    );
+    expect(renewal.kpis.renewed + renewal.kpis.notRenewed).toBe(
+      renewal.kpis.previousUnique,
+    );
+    const previousKpis = computeSubscriptionsKpis(DEFAULT_DASHBOARD_FILTERS, {
+      ...DEFAULT_SUBSCRIPTION_FILTERS,
+      season: "2024/25",
+    });
+    expect(renewal.kpis.previousUnique).toBe(previousKpis.uniqueCustomers);
     expect(renewal.kpis.renewed).toBeGreaterThan(0);
     expect(renewal.kpis.notRenewed).toBeGreaterThan(0);
     expect(renewal.kpis.newClients).toBeGreaterThan(0);

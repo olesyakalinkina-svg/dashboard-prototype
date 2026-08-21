@@ -60,5 +60,8 @@ describe("MerchSkuSalesTable", () => {
     expect(css).toMatch(
       /\.sticky-scroll-table tfoot td \{[\s\S]*position:\s*sticky;[\s\S]*bottom:\s*0;[\s\S]*z-index:\s*20/,
     );
+    expect(css).toMatch(
+      /\.sticky-scroll-table tbody td:first-child,[\s\S]*z-index:\s*12;[\s\S]*background-color:\s*var\(--card\)/,
+    );
   });
 });

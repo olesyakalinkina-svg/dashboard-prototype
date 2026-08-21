@@ -232,7 +232,7 @@ export const TabKpiCards = memo(function TabKpiCards({
     const seasonChangeLabel = sc ? `к сезону ${sc.previousSeason}` : undefined;
 
     return (
-      <div className="grid min-w-0 grid-cols-2 gap-2 min-[768px]:gap-3 min-[1024px]:grid-cols-4">
+      <div className="grid min-w-0 grid-cols-2 gap-2 min-[768px]:grid-cols-3 min-[768px]:gap-3 min-[1024px]:grid-cols-4 xl:grid-cols-5 xl:gap-2">
         <KpiCard
           title="Выручка"
           value={formatCurrency(subscriptionsKpis.revenue)}
@@ -250,6 +250,13 @@ export const TabKpiCards = memo(function TabKpiCards({
           hideTrend={!showSeasonComparison}
         />
         <KpiCard
+          title="Выполнение плана"
+          value={formatPercent(subscriptionsKpis.planCompletionPct)}
+          change={sc?.planCompletionChange}
+          changeLabel={seasonChangeLabel}
+          hideTrend={!showSeasonComparison}
+        />
+        <KpiCard
           title="Уникальные покупатели"
           value={formatNumber(subscriptionsKpis.uniqueCustomers)}
           change={sc?.uniqueCustomersChange}
@@ -257,6 +264,7 @@ export const TabKpiCards = memo(function TabKpiCards({
           hideTrend={!showSeasonComparison}
         />
         <KpiCard
+          className="min-[768px]:max-[1023px]:col-span-1 max-[767px]:col-span-2"
           title="Средний чек"
           value={formatCurrency(subscriptionsKpis.avgCheck)}
           compactCurrency

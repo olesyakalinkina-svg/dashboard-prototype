@@ -103,7 +103,7 @@ describe("MerchMobileSalesCards parallel structure", () => {
     ).toBeNull();
   });
 
-  it("shows % выполнения плана next to revenue on match cards", () => {
+  it("shows Выполнение плана next to revenue on match cards", () => {
     const pipeline = buildDefaultMerchFixtureTree();
     const match = pipeline.tree.find(
       (node) => node.matchId === MERCH_FIXTURE_ARENA_MATCH_ID,
@@ -115,7 +115,7 @@ describe("MerchMobileSalesCards parallel structure", () => {
     const pct = formatPercent(
       merchSalesPlanFulfillmentPct(match.revenue, match.planRevenue)!,
     );
-    expect(card!.textContent).toContain("% выполнения плана");
+    expect(card!.textContent).toContain("Выполнение плана");
     expect(card!.textContent).toContain(pct);
 
     const revenueDt = [...card!.querySelectorAll("dt")].find(
@@ -127,12 +127,12 @@ describe("MerchMobileSalesCards parallel structure", () => {
     expect(revenueDt?.nextElementSibling?.textContent).not.toContain(pct);
 
     const planDt = [...card!.querySelectorAll("dt")].find(
-      (el) => el.textContent === "% выполнения плана",
+      (el) => el.textContent === "Выполнение плана",
     );
     expect(planDt?.nextElementSibling?.textContent).toContain(pct);
   });
 
-  it("shows — for % выполнения плана on section and child cards", async () => {
+  it("shows — for Выполнение плана on section and child cards", async () => {
     const user = userEvent.setup();
     const pipeline = buildDefaultMerchFixtureTree();
     const match = pipeline.tree.find(
@@ -154,7 +154,7 @@ describe("MerchMobileSalesCards parallel structure", () => {
       .closest("div");
     expect(section).toBeTruthy();
     const sectionPlanDt = [...section!.querySelectorAll("dt")].find(
-      (el) => el.textContent === "% выполнения плана",
+      (el) => el.textContent === "Выполнение плана",
     );
     expect(sectionPlanDt?.nextElementSibling?.textContent).toBe("—");
     expect(section?.textContent).not.toContain(matchPct);
@@ -168,7 +168,7 @@ describe("MerchMobileSalesCards parallel structure", () => {
       .getByText(MERCH_SALES_POINT_LABELS.flagship)
       .closest("div");
     const childPlanDt = [...child!.querySelectorAll("dt")].find(
-      (el) => el.textContent === "% выполнения плана",
+      (el) => el.textContent === "Выполнение плана",
     );
     expect(childPlanDt?.nextElementSibling?.textContent).toBe("—");
   });

@@ -13,15 +13,43 @@ import type { Match, PriceZone, Sector, SectorCapacityMap } from "@/types/dashbo
 export type ArenaInventoryProfile = "main_full" | "main_partial" | "secondary";
 
 /**
- * Non-VIP zone shares inside a sector. Weights are relative and must be
- * allocated so the three zones sum to that sector's capacity.
- * VIP is not split: 100% of VIP capacity is `from_4000_to_6000`.
+ * Ordinary-sector zone shares. Weights are relative and must sum to that
+ * sector's capacity. Dropped 3500/4000/4500 mass is folded into 3000.
+ * VIP is not split: 100% of VIP capacity is `from_2500_to_3000`.
  */
 export const NON_VIP_ZONE_WEIGHTS = {
-  A: { up_to_1500: 30, from_1500_to_2500: 40, from_2500_to_4000: 30 },
-  B: { up_to_1500: 40, from_1500_to_2500: 35, from_2500_to_4000: 25 },
-  C: { up_to_1500: 45, from_1500_to_2500: 35, from_2500_to_4000: 20 },
-  D: { up_to_1500: 50, from_1500_to_2500: 35, from_2500_to_4000: 15 },
+  A: {
+    up_to_500: 10,
+    from_500_to_1000: 10,
+    from_1000_to_1500: 10,
+    from_1500_to_2000: 20,
+    from_2000_to_2500: 20,
+    from_2500_to_3000: 30,
+  },
+  B: {
+    up_to_500: 14,
+    from_500_to_1000: 13,
+    from_1000_to_1500: 13,
+    from_1500_to_2000: 18,
+    from_2000_to_2500: 17,
+    from_2500_to_3000: 25,
+  },
+  C: {
+    up_to_500: 15,
+    from_500_to_1000: 15,
+    from_1000_to_1500: 15,
+    from_1500_to_2000: 18,
+    from_2000_to_2500: 17,
+    from_2500_to_3000: 20,
+  },
+  D: {
+    up_to_500: 17,
+    from_500_to_1000: 17,
+    from_1000_to_1500: 16,
+    from_1500_to_2000: 18,
+    from_2000_to_2500: 17,
+    from_2500_to_3000: 15,
+  },
 } as const;
 
 /** Main arena full bowl. Sum = 12_000 = MAIN_ARENA_CAPACITY. VIP small, A medium, D largest. */
@@ -242,7 +270,7 @@ export function splitSectorCapacity(
   const allowed = allowedPriceZonesForSector(sector);
   if (!(sectorCapacity > 0) || allowed.length === 0) return {};
   if (sector === "VIP") {
-    return { from_4000_to_6000: sectorCapacity };
+    return { from_2500_to_3000: sectorCapacity };
   }
   const weights = NON_VIP_ZONE_WEIGHTS[sectorBowlGroup(sector)];
   const allocated = allocateIntegerShares(

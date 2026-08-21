@@ -67,9 +67,12 @@ body {
 
 /* Local table scroll with sticky header + first column. */
 .sticky-scroll-table {
+  position: relative;
   max-width: 100%;
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
+  background-color: #ffffff;
+  background-color: var(--card);
 }
 
 .sticky-scroll-table table {
@@ -93,8 +96,13 @@ body {
   border-top: 2px solid var(--border);
 }
 
+/*
+ * Keep InlineBarCell's relative z-10 inside the scrolling cell so prices
+ * cannot paint over the sticky first column.
+ */
 .sticky-scroll-table tbody td:not(:first-child) {
   overflow: hidden;
+  isolation: isolate;
 }
 
 /*
@@ -117,14 +125,27 @@ body {
   background-color: var(--card);
 }
 
+/*
+ * Sticky first column must fully cover scrolling cells: opaque fill,
+ * isolation so the whole cell (not only the + button) stacks above bars,
+ * overflow:clip so names cannot paint into the next cell without creating
+ * a scroll container that breaks sticky, and a leftward box-shadow that
+ * seals the subpixel gutter where scrolled cells leak left of «+».
+ */
 .sticky-scroll-table tbody td:first-child,
 .sticky-scroll-table thead th:first-child,
 .sticky-scroll-table tfoot td:first-child {
   position: sticky;
   left: 0;
-  z-index: 1;
+  z-index: 12;
+  isolation: isolate;
+  overflow: clip;
   background-color: #ffffff;
   background-color: var(--card);
+  box-shadow:
+    -1rem 0 0 0 #ffffff,
+    -1rem 0 0 0 var(--card),
+    1px 0 0 0 var(--border);
 }
 
 .sticky-scroll-table thead th:first-child,
@@ -138,7 +159,14 @@ body {
  */
 .sticky-scroll-table-row-hover tbody tr:hover > td,
 .sticky-scroll-table-row-hover tbody tr:hover > td:first-child {
-  background: var(--background);
+  background-color: #f5f5f6;
+  background-color: var(--background);
+}
+
+.sticky-scroll-table-row-hover tbody tr:hover > td:first-child {
+  box-shadow:
+    -1rem 0 0 0 var(--background),
+    1px 0 0 0 var(--border);
 }
 
 .tab-strip-fade {

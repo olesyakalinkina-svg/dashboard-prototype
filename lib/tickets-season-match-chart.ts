@@ -15,6 +15,12 @@ export const SEASON_MATCH_PLAN_KEY_PREFIX = "plan_";
 export const SEASON_MATCH_CHART_MIN_WIDTH = 760;
 export const SEASON_MATCH_CHART_MOBILE_MAX_WIDTH = 760;
 export const SEASON_MATCH_CHART_DAY_WIDTH = 44;
+export const SEASON_MATCH_CHART_MARGIN = {
+  top: 20,
+  right: 20,
+  left: 4,
+  bottom: 12,
+} as const;
 /** Y-axis width (52) + chart left margin (4). */
 export const SEASON_MATCH_CHART_LEFT_GUTTER = 56;
 export const SEASON_MATCH_CHART_RIGHT_GUTTER = 20;
@@ -264,11 +270,25 @@ export type SelectSeasonMatchChartViewsOptions = {
    * comparison mode), keep incoming views instead of current-sales / last-3.
    */
   preserveIncomingViews?: boolean;
+  /**
+   * Tickets-bar «Серия». A specific series (not «Все») already scopes incoming
+   * views — keep every match instead of current-sales / last-3.
+   */
+  seriesFilter?: string | "all";
 };
+
+/** True when a calendar series other than «Все» is selected. */
+export function isSpecificSeasonSeriesFilter(
+  seriesFilter: string | "all" | undefined,
+): boolean {
+  return seriesFilter != null && seriesFilter !== "all";
+}
 
 /**
  * Default: matches currently on sale. If none → last 3 completed (by date).
  * Widget-local selection overrides that and can include completed matches.
+ * A selected calendar series keeps every incoming match (class/other filters
+ * already applied upstream).
  */
 export function selectSeasonMatchChartViews(
   views: TicketsSeasonMatchSeriesView[],
@@ -280,7 +300,10 @@ export function selectSeasonMatchChartViews(
     return views.filter((view) => selected.has(view.matchId));
   }
 
-  if (options.preserveIncomingViews) {
+  if (
+    options.preserveIncomingViews ||
+    isSpecificSeasonSeriesFilter(options.seriesFilter)
+  ) {
     return views;
   }
 

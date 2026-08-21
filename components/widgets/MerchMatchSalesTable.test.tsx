@@ -21,6 +21,7 @@ import {
 import {
   getMerchSalesBarMaxima,
   MERCH_SALES_SECTION_LABELS,
+  merchSalesPlanFulfillmentPct,
   toggleExpandedKey,
   type MerchSalesTreeNode,
 } from "@/lib/merch-sales-tree";
@@ -41,7 +42,7 @@ const ORIGINAL_COLUMNS = [
   "Мероприятие",
   "Дата",
   "Выручка",
-  "% выполнения плана",
+  "Выполнение плана",
   "Средний чек",
   "Чеки",
   "Товары",
@@ -111,6 +112,10 @@ function revenueBarHasPlanColor(label: string): boolean {
   return Boolean(revenueCellForLabel(label).querySelector("[class*='bg-rose']"));
 }
 
+function shareBarWidth(share: number): string {
+  return `${Math.min(100, Math.max(0, share))}%`;
+}
+
 describe("MerchMatchSalesTable drill-down", () => {
   it("collapsed table keeps original columns and match rows only", () => {
     const pipeline = buildDefaultMerchFixtureTree();
@@ -131,10 +136,10 @@ describe("MerchMatchSalesTable drill-down", () => {
     expect(screen.queryByText(MERCH_FIXTURE_ARENA_TOP_PRODUCTS[0])).toBeNull();
   });
 
-  it("gives «% выполнения плана» the same locked width as tickets plan-%", () => {
+  it("gives «Выполнение плана» the same locked width as tickets plan-%", () => {
     renderMerch();
     const header = screen.getByRole("columnheader", {
-      name: "% выполнения плана",
+      name: "Выполнение плана",
     });
     expect(header.className).toContain("w-[10.5rem]");
     expect(header.className).toContain("max-w-[10.5rem]");
@@ -362,7 +367,7 @@ describe("MerchMatchSalesTable drill-down", () => {
     expect(labels).toHaveLength(1);
   });
 
-  it("puts % выполнения плана in its own column after Выручка, not on the revenue bar", () => {
+  it("puts Выполнение плана in its own column after Выручка, not on the revenue bar", () => {
     const pipeline = buildDefaultMerchFixtureTree();
     const ska = pipeline.tree.find(
       (node) => node.matchId === MERCH_FIXTURE_ARENA_MATCH_ID,
@@ -389,7 +394,7 @@ describe("MerchMatchSalesTable drill-down", () => {
     );
   });
 
-  it("shows em dash in % выполнения плана when merch plan is missing, not 0%", () => {
+  it("shows em dash in Выполнение плана when merch plan is missing, not 0%", () => {
     const incomplete: MerchSalesTreeNode = {
       id: "mm:incomplete",
       level: "match",
@@ -428,7 +433,7 @@ describe("MerchMatchSalesTable drill-down", () => {
     expect(within(cell).queryByText(formatPercent(0))).toBeNull();
   });
 
-  it("shows em dash in % выполнения плана on section headers and children", async () => {
+  it("shows em dash in Выполнение плана on section headers and children", async () => {
     const user = userEvent.setup();
     const pipeline = buildDefaultMerchFixtureTree();
     const match = pipeline.tree.find(
@@ -516,6 +521,73 @@ describe("MerchMatchSalesTable drill-down", () => {
       /₽/,
     );
     expect(revenueBarHasPlanColor(match.label)).toBe(true);
+  });
+
+  it("scales match revenue bar to plan fulfillment, not max revenue in the table", () => {
+    const akBars: MerchSalesTreeNode = {
+      id: "mm:ak-bars",
+      level: "match",
+      matchId: "ak-bars",
+      date: new Date(2026, 2, 29),
+      label: "Ак Барс",
+      revenue: 12_406_805,
+      planRevenue: 12_406_805 / 0.455,
+      avgCheck: 1_200,
+      receipts: 100,
+      units: 100,
+      upt: 1,
+      attendance: 10_000,
+      purchaseConversionPct: 10,
+      sharePct: null,
+      hasChildren: false,
+      children: [],
+    };
+    const avangard: MerchSalesTreeNode = {
+      ...akBars,
+      id: "mm:avangard",
+      matchId: "avangard",
+      date: new Date(2026, 2, 13),
+      label: "Авангард",
+      revenue: 22_476_290,
+      planRevenue: 22_476_290 / 0.997,
+    };
+    const toRow = (node: MerchSalesTreeNode): MerchMatchSalesRow => ({
+      matchId: node.matchId,
+      eventLabel: node.label,
+      date: node.date!,
+      revenue: node.revenue,
+      planRevenue: node.planRevenue ?? 0,
+      avgCheck: node.avgCheck,
+      receipts: node.receipts,
+      units: node.units,
+      upt: node.upt,
+      attendance: node.attendance,
+      purchaseConversionPct: node.purchaseConversionPct,
+    });
+
+    render(
+      <Harness
+        tree={[akBars, avangard]}
+        matchRows={[toRow(akBars), toRow(avangard)]}
+      />,
+    );
+
+    const akBarsPct = merchSalesPlanFulfillmentPct(
+      akBars.revenue,
+      akBars.planRevenue,
+    )!;
+    expect(akBarsPct).toBeCloseTo(45.5, 5);
+    const vsMax = (akBars.revenue / avangard.revenue) * 100;
+    expect(vsMax).toBeCloseTo(55.2, 0);
+
+    const akBarsCell = revenueCellForLabel(akBars.label);
+    const akBarsBar = akBarsCell.querySelector(".bg-rose-400") as HTMLElement | null;
+    expect(akBarsBar).toBeTruthy();
+    expect(akBarsBar!.style.width).toBe(shareBarWidth(akBarsPct));
+    expect(akBarsBar!.style.width).not.toBe(shareBarWidth(vsMax));
+    expect(cellText(akBarsCell)).toContain(
+      formatCurrency(akBars.revenue).replace(/\s/g, " ").trim(),
+    );
   });
 
   it("expanding «Топ-5 товаров» lists ranked SKUs as siblings, not under category", async () => {

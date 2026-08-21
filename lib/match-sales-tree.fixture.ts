@@ -36,7 +36,7 @@ export const FIXTURE_CURRENT_MATCH_ID = "fx-khl-ska";
 export const FIXTURE_PREV_MATCH_ID = "fx-khl-cska-prev";
 export const FIXTURE_EMPTY_MATCH_ID = "fx-khl-empty";
 export const FIXTURE_INCOMPLETE_MATCH_ID = "fx-mhl-incomplete";
-export const CONFIRM_PRICE_ZONE: PriceZone = "from_1500_to_2500";
+export const CONFIRM_PRICE_ZONE: PriceZone = "from_1500_to_2000";
 
 export const FIXTURE_DASHBOARD_FILTERS: DashboardFilters = {
   ...DEFAULT_DASHBOARD_FILTERS,
@@ -159,7 +159,7 @@ function ticketTx(
 }
 
 /**
- * Current-season match: arena+parking, all 3 sources, all 4 zones,
+ * Current-season match: arena+parking, all 3 sources, four of six zones,
  * paid, free, loyalty discount, varied purchase dates.
  */
 const CURRENT_SALES: Transaction[] = [
@@ -168,7 +168,7 @@ const CURRENT_SALES: Transaction[] = [
     quantity: 10,
     ticketType: "arena",
     orderSource: "box_office",
-    priceZone: "up_to_1500",
+    priceZone: "up_to_500",
     sector: "A",
   }),
   ticketTx("fx-tx-a2", FIXTURE_CURRENT_MATCH_ID, d(2025, 9, 5), {
@@ -176,7 +176,7 @@ const CURRENT_SALES: Transaction[] = [
     quantity: 8,
     ticketType: "arena",
     orderSource: "official_site",
-    priceZone: "from_1500_to_2500",
+    priceZone: "from_1500_to_2000",
     loyaltyDiscount: 2_000,
     sector: "B1",
   }),
@@ -185,7 +185,7 @@ const CURRENT_SALES: Transaction[] = [
     quantity: 5,
     ticketType: "arena",
     orderSource: "yandex_afisha",
-    priceZone: "from_2500_to_4000",
+    priceZone: "from_2500_to_3000",
     sector: "C1",
   }),
   ticketTx("fx-tx-a4", FIXTURE_CURRENT_MATCH_ID, d(2025, 9, 10), {
@@ -193,7 +193,7 @@ const CURRENT_SALES: Transaction[] = [
     quantity: 2,
     ticketType: "arena",
     orderSource: "box_office",
-    priceZone: "from_4000_to_6000",
+    priceZone: "from_2500_to_3000",
     sector: "VIP",
   }),
   ticketTx("fx-tx-a5", FIXTURE_CURRENT_MATCH_ID, d(2025, 9, 2), {
@@ -201,7 +201,7 @@ const CURRENT_SALES: Transaction[] = [
     quantity: 3,
     ticketType: "arena",
     orderSource: "box_office",
-    priceZone: "up_to_1500",
+    priceZone: "up_to_500",
     freeQuantity: 3,
     sector: "D1",
     description: "Бесплатный билет",
@@ -221,7 +221,7 @@ const PREV_SALES: Transaction[] = [
     quantity: 6,
     ticketType: "arena",
     orderSource: "box_office",
-    priceZone: "from_1500_to_2500",
+    priceZone: "from_1500_to_2000",
     sector: "A",
   }),
   ticketTx("fx-tx-b2", FIXTURE_PREV_MATCH_ID, d(2024, 10, 8), {
@@ -229,7 +229,7 @@ const PREV_SALES: Transaction[] = [
     quantity: 4,
     ticketType: "arena",
     orderSource: "official_site",
-    priceZone: "from_2500_to_4000",
+    priceZone: "from_2500_to_3000",
     sector: "B2",
   }),
 ];
@@ -251,7 +251,7 @@ export const FIXTURE_CANCELLED_TRANSACTIONS: Transaction[] = [
     quantity: 4,
     ticketType: "arena",
     orderSource: "yandex_afisha",
-    priceZone: "from_1500_to_2500",
+    priceZone: "from_1500_to_2000",
     description: "Отмена заказа",
   }),
 ];
@@ -352,8 +352,8 @@ export const expectedByOrderSource: Record<OrderSource, FrozenMatchMetrics> = {
   },
 };
 
-export const expectedByPriceZone: Record<PriceZone, FrozenMatchMetrics> = {
-  up_to_1500: {
+export const expectedByPriceZone: Partial<Record<PriceZone, FrozenMatchMetrics>> = {
+  up_to_500: {
     revenue: 10_000,
     sold: 10,
     free: 3,
@@ -362,7 +362,7 @@ export const expectedByPriceZone: Record<PriceZone, FrozenMatchMetrics> = {
     loyaltyDiscount: 0,
     occupancyPercentage: null,
   },
-  from_1500_to_2500: {
+  from_1500_to_2000: {
     revenue: 16_000,
     sold: 8,
     free: 0,
@@ -371,21 +371,12 @@ export const expectedByPriceZone: Record<PriceZone, FrozenMatchMetrics> = {
     loyaltyDiscount: 2_000,
     occupancyPercentage: null,
   },
-  from_2500_to_4000: {
-    revenue: 15_000,
-    sold: 5,
+  from_2500_to_3000: {
+    revenue: 25_000,
+    sold: 7,
     free: 0,
-    issued: 5,
-    averagePrice: 15_000 / 5,
-    loyaltyDiscount: 0,
-    occupancyPercentage: null,
-  },
-  from_4000_to_6000: {
-    revenue: 10_000,
-    sold: 2,
-    free: 0,
-    issued: 2,
-    averagePrice: 10_000 / 2,
+    issued: 7,
+    averagePrice: 25_000 / 7,
     loyaltyDiscount: 0,
     occupancyPercentage: null,
   },
@@ -415,7 +406,7 @@ export const CONFIRM_SCENARIO = {
   matchId: FIXTURE_CURRENT_MATCH_ID,
   opponent: FIXTURE_CURRENT_MATCH.opponent,
   priceZone: CONFIRM_PRICE_ZONE,
-  expected: expectedByPriceZone[CONFIRM_PRICE_ZONE],
+  expected: expectedByPriceZone[CONFIRM_PRICE_ZONE]!,
 } as const;
 
 export function cloneTransactions(txs: Transaction[]): Transaction[] {

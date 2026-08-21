@@ -31,8 +31,8 @@ function sortedUnique(ids: Iterable<string>): string[] {
  * Mapping is 1:1 onto 2024/25 IDs that are not already in 2025/26, so unique
  * customer counts per league × arena are preserved.
  *
- * Groups by league × arena so default KHL / main (and VHL / MHL) each get
- * renewed, not-renewed, and new clients.
+ * Groups by league × arena so default KHL / all arenas (and VHL / MHL) each
+ * get renewed, not-renewed, and new clients.
  */
 export function applySeasonRenewalCustomerLinks(
   subscriptions: Subscription[],

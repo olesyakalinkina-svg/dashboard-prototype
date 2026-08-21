@@ -8,8 +8,8 @@ export const MHL_ARENA_CAPACITY = 6300;
 export const TICKET_PLAN_FILL_RATE = 0.82;
 /**
  * Baseline KHL plan average ticket price (class_2).
- * Kept at catalog scale so unit prices fill all four cost buckets
- * (до 1500 … от 4000 до 6000) instead of collapsing near 310 ₽.
+ * Kept at catalog scale so unit prices fill all six cost buckets
+ * (500 … 3000) instead of collapsing near 310 ₽.
  */
 export const TICKET_PLAN_AVG_PRICE = 1750;
 /** Same catalog baseline; the 310 ₽ crush is no longer applied to zone prices. */

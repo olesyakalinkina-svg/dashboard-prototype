@@ -12,6 +12,7 @@ import {
 import {
   flattenExpandedMatchSalesTree,
   paginateTopLevel,
+  matchSalesIssuedOccupancyPercent,
   matchSalesPlanFulfillmentPct,
   type MatchSalesFlatRow,
   type MatchSalesTreeNode,
@@ -22,18 +23,17 @@ import {
   formatNumber,
   formatPercent,
 } from "@/lib/format";
-import { issuedOccupancyPercent } from "@/lib/ticket-plan";
 import type { ExcelValue } from "@/lib/excel-export";
 
 const MATCH_SALES_EXCEL_HEADERS = [
   "Мероприятие",
   "Дата",
   "Выручка",
-  "% выполнения плана",
+  "Выполнение плана",
   "Средняя цена",
   "Продано",
   "Бесплатно",
-  "Оформлено",
+  "Заполняемость",
   "Скидка ПЛ",
 ];
 
@@ -87,7 +87,7 @@ function MetricsGrid({
   row: MatchSalesTreeNode | MatchSalesFlatRow;
   compact?: boolean;
 }) {
-  const fillPct = issuedOccupancyPercent(row.occupancyIssuedTickets, row.capacity);
+  const fillPct = matchSalesIssuedOccupancyPercent(row);
   const revenueFulfillmentPct = matchSalesPlanFulfillmentPct(
     row.revenue,
     row.planRevenue,
@@ -107,7 +107,7 @@ function MetricsGrid({
           </dd>
         </div>
         <div className="col-span-2">
-          <dt className="text-[var(--muted)]">% выполнения плана</dt>
+          <dt className="text-[var(--muted)]">Выполнение плана</dt>
           <dd className="text-[var(--foreground)]">{planPctLabel}</dd>
         </div>
         <div>
@@ -117,7 +117,7 @@ function MetricsGrid({
           </dd>
         </div>
         <div>
-          <dt className="text-[var(--muted)]">Оформлено</dt>
+          <dt className="text-[var(--muted)]">Заполняемость</dt>
           <dd className="text-[var(--foreground)]">
             {formatNumber(row.issuedTickets)} шт
           </dd>
@@ -141,7 +141,7 @@ function MetricsGrid({
         </dd>
       </div>
       <div className="col-span-2">
-        <dt className="text-[var(--muted)]">% выполнения плана</dt>
+        <dt className="text-[var(--muted)]">Выполнение плана</dt>
         <dd className="text-[var(--foreground)]">{planPctLabel}</dd>
       </div>
       <div>
@@ -163,7 +163,7 @@ function MetricsGrid({
         </dd>
       </div>
       <div>
-        <dt className="text-[var(--muted)]">Оформлено</dt>
+        <dt className="text-[var(--muted)]">Заполняемость</dt>
         <dd className="text-[var(--foreground)]">
           {formatNumber(row.occupancyIssuedTickets)} шт
           {fillPct !== null ? ` (${formatPercent(fillPct)})` : " (—)"}
@@ -180,7 +180,7 @@ function MetricsGrid({
 }
 
 function DetailMetrics({ row }: { row: MatchSalesTreeNode | MatchSalesFlatRow }) {
-  const fillPct = issuedOccupancyPercent(row.occupancyIssuedTickets, row.capacity);
+  const fillPct = matchSalesIssuedOccupancyPercent(row);
 
   return (
     <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs leading-snug">

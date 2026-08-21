@@ -1,11 +1,13 @@
 import type {
-  ArenaId,
-  League,
   Subscription,
   SubscriptionFilters,
   SubscriptionPriceCategory,
   SubscriptionSalesChannel,
 } from "@/types/dashboard";
+import {
+  arenaForSelectedLeague,
+  sanitizeLeagueArena,
+} from "@/lib/ticket-filter-options";
 
 export const SUBSCRIPTION_CHANNEL_LABELS: Record<
   SubscriptionSalesChannel,
@@ -30,14 +32,10 @@ export const SUBSCRIPTION_PRICE_CATEGORY_LABELS: Record<
   seasonal: "Сезонный",
 };
 
-export const SUBSCRIPTION_PRICE_CATEGORY_COLORS: Record<
-  SubscriptionPriceCategory,
-  string
-> = {
-  all_inclusive: "#5282FF",
-  weekend: "#00BFA5",
-  seasonal: "#FF7043",
-};
+export {
+  getSubscriptionPriceCategoryColor,
+  SUBSCRIPTION_PRICE_CATEGORY_COLORS,
+} from "@/lib/subscription-price-category-colors";
 
 const PLAN_ID_TO_PRICE_CATEGORY: Record<string, SubscriptionPriceCategory> = {
   "plan-1": "weekend",
@@ -77,39 +75,16 @@ export const SUBSCRIPTION_PRICE_CATEGORY_OPTIONS: {
   })),
 ];
 
-const LOCKED_SUBSCRIPTION_ARENA: Record<League, ArenaId> = {
-  KHL: "main",
-  VHL: "secondary",
-  MHL: "main",
-};
-
-/** League is a single Select on this tab, not a multi-select. */
-export function getLockedSubscriptionArena(
-  league: League | "all",
-): ArenaId | null {
-  if (league === "all") return null;
-  return LOCKED_SUBSCRIPTION_ARENA[league];
-}
-
-export function isSubscriptionArenaLocked(
-  league: League | "all",
-): boolean {
-  return getLockedSubscriptionArena(league) !== null;
-}
-
-export function sanitizeSubscriptionArena(
-  league: League | "all",
-  arena: ArenaId | "all",
-): ArenaId | "all" {
-  return getLockedSubscriptionArena(league) ?? arena;
-}
-
 export function applySubscriptionFilterPatch(
   current: SubscriptionFilters,
   patch: Partial<SubscriptionFilters>,
 ): SubscriptionFilters {
   const next = { ...current, ...patch };
-  next.arena = sanitizeSubscriptionArena(next.league, next.arena);
+  if (patch.league !== undefined && patch.arena === undefined) {
+    next.arena = arenaForSelectedLeague(next.league, current.arena);
+  } else {
+    next.arena = sanitizeLeagueArena(next.league, next.arena);
+  }
   return next;
 }
 
@@ -125,7 +100,7 @@ export const DEFAULT_SUBSCRIPTION_FILTERS: SubscriptionFilters = {
   season: "2025/26",
   league: "KHL",
   tournamentStage: "all",
-  arena: "main",
+  arena: "all",
   priceCategory: "all",
   timeGrouping: "week",
 };
@@ -145,7 +120,11 @@ export function getSubscriptionCategoryChartTitle(
 
 export {
   ARENA_OPTIONS,
+  arenaForSelectedLeague,
+  getLockedLeagueArena as getLockedSubscriptionArena,
+  isLeagueArenaLocked as isSubscriptionArenaLocked,
   LEAGUE_OPTIONS,
+  sanitizeLeagueArena as sanitizeSubscriptionArena,
   SEASON_OPTIONS,
   TREND_TIME_GROUPING_OPTIONS,
 } from "@/lib/ticket-filter-options";

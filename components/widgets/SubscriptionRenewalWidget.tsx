@@ -61,7 +61,9 @@ export function SubscriptionRenewalWidget() {
         />
       </div>
 
-      <RenewalProductChart data={result.products} />
+      <div className="grid min-w-0 grid-cols-1 items-start gap-4 min-[1024px]:grid-cols-2">
+        <RenewalProductChart data={result.products} />
+      </div>
     </section>
   );
 }

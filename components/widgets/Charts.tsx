@@ -40,6 +40,8 @@ import { ChartWidget } from "@/components/widgets/ChartWidget";
 import {
   getSubscriptionCategoryChartTitle,
 } from "@/lib/subscription-filter-options";
+import { getSubscriptionPriceCategoryColor } from "@/lib/subscription-price-category-colors";
+import { SUBSCRIPTION_PRODUCT_CHART_TEXT } from "@/lib/subscription-product-chart-style";
 import {
   formatCurrency,
   formatCurrencyCompact,
@@ -831,7 +833,7 @@ export const SubscriptionPriceCategoryShareChart = memo(
                     dataKey="category"
                     width={128}
                     interval={0}
-                    tick={{ fontSize: 14, fill: "#1A1A1A" }}
+                    tick={SUBSCRIPTION_PRODUCT_CHART_TEXT}
                     axisLine={false}
                     tickLine={false}
                     padding={{ top: 0, bottom: 0 }}
@@ -840,17 +842,22 @@ export const SubscriptionPriceCategoryShareChart = memo(
                   <Bar
                     dataKey="sold"
                     name="Продано"
-                    fill="#5282FF"
                     barSize={18}
                     maxBarSize={18}
                     radius={[0, 4, 4, 0]}
                     isAnimationActive={false}
                   >
+                    {data.map((item) => (
+                      <Cell
+                        key={item.categoryKey}
+                        fill={getSubscriptionPriceCategoryColor(item.categoryKey)}
+                      />
+                    ))}
                     <LabelList
                       dataKey="sold"
                       position="right"
                       formatter={(value: number) => formatNumber(value)}
-                      style={{ fontSize: 14, fill: "#1A1A1A" }}
+                      style={SUBSCRIPTION_PRODUCT_CHART_TEXT}
                     />
                   </Bar>
                 </BarChart>

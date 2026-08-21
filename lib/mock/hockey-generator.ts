@@ -192,8 +192,11 @@ function randomDateInWindow(
   return randomDateInSeasonRange(start, end);
 }
 
-/** Frozen 2024/25 KHL list so YoY is not derived from the 2025/26 calendar. */
-const PREV_SEASON_KHL_OPPONENTS = [
+/**
+ * Frozen 2024/25 KHL regular opponents (34) so YoY is not a copy of the
+ * 2025/26 roster. Calendar days follow 2025/26 analogs (year shifted back).
+ */
+export const PREV_SEASON_KHL_REGULAR_OPPONENTS = [
   "Салават Юлаев",
   "Динамо Минск",
   "Спартак",
@@ -208,9 +211,29 @@ const PREV_SEASON_KHL_OPPONENTS = [
   "Авангард",
   "Ак Барс",
   "Локомотив",
+  "Барыс",
+  "Автомобилист",
+  "Лада",
+  "Нефтехимик",
+  "Северсталь",
+  "Адмирал",
+  "Витязь",
+  "Куньлунь",
+  "Барыс",
+  "Автомобилист",
+  "Нефтехимик",
+  "Адмирал",
+  "Лада",
+  "Северсталь",
+  "Витязь",
   "Трактор",
   "Металлург",
+  "ХК Сочи",
+  "Автомобилист",
+  "Барыс",
 ];
+
+const PREV_SEASON_KHL_PLAYOFF_OPPONENTS = ["Трактор", "Металлург"];
 
 const VHL_OPPONENTS = [
   "Торос",
@@ -252,8 +275,38 @@ function calendarDay(year: number, month: number, day: number): Date {
   return startOfDay(new Date(year, month - 1, day));
 }
 
+/** Same month/day as the 2025/26 analog, year shifted back into 2024/25. */
+export function analogPreviousSeasonDate(currentDate: Date): Date {
+  return startOfDay(
+    new Date(
+      currentDate.getFullYear() - 1,
+      currentDate.getMonth(),
+      currentDate.getDate(),
+    ),
+  );
+}
+
 function opponentsToFixtures(opponents: string[]): MatchFixture[] {
   return opponents.map((opponent) => ({ opponent }));
+}
+
+function analogFixturesFromCurrent(
+  current: MatchFixture[],
+  opponents: string[],
+): MatchFixture[] {
+  if (opponents.length !== current.length) {
+    throw new Error(
+      `Previous-season KHL fixtures (${opponents.length}) must match current (${current.length})`,
+    );
+  }
+  return current.map((fixture, index) => ({
+    opponent: opponents[index]!,
+    date: fixture.date
+      ? analogPreviousSeasonDate(fixture.date)
+      : undefined,
+    series: fixture.series,
+    matchClass: fixture.matchClass,
+  }));
 }
 
 /**
@@ -322,6 +375,20 @@ const CURRENT_SEASON_KHL_FIXTURES: MatchFixture[] = [
 
 const CURRENT_SEASON_KHL_MATCH_COUNT = CURRENT_SEASON_KHL_FIXTURES.length;
 
+const PREV_SEASON_KHL_REGULAR_FIXTURES = analogFixturesFromCurrent(
+  CURRENT_SEASON_KHL_REGULAR_FIXTURES,
+  PREV_SEASON_KHL_REGULAR_OPPONENTS,
+);
+const PREV_SEASON_KHL_PLAYOFF_FIXTURES = analogFixturesFromCurrent(
+  CURRENT_SEASON_KHL_PLAYOFF_FIXTURES,
+  PREV_SEASON_KHL_PLAYOFF_OPPONENTS,
+);
+const PREV_SEASON_KHL_FIXTURES: MatchFixture[] = [
+  ...PREV_SEASON_KHL_REGULAR_FIXTURES,
+  ...PREV_SEASON_KHL_PLAYOFF_FIXTURES,
+];
+export const PREV_SEASON_KHL_MATCH_COUNT = PREV_SEASON_KHL_FIXTURES.length;
+
 const KHL_MATCH_CLASS_BY_OPPONENT: Record<string, MatchClass> = {
   "Шанхай Дрэгонс": "class_2",
   Шанхай: "class_2",
@@ -335,6 +402,8 @@ const KHL_MATCH_CLASS_BY_OPPONENT: Record<string, MatchClass> = {
   Автомобилист: "class_2",
   Северсталь: "class_2",
   Амур: "class_3",
+  Витязь: "class_3",
+  Куньлунь: "class_2",
   Сибирь: "class_2",
   Спартак: "class_2",
   "Динамо Минск": "class_1",
@@ -398,7 +467,7 @@ const PREV_SEASON_SCHEDULES: LeagueSchedule[] = [
     league: "KHL",
     arena: HOME_ARENA,
     capacity: MAIN_ARENA_CAPACITY,
-    fixtures: opponentsToFixtures(PREV_SEASON_KHL_OPPONENTS),
+    fixtures: PREV_SEASON_KHL_FIXTURES,
   },
   {
     league: "VHL",
@@ -981,7 +1050,7 @@ const loyaltyRand = seededRandom(20260515);
  */
 const LOYALTY_DISCOUNT_APPLY_RATE = 0.304;
 
-function getBaseMatchClass(opponent: string, league: League): MatchClass {
+export function getBaseMatchClass(opponent: string, league: League): MatchClass {
   switch (league) {
     case "VHL":
       return VHL_MATCH_CLASS_BY_OPPONENT[opponent] ?? "class_2";
@@ -1103,9 +1172,101 @@ function applyMatchClasses(matches: Match[]): void {
   assignPlayoffClasses(matches);
 }
 
+const CURRENT_SEASON_ID = "2025/26";
+const PREVIOUS_SEASON_ID = "2024/25";
+const ALIGN_LEAGUES: League[] = ["KHL", "VHL", "MHL"];
+
+function sortMatchesInSeasonOrder(left: Match, right: Match): number {
+  const byDate = left.date.getTime() - right.date.getTime();
+  if (byDate !== 0) return byDate;
+  return left.id.localeCompare(right.id);
+}
+
+function isPlayoffMatch(match: Match): boolean {
+  return match.matchClass === "playoff" || match.tournamentStage === "playoff";
+}
+
+/**
+ * Pair 2024/25 matches with 2025/26 analogs in the same league and stage.
+ * Equal counts zip 1:1 by season order. When counts differ, zip by order
+ * (prev[i] → current[i]); extra current matches are unused. KHL is 34
+ * regular + 2 playoff in both seasons.
+ */
+export function pairPreviousSeasonMatchesByLeagueOrder(
+  matches: Match[],
+): { prev: Match; current: Match }[] {
+  const pairs: { prev: Match; current: Match }[] = [];
+  const stages = [false, true] as const;
+
+  for (const league of ALIGN_LEAGUES) {
+    for (const playoff of stages) {
+      const current = matches
+        .filter(
+          (match) =>
+            match.league === league &&
+            match.season === CURRENT_SEASON_ID &&
+            isPlayoffMatch(match) === playoff,
+        )
+        .sort(sortMatchesInSeasonOrder);
+      const prev = matches
+        .filter(
+          (match) =>
+            match.league === league &&
+            match.season === PREVIOUS_SEASON_ID &&
+            isPlayoffMatch(match) === playoff,
+        )
+        .sort(sortMatchesInSeasonOrder);
+      const count = Math.min(current.length, prev.length);
+      for (let index = 0; index < count; index += 1) {
+        pairs.push({ prev: prev[index]!, current: current[index]! });
+      }
+    }
+  }
+
+  return pairs;
+}
+
+function alignPreviousSeasonMatchDates(matches: Match[]): number {
+  let shifted = 0;
+
+  for (const { prev, current } of pairPreviousSeasonMatchesByLeagueOrder(
+    matches,
+  )) {
+    const nextDate = analogPreviousSeasonDate(current.date);
+    const sameCalendarDay =
+      prev.date.getFullYear() === nextDate.getFullYear() &&
+      prev.date.getMonth() === nextDate.getMonth() &&
+      prev.date.getDate() === nextDate.getDate();
+    if (!sameCalendarDay) {
+      prev.date = nextDate;
+      shifted += 1;
+    }
+    prev.eventCompleted = isEventCompleted(prev.date);
+    if (current.series) {
+      prev.series = current.series;
+    }
+    if (isPlayoffMatch(current)) {
+      prev.matchClass = "playoff";
+    }
+  }
+
+  return shifted;
+}
+
+/**
+ * Align 2024/25 match calendar days to 2025/26 analogs (year-1).
+ * Playoff class is copied from the analog; 2025/26 fixtures stay untouched.
+ */
+export function applyPreviousSeasonAnalogCalendar(matches: Match[]): number {
+  const shifted = alignPreviousSeasonMatchDates(matches);
+  applyTournamentStages(matches);
+  return shifted;
+}
+
 function generateMatches(): Match[] {
   const allMatches = SEASON_DEFINITIONS.flatMap(buildSeasonMatches);
   applyMatchClasses(allMatches);
+  alignPreviousSeasonMatchDates(allMatches);
   applyTournamentStages(allMatches);
   applySoldOutAttendance(allMatches);
   alignCompletedMatchSalesWindows(allMatches);
@@ -1284,10 +1445,12 @@ function randomSaleDate(match: Match, explicit?: Date): Date {
 }
 
 const PRICE_ZONE_UNIT_PRICE: Record<PriceZone, number> = {
-  up_to_1500: 900,
-  from_1500_to_2500: 2000,
-  from_2500_to_4000: 3200,
-  from_4000_to_6000: 5000,
+  up_to_500: 400,
+  from_500_to_1000: 750,
+  from_1000_to_1500: 1250,
+  from_1500_to_2000: 1750,
+  from_2000_to_2500: 2250,
+  from_2500_to_3000: 2750,
 };
 
 /** Parking is a separate fixed inventory. No price zone. */

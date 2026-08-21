@@ -1,7 +1,6 @@
 "use client";
 
 import { useDeferredValue, useMemo, useState, type ReactNode } from "react";
-import clsx from "clsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { useFilterState } from "@/context/FilterContext";
 import { getSubscriptions } from "@/lib/mock/hockey";
@@ -95,43 +94,38 @@ export function SubscriptionCampaignPaceWidget({
         </div>
       ) : null}
 
-      <div
-        className={clsx(
-          "grid min-w-0 grid-cols-1 gap-4 min-[1024px]:grid-cols-2",
-          children || tableOpen ? "items-start" : "items-stretch",
-        )}
-      >
-        <div className="flex min-w-0 flex-col gap-4">
-          <CampaignPaceCard
-            title={COUNT_TITLE}
-            subtitle={COUNT_SUBTITLE}
-            highlight="count"
-            result={result}
-            stretch={!children && !tableOpen}
-            compareSelect={compareSelect}
-            table={
-              result.kind === "ok" ? (
-                <CampaignPaceTable
-                  open={tableOpen}
-                  onToggle={() => setTableOpen((open) => !open)}
-                  points={result.points}
-                  mainSeasonName={result.mainCampaign.seasonName}
-                  benchmarkSeasonName={result.benchmarkCampaign.seasonName}
-                />
-              ) : null
-            }
-          />
-          {children}
-        </div>
+      <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 min-[1024px]:grid-cols-2">
+        <CampaignPaceCard
+          title={COUNT_TITLE}
+          subtitle={COUNT_SUBTITLE}
+          highlight="count"
+          result={result}
+          compareSelect={compareSelect}
+          table={
+            result.kind === "ok" ? (
+              <CampaignPaceTable
+                open={tableOpen}
+                onToggle={() => setTableOpen((open) => !open)}
+                points={result.points}
+                mainSeasonName={result.mainCampaign.seasonName}
+                benchmarkSeasonName={result.benchmarkCampaign.seasonName}
+              />
+            ) : null
+          }
+        />
         <CampaignPaceCard
           title={REVENUE_TITLE}
           subtitle={REVENUE_SUBTITLE}
           highlight="revenue"
           result={result}
-          stretch={!children && !tableOpen}
           compareSelect={compareSelect}
         />
       </div>
+      {children ? (
+        <div className="grid min-w-0 grid-cols-1 items-start gap-4 min-[1024px]:grid-cols-2">
+          {children}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -141,7 +135,6 @@ function CampaignPaceCard({
   subtitle,
   highlight,
   result,
-  stretch,
   compareSelect,
   table,
 }: {
@@ -149,7 +142,6 @@ function CampaignPaceCard({
   subtitle: string;
   highlight: CampaignPaceHighlight;
   result: CampaignBenchmarkComputation;
-  stretch: boolean;
   compareSelect: ReactNode;
   table?: ReactNode;
 }) {
@@ -157,7 +149,7 @@ function CampaignPaceCard({
   const benchmarkName = result.benchmarkCampaign?.seasonName ?? "Сравнение";
 
   return (
-    <Card className={clsx("min-w-0", stretch && "h-full")}>
+    <Card className="flex h-full min-w-0 flex-col">
       <CardHeader className="sm:items-start">
         <div className="min-w-0">
           <CardTitle>{title}</CardTitle>
@@ -167,7 +159,7 @@ function CampaignPaceCard({
         </div>
         {compareSelect}
       </CardHeader>
-      <CardContent className="min-w-0">
+      <CardContent className="flex min-w-0 flex-1 flex-col">
         {result.kind === "ok" ? (
           <>
             <CampaignPaceChart
